@@ -212,7 +212,7 @@ func (c *standing) Assess(members []encounter.MemberID) (*encounter.Participatio
 // the record as the `bubble-formed` beat's `order`.
 type shuffledInitiative struct{ die dice.Roller }
 
-func (s shuffledInitiative) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+func (s shuffledInitiative) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	out := slices.Clone(members)
 	for i := len(out) - 1; i > 0; i-- {
 		j, err := s.die.Roll(context.Background(), i+1)
@@ -222,7 +222,7 @@ func (s shuffledInitiative) RollInitiative(members []encounter.MemberID) ([]enco
 		out[i], out[j-1] = out[j-1], out[i]
 	}
 
-	return out, nil
+	return encounter.PlacedInOrder(out), nil
 }
 
 // rollingStriker is the played run's driven swing: the host's d20 against

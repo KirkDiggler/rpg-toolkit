@@ -2949,6 +2949,10 @@ type FormInput struct {
 	// A subset of Order. Nobody outside the order can be surprised by a fight
 	// they are not in.
 	Surprised []MemberID
+
+	// Rolls are the rolls behind Order, optional; only entries with a
+	// Calculation are recorded.
+	Rolls []InitiativeRoll
 }
 
 // FormOutput reports what forming the bubble appended to the story.
@@ -3045,6 +3049,24 @@ func (e *Encounter) formWithParticipation(
 		}
 	}
 
+	rolled := make(map[MemberID]bool, len(in.Rolls))
+	for _, roll := range in.Rolls {
+		if roll.Calculation == nil {
+			continue
+		}
+		id := roll.Member
+		if !seen[id] {
+			return nil, fmt.Errorf("form: %q rolled initiative but is not in the order: %w", id, ErrNotMember)
+		}
+		if rolled[id] {
+			return nil, fmt.Errorf("form: %q rolled initiative twice: %w", id, ErrInvalidData)
+		}
+		rolled[id] = true
+		if err := validateRecordedD20(roll.Calculation, roll.Roll, roll.Total); err != nil {
+			return nil, fmt.Errorf("form: %q initiative roll: %w", id, err)
+		}
+	}
+
 	// Mutate. Validation above guarantees every named member is on the world
 	// clock (member + not-in-a-bubble + R6), so these cannot fail against a
 	// coherent encounter — but a failure here still returns, and the caller's
@@ -3077,6 +3099,23 @@ func (e *Encounter) formWithParticipation(
 	// it for a reader reconstructing the fight from beats alone.
 	if len(in.Surprised) > 0 {
 		beat["surprised"] = in.Surprised
+	}
+	// Each member's initiative roll, in the order they act. Absent when
+	// nobody rolled, so a placing roller's record is what it always was.
+	if len(rolled) > 0 {
+		byMember := make(map[MemberID]InitiativeRoll, len(rolled))
+		for _, roll := range in.Rolls {
+			if roll.Calculation != nil {
+				byMember[roll.Member] = roll
+			}
+		}
+		recorded := make([]InitiativeRoll, 0, len(byMember))
+		for _, id := range in.Order {
+			if roll, ok := byMember[id]; ok {
+				recorded = append(recorded, roll)
+			}
+		}
+		beat["rolls"] = recorded
 	}
 	seq, err := e.appendClockBeat(beat, in.Order...)
 	if err != nil {

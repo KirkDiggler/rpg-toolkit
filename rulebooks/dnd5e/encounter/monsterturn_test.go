@@ -66,7 +66,7 @@ func requireKnownLocation(t *testing.T, payload []byte, want spatial.Position) {
 // player after it, so one public EndTurn reaches the monster's turn.
 type arrivalOrder struct{}
 
-func (arrivalOrder) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+func (arrivalOrder) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	ordered := make([]encounter.MemberID, 0, len(members))
 	for _, id := range []encounter.MemberID{alice, goblin, billy, carol, "ogre"} {
 		for _, member := range members {
@@ -76,7 +76,7 @@ func (arrivalOrder) RollInitiative(members []encounter.MemberID) ([]encounter.Me
 			}
 		}
 	}
-	return ordered, nil
+	return encounter.PlacedInOrder(ordered), nil
 }
 
 // newDrivenArrivalEncounter loads a real encounter whose goblin holdings name

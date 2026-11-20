@@ -122,8 +122,8 @@ func (everyoneStanding) Assess(members []encounter.MemberID) (*encounter.Partici
 // formed, never the order it formed in.
 type orderAsGiven struct{}
 
-func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 // passDriver ends every unplayed member's turn with no other effect.

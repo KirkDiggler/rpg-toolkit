@@ -77,7 +77,9 @@ func (benchStanding) Assess(members []MemberID) (*ParticipationAssessment, error
 
 type benchRoller struct{}
 
-func (benchRoller) RollInitiative(members []MemberID) ([]MemberID, error) { return members, nil }
+func (benchRoller) RollInitiative(members []MemberID) ([]InitiativeRoll, error) {
+	return PlacedInOrder(members), nil
+}
 
 // benchField lays `rooms` chambers of dim x dim in a row, `stride` apart:
 // stride == dim makes them tile the canvas with no void at all, stride == dim+1

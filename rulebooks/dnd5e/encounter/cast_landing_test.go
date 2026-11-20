@@ -32,12 +32,12 @@ const clBard = encounter.MemberID("bard")
 // rpg-project#825 did: the fight's first turns are played inside the cast.
 type bardLast struct{}
 
-func (bardLast) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+func (bardLast) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	out := slices.DeleteFunc(slices.Clone(members), func(id encounter.MemberID) bool { return id == clBard })
 	if len(out) < len(members) {
 		out = append(out, clBard)
 	}
-	return out, nil
+	return encounter.PlacedInOrder(out), nil
 }
 
 // walkingSheets gives every member thirty feet and a sword in reach, so a

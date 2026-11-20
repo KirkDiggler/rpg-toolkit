@@ -649,8 +649,8 @@ func num(s string) float64 {
 // its transcript differ run to run for no gain.
 type rollOrderAsGiven struct{}
 
-func (rollOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (rollOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 // rollAllStanding is the workbench's Participation capability: nobody is ever down.
