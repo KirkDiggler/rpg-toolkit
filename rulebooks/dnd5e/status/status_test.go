@@ -129,6 +129,63 @@ func (s *statusSuite) TestTheCookExampleDoesWhatItSays() {
 	s.False(s.checkAdvantage(w, skills.Persuasion, "Well fed"))
 }
 
+// EVERY ABILITY, BY ITS LONG NAME, REACHES THE ENGINE'S FACT: an author
+// writes "charisma" and the guard compares the canonical id the check and the
+// save carry, so the advantage lands on that ability's check and save and on
+// no other ability's.
+func (s *statusSuite) TestEachAbilityByNameGuardsItsOwnRolls() {
+	ids := map[string]abilities.Ability{
+		"strength": abilities.STR, "dexterity": abilities.DEX, "constitution": abilities.CON,
+		"intelligence": abilities.INT, "wisdom": abilities.WIS, "charisma": abilities.CHA,
+	}
+	for name, id := range ids {
+		s.Run(name, func() {
+			doc := `{"name":"Sharp","changes":[{"advantage":"checks","when":{"ability":"` + name + `"}},` +
+				`{"advantage":"saves","when":{"ability":"` + name + `"}}],"maintenance":[{"ends_on":"rest"}],"again":"ignored"}`
+			compiled, err := status.Compile(&status.CompileInput{ID: "sharp", Status: json.RawMessage(doc)})
+			s.Require().NoError(err)
+			w := s.world()
+			s.give(w, compiled)
+			for _, other := range ids {
+				s.Equal(other == id, s.abilityCheck(w, other, "Sharp"), "%s check under a %s status", other, name)
+				s.Equal(other == id, s.save(w, other, "Sharp"), "%s save under a %s status", other, name)
+			}
+		})
+	}
+}
+
+// abilityCheck reports whether a bare-ability check by B carries the status.
+func (s *statusSuite) abilityCheck(w *world, ability abilities.Ability, name string) bool {
+	ctx := context.Background()
+	e := &dndevents.AbilityCheckChainEvent{CheckerID: "B", Ability: ability, DC: 10}
+	c, err := dndevents.AbilityCheckChain.On(w.bus).PublishWithChain(ctx, e, events.NewStagedChain[*dndevents.AbilityCheckChainEvent](combat.ModifierStages))
+	s.Require().NoError(err)
+	out, err := c.Execute(ctx, e)
+	s.Require().NoError(err)
+	for _, source := range out.AdvantageSources {
+		if strings.Contains(source.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// save reports whether a saving throw by B carries the status.
+func (s *statusSuite) save(w *world, ability abilities.Ability, name string) bool {
+	ctx := context.Background()
+	e := &dndevents.SavingThrowChainEvent{SaverID: "B", Ability: ability, DC: 10}
+	c, err := dndevents.SavingThrowChain.On(w.bus).PublishWithChain(ctx, e, events.NewStagedChain[*dndevents.SavingThrowChainEvent](combat.ModifierStages))
+	s.Require().NoError(err)
+	out, err := c.Execute(ctx, e)
+	s.Require().NoError(err)
+	for _, source := range out.AdvantageSources {
+		if strings.Contains(source.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // documents is one authored status per word and value in the table, so every
 // word Compile accepts is exercised.
 func documents(words []status.Word) map[string]string {
