@@ -28,11 +28,21 @@ type lineTarget struct {
 // advance, each answer row, each grant. One more facet of a line (its
 // loudness, when that lands) is one more statement here.
 func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTarget) []Statement {
+	paths := make([]string, len(opts))
+	for i := range opts {
+		paths[i] = fmt.Sprintf("%s[%d]", base, i)
+	}
+	return b.lineStatementsAt(opts, paths, t)
+}
+
+// lineStatementsAt is [builder.lineStatements] with each line at its own
+// authored path, paths[i] for opts[i].
+func (b *builder) lineStatementsAt(opts []encounter.Option, paths []string, t lineTarget) []Statement {
 	var out []Statement
 	for i, o := range opts {
 		t := t
 		t.done = o.Does()
-		p := fmt.Sprintf("%s[%d]", base, i)
+		p := paths[i]
 		line := fmt.Sprintf("the line %s (%s)", said(o.Say), quote(o.ID))
 		saidTo := Connection{Kind: t.about.Kind, ID: t.about.ID, Role: "said-to"}
 		heading := fmt.Sprintf("%s (%s)", said(o.Say), quote(o.ID))

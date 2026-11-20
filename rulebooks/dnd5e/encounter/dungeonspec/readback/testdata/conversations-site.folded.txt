@@ -1,0 +1,161 @@
+READ-BACK: Conversations Site (conversations-site)
+
+THE PLACE
+
+  Conversations Site (conversations-site)
+    - The site `conversations-site` is “Conversations Site”, a version 5 site document; its void is
+        transparent, its lighting bright and its standing rule centre-covered. [key]
+    - The floor is 1 region with cells: Hall (region-hall). Summarised: their cells, lighting and ground are
+        not said one by one. [room.room.regions]
+    - Summarised: the coordinate frame, 0 wall lines with 0 doors in their openings, 0 scene items, 0 prop
+        footprints and 0 arrangements. Their positions and shapes are not said one by one. [room.room.walls]
+    - The party starts at q 0, r 6, in Hall (region-hall). [room.room.partyStart]
+    - The party's sharing is not set, so it is shared view, the default. [(engine rule)]
+    - The record `invitation`: whoever comes to hold it learns the fact `feast-tonight`. [intel[0]]
+
+  Where the places join
+    - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another
+        region. [room.room.regions[1]]
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (gate-1), Guard (gate-2) and Guard (captain). [factions[0]]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral. [dispositions[0]]
+
+CREATURES
+
+  Guard (gate-1): a dnd5e:monsters:guard of `watch` at q 1, r 0 in Hall, facing s
+      [room.room.monsterDeclarations[0]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
+        that conversation). [.options[0]]
+
+  Guard (gate-2): a dnd5e:monsters:guard of `watch` at q 3, r 0 in Hall, facing s
+      [room.room.monsterDeclarations[1]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
+        that conversation). [.options[0]]
+
+  Guard (captain): a dnd5e:monsters:guard of `watch` at q 5, r 0 in Hall, facing s
+      [room.room.monsterDeclarations[2]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
+        that conversation). [.options[1]]
+    - At `speak`, the guard's words reach everyone in the guard's room (the wall partition the guard stands
+        in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a
+        closed door stops them), and whoever it is said to, wherever they stand. [said for every answer below
+        at `speak`]
+    - “We’re invited guests of His Majesty, here for the feast.” (`guest`), said to the guard; checked, an
+        action (a round of the world out of a fight); rolls Persuasion vs DC 11 [.options[0].check]
+      - Offered while: `front-gate` is in `fresh` or `warned-troupe`. [.requires[0]]
+      - On a win: the guard answers “Then welcome. Through to the hall.”, at `speak`; and the line steps
+          `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-troupe` [.success[0], .advance]
+      - On a miss: the line steps `front-gate` with `guest-failed`: to `warned-guest` from `fresh`, to
+          `arrested` from `warned-troupe` [.advance]
+
+CONVERSATIONS
+
+  The lines of `gate-claims` — Lines written once: `troupe`, `come-quietly` and `never-alive`. Carried by 3
+      carriers (Guard (gate-1), Guard (gate-2) and Guard (captain)). [conversations.gate-claims]
+    - At `speak`, the carrier's words reach everyone in the carrier's room (the wall partition the carrier
+        stands in), and anyone in the next room within 30 feet of the carrier by the way through an open
+        doorway (a closed door stops them), and whoever it is said to, wherever they stand. [said for every
+        answer below at `speak`]
+    - At `shout`, the carrier's words reach everyone in the carrier's room and the next room over (a closed
+        door on the way counts as a room), and whoever it is said to, wherever they stand. [said for every
+        answer below at `shout`]
+    - “We’re the troupe for tonight’s feast.” (`troupe`), said to the carrier; checked, an action (a round of
+        the world out of a fight); rolls Performance vs DC 13, or Deception vs DC 15
+        [conversations.gate-claims .lines[0].check]
+      - Offered while: the speaker knows the fact `feast-tonight` and `front-gate` is in `fresh` or
+          `warned-guest`. [.requires[0], .requires[1]]
+      - On a win: the carrier answers “Through to the hall, then. Don’t dawdle.”, at `speak`; and the line
+          steps `front-gate` with `admitted`: to `admitted` from `fresh` or `warned-guest` [.success[0],
+          .advance]
+      - On a miss: the carrier answers “Troupe? There’s no troupe on my list. What’s going on here?”, at
+          `speak`; and the line steps `front-gate` with `troupe-failed`: to `warned-troupe` from `fresh`, to
+          `arrested` from `warned-guest` [.failure[0], .advance]
+    - “We’ll come quietly.” (`come-quietly`), said to the carrier; plain: rolls nothing, cannot be missed,
+        free [conversations.gate-claims .lines[1]]
+      - Offered while: `front-gate` is in `arrested`. [.requires[0]]
+      - When said: the carrier answers “Sensible. This way, and keep your hands where I can see them.”, at
+          `speak`; and the line steps `front-gate` with `came-quietly`: to `admitted` from `arrested`
+          [.success[0], .advance]
+    - “You will never take me alive.” (`never-alive`), said to the carrier; plain: rolls nothing, cannot be
+        missed, free [conversations.gate-claims .lines[2]]
+      - Offered while: `front-gate` is in `arrested`. [.requires[0]]
+      - When said: the carrier answers “Then we do this the hard way. To arms!”, at `shout`; every member
+          those words reach, seen or not, the carrier included, learns the fact `refused-arrest` [.success[0]]
+
+  Conversation `front-gate` — one state for the whole run, shared by every speaker; starts in `fresh`; recipe
+      `site:interactions:front-gate`. Carried by Guard (gate-1), Guard (gate-2) and Guard (captain) (the
+      creatures whose lines read or step it). [interactions.front-gate]
+    - When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up
+        and out of a fight, and that carrier offers them a line that steps `front-gate`, the nearest such
+        carrier (then by id) hails them and hears the beat `approached`, unless `front-gate` is already
+        addressing someone. A line that only reads `front-gate` does not hail. It is opened within 2 cells,
+        and stands while the other conditions hold and the character is within Speak reach of that carrier
+        (never less than 2 cells); it ends when any fails. [.approach]
+    - Who can hail for `front-gate`, by its state: in `fresh`, Guard (gate-1) and Guard (gate-2) (by `troupe`,
+        if the speaker knows the fact `feast-tonight`), and Guard (captain) (by `guest`; by `troupe`, if the
+        speaker knows the fact `feast-tonight`); in `arrested`, Guard (gate-1), Guard (gate-2) and Guard
+        (captain) (by `come-quietly`); in `warned-guest`, Guard (gate-1), Guard (gate-2) and Guard (captain)
+        (by `troupe`, if the speaker knows the fact `feast-tonight`); in `warned-troupe`, Guard (captain) (by
+        `guest`); in `admitted`, nobody. [.approach]
+    - From `fresh`: `guest-failed` moves it to `warned-guest` (“the guest claim failed”); sent by a miss of
+        `guest` (captain). [.recipe.states.fresh.transitions[0]]
+    - From `fresh`: `troupe-failed` moves it to `warned-troupe` (“the troupe claim failed”); sent by a miss of
+        `troupe` (gate-1, gate-2, captain). [.recipe.states.fresh.transitions[1]]
+    - From `fresh`: `admitted` moves it to `admitted` (“let through”); sent by a win of `troupe` (gate-1,
+        gate-2, captain) or a win of `guest` (captain). [.recipe.states.fresh.transitions[2]]
+    - From `arrested`: `came-quietly` moves it to `admitted` (“the arrested went quietly”); sent by saying
+        `come-quietly` (gate-1, gate-2, captain). [.recipe.states.arrested.transitions[0]]
+    - From `warned-guest`: `troupe-failed` moves it to `arrested` (“the second claim failed”); sent by a miss
+        of `troupe` (gate-1, gate-2, captain). [.recipe.states.warned-guest.transitions[0]]
+    - From `warned-guest`: `admitted` moves it to `admitted` (“let through”); sent by a win of `troupe`
+        (gate-1, gate-2, captain). [.recipe.states.warned-guest.transitions[1]]
+    - From `warned-troupe`: `guest-failed` moves it to `arrested` (“the second claim failed”); sent by a miss
+        of `guest` (captain). [.recipe.states.warned-troupe.transitions[0]]
+    - From `warned-troupe`: `admitted` moves it to `admitted` (“let through”); sent by a win of `guest`
+        (captain). [.recipe.states.warned-troupe.transitions[1]]
+    - `admitted` is final: once entered, nothing moves it again. [.recipe.states.admitted]
+    - On entering `admitted`: the creature the deciding line was said to notes `admitted` about the speaker
+        and every member of the speaker's party that creature sees then; so does each other carrier of
+        `front-gate` the line's words reached and who is up, about the same members, whether or not that
+        carrier sees them (heard); if that creature notes it about nobody, nobody else notes anything.
+        [.outcomes.admitted[0].give]
+    - Lines offered only in a state of it: `troupe` (gate-1, gate-2, captain) in `fresh` or `warned-guest`;
+        `come-quietly` and `never-alive` (gate-1, gate-2, captain) in `arrested`; `guest` (captain) in `fresh`
+        or `warned-troupe`. [at each line's requires, above]
+    - Engine rule, not authored: while a checked line that reads or steps `front-gate` waits on its speaker's
+        decision about a held benefit, every line that reads or steps `front-gate` is pending for every
+        speaker until that roll is settled or released. [(engine rule)]
+    - Engine rule, not authored: if the speaker and the creature spoken to lose reach or sight of each other
+        while that roll waits, the speaker keeps the roll they made: it is settled as rolled, judged where the
+        words were spoken. [(engine rule)]
+    - Engine rule, not authored: a reply sent from a menu offered before `front-gate` last changed (a state
+        change, or a roll beginning or ending its wait on it) is refused with nothing spent; the speaker must
+        be offered the menu again. [(engine rule)]
+
+TOPICS
+
+  `admitted` — its meaning is not declared in the file. [interactions.front-gate .outcomes.admitted[0].give]
+    - Granted by: the conversation `front-gate` on entering `admitted`. [interactions.front-gate
+        .outcomes.admitted[0].give]
+
+FACTS
+
+  `feast-tonight` — its meaning is not declared in the file. [intel[0]]
+    - Taught by: holding the record `invitation`. [intel[0]]
+    - Asked by: `troupe` (gate-claims). [conversations.gate-claims .lines[0].requires[0]]
+
+  `refused-arrest` — its meaning is not declared in the file. [conversations.gate-claims .lines[2].success[0]]
+    - Taught by: saying `never-alive` (gate-claims). [conversations.gate-claims .lines[2].success[0]]
+
+RECORDS
+
+  Record `invitation` — The record `invitation`: whoever comes to hold it learns the fact `feast-tonight`.
+      [intel[0]]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.

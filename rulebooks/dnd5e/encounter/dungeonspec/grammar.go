@@ -586,6 +586,13 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 	seen := map[string]int{}
 	for i, o := range options {
 		p := fmt.Sprintf("%s.options[%d]", path, i)
+		// A `use:` LEFT HERE was never expanded: a single-room site expands
+		// every one it can before this grammar runs ([resolveConversations]),
+		// so only a dialect that declares no conversations reaches this.
+		if o.useWritten {
+			g.fail(p+".use", "%s", errUseOutsideSite)
+			continue
+		}
 		switch prev, dup := seen[o.ID]; {
 		case o.ID == "":
 			g.fail(p+".id", "%s", errOptionNoID)

@@ -11,12 +11,14 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 type monsterHeldRaiseSuite struct {
@@ -120,6 +122,21 @@ func (s *monsterHeldRaiseSuite) TestSaveAndReloadKeepTheBaseAndTheRaise() {
 	s.Equal(22, s.m.GetMaxHitPoints(), "the raise is read again from the held condition")
 	s.Equal(22, s.m.HP())
 	s.Equal(20, s.m.ToData().MaxHitPoints)
+}
+
+// Catches a monster's Initiative that skips the rule, reads the wrong ability,
+// or reads a stat block with no scores as Dexterity 0 (-5).
+func (s *monsterHeldRaiseSuite) TestInitiativeAddsDexterityByRule() {
+	quick, err := monster.Load(s.ctx, &monster.Data{ID: "wolf-1", Name: "Wolf", HitPoints: 11, MaxHitPoints: 11, ArmorClass: 13,
+		AbilityScores: shared.AbilityScores{abilities.DEX: 15, abilities.STR: 12}})
+	s.Require().NoError(err)
+	out, err := quick.Initiative()
+	s.Require().NoError(err)
+	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}}, out.Contributions)
+
+	blank, err := s.m.Initiative()
+	s.Require().NoError(err)
+	s.Empty(blank.Contributions, "the ogre fixture states no ability scores")
 }
 
 // Catches damage that reads the raised maximum as a floor or ceiling: damage

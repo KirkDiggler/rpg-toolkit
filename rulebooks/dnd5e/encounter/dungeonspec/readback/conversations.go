@@ -28,16 +28,14 @@ func (b *builder) lineSites() []lineSite {
 		if m == nil {
 			continue
 		}
-		base := "room.room.monsterBindings." + d.ID + ".options"
-		if len(b.spec.Room.Gameplay.MonsterBindings[d.ID].Options) == 0 {
-			fi, ok := b.factions[m.Faction]
-			if !ok {
-				continue
-			}
-			base = fmt.Sprintf("factions[%d].options", fi)
+		// EACH LINE AT ITS AUTHORED PATH (rpg-project#1025): the creature's
+		// own, its faction's, or the conversation's it uses.
+		sources := b.lineSourcesOf(d.ID)
+		if len(sources) != len(m.Options) {
+			continue
 		}
 		for i, o := range m.Options {
-			out = append(out, lineSite{member: d.ID, option: o, path: fmt.Sprintf("%s[%d]", base, i)})
+			out = append(out, lineSite{member: d.ID, option: o, path: sources[i].Path})
 		}
 	}
 	return out

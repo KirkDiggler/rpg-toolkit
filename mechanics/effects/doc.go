@@ -56,7 +56,9 @@
 // An Amount sets exactly one field: fixed, dice, by_class_level or
 // ability_modifier. The field's name is the AmountName that the vocabulary
 // must hold, and the field's value is that function's parameters. Rage uses
-// by_class_level. Evaluation returns an AmountResult: either a present scalar
+// by_class_level; an ability_modifier names its ability as
+// {"ability_modifier": {"ability": "dex"}}, a name only the rulebook reads.
+// Evaluation returns an AmountResult: either a present scalar
 // or unresolved dice, never an implicit roll. ScalarValue refuses a dice result;
 // a row with no answered amount uses nil rather than an invented zero.
 //
