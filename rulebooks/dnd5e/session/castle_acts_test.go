@@ -802,6 +802,7 @@ func Example_theGatehouseActs() {
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
@@ -840,6 +841,7 @@ func Example_theGatehouseActs() {
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells him again --
@@ -885,6 +887,7 @@ func Example_theGatehouseActs() {
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice falls back past the captain --
@@ -937,6 +940,7 @@ func Example_theTroupeActs() {
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice walks up to the captain --
@@ -965,6 +969,7 @@ func Example_theTroupeActs() {
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
@@ -1008,6 +1013,7 @@ func Example_theTroupeActs() {
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells the captain they are the troupe --
@@ -1050,6 +1056,7 @@ func Example_theTroupeActs() {
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice walks to the gate --
@@ -1093,6 +1100,7 @@ func Example_theTroupeActs() {
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
 	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
+	// time         table_answer prince answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer reserve-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        reserve-1 walks (-20,1) (-20,2) (-20,3) (-20,4) (-19,4) (-18,4)
 	// time         table_answer reserve-2 answers behavior/6:policy/time with "toward", rolled 1 of 50

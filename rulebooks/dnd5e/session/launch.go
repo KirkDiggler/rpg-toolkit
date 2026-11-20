@@ -150,6 +150,12 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
+	// EVERY STATUS A LINE CAN GIVE COMPILES (rpg-project#1024): the content
+	// check, asked before anything is written, so a status the rules refuse
+	// is a launch refused rather than a line that fails when it lands.
+	if err := refuseLaunchStatuses(in.Dungeon); err != nil {
+		return nil, fmt.Errorf("launch: %w", err)
+	}
 	world, site, err := launchWorld(in.Dungeon, in.DungeonKey, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)

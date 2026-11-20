@@ -516,7 +516,7 @@ func (m *Manager) landResumedSocial(
 			ErrInvalidSession, story.Target, story.Prop, story.Verb, story.Option)
 	}
 
-	if _, err := m.landSpoken(ctx, scope.enc, &speakLanding{
+	if _, err := m.landSpoken(ctx, scope, &speakLanding{
 		Actor:    encounter.MemberID(audience),
 		Target:   encounter.MemberID(story.Target),
 		Prop:     encounter.PropID(story.Prop),

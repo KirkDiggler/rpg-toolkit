@@ -5,12 +5,14 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -124,9 +126,41 @@ func (c *freeRoamCastle) walkedTo(t *testing.T, cell spatial.Position) bool {
 	}
 
 	// THE FRESH LOOK, cell by cell: the run as it stood before the walk,
-	// with alice stood on each cell in turn and loaded afresh, asked with
-	// SeesWithin. Whenever the answer changes, a sighting is owed.
-	lookFrom := func(at spatial.Position) bool {
+	// with alice stood on each cell in turn, asked with SeesWithin. Whenever
+	// the answer changes, a sighting is owed.
+	//
+	// ONE COPY, LOADED ONCE, ALICE SET DOWN ON EACH CELL. SeesWithin reads
+	// only the canvas (who stands where, walls, doors), each member's sight
+	// range and the sight areas — never what anybody remembers. Setting
+	// alice down (Relocate) moves her on the canvas; what else it could do
+	// (a post's hail, a formed fight) is checked, not assumed: after every
+	// move, every other member's cell, every door and every sight area must
+	// be as they were before the walk, or the look is refused as not fresh.
+	// So each answer is the one a fresh load with alice on that cell gives.
+	sess, err := copyOf(c.sessions.byID["sess"])
+	require.NoError(t, err)
+	world, err := copyOf(c.encounters.byID["sess"])
+	require.NoError(t, err)
+	sess.ID, sess.Encounter = "look", "look"
+	c.sessions.byID["look"], c.encounters.byID["look"] = sess, world
+	look, err := c.mgr.LoadWorldForTest(context.Background(), "look")
+	delete(c.sessions.byID, "look")
+	delete(c.encounters.byID, "look")
+	require.NoError(t, err)
+	sightInputs := func() string {
+		data := look.ToData()
+		var cells []string
+		for _, m := range data.Members {
+			if m.ID != "alice" {
+				cells = append(cells, fmt.Sprint(m.ID, *m.Cell))
+			}
+		}
+		raw, err := json.Marshal([]any{cells, data.Doors, data.SightAreas})
+		require.NoError(t, err)
+		return string(raw)
+	}
+	unmoved := sightInputs()
+	freshLoad := func(at spatial.Position) bool {
 		t.Helper()
 		sess, err := copyOf(c.sessions.byID["sess"])
 		require.NoError(t, err)
@@ -137,13 +171,29 @@ func (c *freeRoamCastle) walkedTo(t *testing.T, cell spatial.Position) bool {
 				world.Members[i].Cell = &encounter.PositionData{X: at.X, Y: at.Y}
 			}
 		}
-		sess.ID, sess.Encounter = "look", "look"
-		c.sessions.byID["look"], c.encounters.byID["look"] = sess, world
-		defer delete(c.sessions.byID, "look")
-		defer delete(c.encounters.byID, "look")
-		enc, err := c.mgr.LoadWorldForTest(context.Background(), "look")
+		sess.ID, sess.Encounter = "fresh", "fresh"
+		c.sessions.byID["fresh"], c.encounters.byID["fresh"] = sess, world
+		defer delete(c.sessions.byID, "fresh")
+		defer delete(c.encounters.byID, "fresh")
+		enc, err := c.mgr.LoadWorldForTest(context.Background(), "fresh")
 		require.NoError(t, err)
 		sees, known := enc.SeesWithin("alice", "gate-1", 1_000_000)
+		require.True(t, known)
+		return sees
+	}
+	lookFrom := func(at spatial.Position) bool {
+		t.Helper()
+		_, err := look.Relocate(&encounter.RelocateInput{
+			Moves: []encounter.Relocation{{Member: "alice", To: at}},
+			Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "looks", ID: "fresh"}, Words: "a fresh look"},
+		})
+		if err != nil {
+			// A cell the copy will not set her down on (a creature not yet
+			// arrived holds it): a fresh load with her there, as before.
+			return freshLoad(at)
+		}
+		require.Equal(t, unmoved, sightInputs(), "setting alice down on %v moved nothing else sight reads", at)
+		sees, known := look.SeesWithin("alice", "gate-1", 1_000_000)
 		require.True(t, known)
 		return sees
 	}
