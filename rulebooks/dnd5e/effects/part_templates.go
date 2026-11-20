@@ -20,7 +20,9 @@ import (
 type PartClass string
 
 const (
-	// PartClassBenefit describes a recipient contribution.
+	// PartClassBenefit describes a recipient contribution: what is in force on
+	// the recipient while the effect is held. It is not a judgement that the
+	// part is good for the holder; [KindCannot] takes something away.
 	PartClassBenefit PartClass = "benefit"
 	// PartClassMaintenance describes coordinator-owned upkeep or ending policy.
 	PartClassMaintenance PartClass = "maintenance"

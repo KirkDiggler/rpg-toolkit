@@ -71,6 +71,7 @@ var kindTable = map[generic.KindName]kindDefinition{
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
 	KindHitPointMaximum: hitPointMaximumBonus.definition(),
 	KindInitiativeBonus: initiativeBonus.definition(),
+	KindCannot:          cannotDefinition(),
 }
 
 func decodeParams[T any](raw jsontext.Value) (T, error) {

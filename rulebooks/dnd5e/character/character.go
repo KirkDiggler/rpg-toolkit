@@ -910,6 +910,16 @@ func (c *Character) Initiative() (*conditions.InitiativeOutput, error) {
 	return conditions.Initiative(&conditions.InitiativeInput{MemberID: c.id, Scores: c.abilityScores, Conditions: c.conditions})
 }
 
+// CannotMove says whether the character may not move by its own will, and
+// the names of the held effects that take moving away. Worked out from this
+// sheet's held conditions each time it is asked; nothing about it is in
+// ToData but the conditions themselves.
+//
+// Errors: whatever [conditions.CannotMove] refuses.
+func (c *Character) CannotMove() (*conditions.CannotMoveOutput, error) {
+	return conditions.CannotMove(&conditions.CannotMoveInput{Conditions: c.conditions})
+}
+
 // GetHitPoints returns the character's current hit points
 func (c *Character) GetHitPoints() int {
 	return c.hitPoints

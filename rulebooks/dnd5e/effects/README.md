@@ -73,6 +73,7 @@ also a standalone part:
 | `combat_activity` | No separate output | Yes | Holder attack/positive-applied-damage activity; independent first-end grace |
 | `end_on` | No separate output | Yes | Rest, combat-end, run-end, turn-start or dropped-to-zero beat, reason and terminal scope |
 | `until_empty` | No separate output | Yes | Actual last-member loss, not empty initial delivery |
+| `cannot` | Query-only | Yes | Takes away what the holder may do while held: a nonempty, known, unique `what` list (only `move` today); no amount, no guard |
 
 Attack advantage uses `on: attack` and an explicit `side: by_holder` or
 `side: against_holder`. Against-holder execution requires the local attachment's

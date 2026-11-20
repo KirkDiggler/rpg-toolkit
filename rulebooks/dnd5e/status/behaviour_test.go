@@ -172,6 +172,14 @@ func (s *statusSuite) TestEachWordDoesWhatItSaysAndNotItsNeighbours() {
 			s.Equal(20, w.sheets[0].GetMaxHitPoints(), "another member's maximum")
 			s.Zero(s.initiative(w, holder), "it is not initiative")
 		}},
+		// Catches cannot mapped to nothing, or read for the wrong member.
+		{"cannot move", `{"cannot":["move"]}`, func(w *world) {
+			s.Equal([]string{"Probe"}, s.cannotMove(w, 1).Sources, "the holder cannot move")
+			s.False(s.cannotMove(w, 0).CannotMove, "another member may move")
+			s.Zero(s.initiative(w, holder), "it is not initiative")
+			s.Require().NoError(beats["rest"](w.bus, holder))
+			s.False(s.cannotMove(w, 1).CannotMove, "ending it gives moving back")
+		}},
 		// Catches initiative mapped to the hit point maximum (or to the wrong member).
 		{"one more to initiative", `{"initiative":1}`, func(w *world) {
 			s.Equal(1, s.initiative(w, holder), "the holder's initiative")
@@ -222,6 +230,13 @@ func (s *statusSuite) initiative(w *world, who string) int {
 		}
 	}
 	return total
+}
+
+// cannotMove asks the sheet at index i whether it may move by its own will.
+func (s *statusSuite) cannotMove(w *world, i int) *conditions.CannotMoveOutput {
+	out, err := w.sheets[i].CannotMove()
+	s.Require().NoError(err)
+	return out
 }
 
 // THE KITCHEN EXAMPLE: both changes in force on the holder, and exactly one
