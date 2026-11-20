@@ -507,14 +507,7 @@ func featureID(f features.Feature) string {
 	return "<unknown>"
 }
 
-// conditionSourceMember returns a detached source identity for source-qualified
-// conditions. Unqualified conditions have no source. Hosts must apply their
-// observability policy before exposing member identities to players.
-// heldWholeApplications names the applications whose coordinator this sheet
-// holds without concentrating. A benefit of one of them on the same sheet is
-// the same status the coordinator's row already shows, so it gets no row of
-// its own. A benefit whose coordinator is on another sheet, or concentrates,
-// keeps its row.
+// heldWholeApplications names the applications whose non-concentrating coordinator this sheet holds.
 func heldWholeApplications(held []dnd5eEvents.ConditionBehavior) (map[string]bool, error) {
 	whole := map[string]bool{}
 	for _, cond := range held {
@@ -537,6 +530,9 @@ func heldWholeApplications(held []dnd5eEvents.ConditionBehavior) (map[string]boo
 	return whole, nil
 }
 
+// conditionSourceMember returns a detached source identity for source-qualified
+// conditions. Unqualified conditions have no source. Hosts must apply their
+// observability policy before exposing member identities to players.
 func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
 	// Linked addresses carry invocation/replacement identity, not provenance.
 	// Ask the linked metadata protocol for its immutable source instead. Other
