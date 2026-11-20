@@ -164,6 +164,15 @@ func (m *Monster) Initiative() (*conditions.InitiativeOutput, error) {
 	return conditions.Initiative(&conditions.InitiativeInput{MemberID: m.id, Scores: m.abilityScores, Conditions: m.conditions})
 }
 
+// CannotMove says whether the monster may not move by its own will, and the
+// names of the held effects that take moving away. Worked out from its held
+// conditions each time it is asked; nothing about it is stored.
+//
+// Errors: whatever [conditions.CannotMove] refuses.
+func (m *Monster) CannotMove() (*conditions.CannotMoveOutput, error) {
+	return conditions.CannotMove(&conditions.CannotMoveInput{Conditions: m.conditions})
+}
+
 // HP returns current hit points
 func (m *Monster) HP() int {
 	return m.hp

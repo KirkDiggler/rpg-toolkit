@@ -234,6 +234,16 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 		part["kind"] = "resistance"
 		part["params"] = map[string]any{"types": types}
 		whenWords = changeWhen[kind]
+	case wordCannot:
+		what, err := listOf(e, fields[kind], at)
+		if err != nil {
+			return err
+		}
+		if _, ok := fields[wordWhen]; ok {
+			return fmt.Errorf("%w: %s.%s: cannot takes no when; it is in force while held", ErrBadStatus, path, wordWhen)
+		}
+		part["kind"] = "cannot"
+		part["params"] = map[string]any{"what": what}
 	case wordDamage, wordMaxHP, wordInitiative:
 		n, err := number(e, fields[kind], at)
 		if err != nil {

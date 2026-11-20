@@ -114,6 +114,7 @@ const (
 	wordDamage     = "damage"
 	wordMaxHP      = "max_hit_points"
 	wordInitiative = "initiative"
+	wordCannot     = "cannot"
 
 	wordHeal = "heal"
 
@@ -165,6 +166,9 @@ var table = []entry{
 	{place: PlaceChange, word: wordDamage, shape: ShapeWholeNumber, label: "{value} to the damage the holder deals"},
 	{place: PlaceChange, word: wordMaxHP, shape: ShapePositiveWholeNumber, label: "raises the holder's hit point maximum by {value}"},
 	{place: PlaceChange, word: wordInitiative, shape: ShapePositiveWholeNumber, label: "adds {value} to the holder's initiative"},
+	{place: PlaceChange, word: wordCannot, shape: ShapeListOf, label: "the holder cannot {value}", values: []value{
+		{word: "move", label: "cannot move by its own will", to: "move"},
+	}},
 	{place: PlaceChange, word: wordWhen, shape: ShapeEntries, label: "narrows the change it sits beside"},
 
 	{place: PlaceWhen, word: wordAbility, shape: ShapeOneOf, label: "only when the ability is {value}", values: abilityValues()},
@@ -207,6 +211,7 @@ var changeWhen = map[string][]string{
 	wordDamage:     {wordAbility, wordAttack},
 	wordMaxHP:      nil,
 	wordInitiative: nil,
+	wordCannot:     nil,
 }
 
 // changeKind is the effect part kind each fixed-number change word maps to.
