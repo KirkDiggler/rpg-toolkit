@@ -1,0 +1,220 @@
+# THE CONVERSATION EDGES SITE (rpg-project#1025): the conversations site
+# with one conversation whose lines carry every consequence a line's row can
+# carry — a topic given to the one spoken to and heard by the other carriers,
+# a fact, a told record, an advance, a status, a relocate, an activity and a
+# loudness — and read a topic noted by the one spoken to. Three gate guards
+# carry it; sharedlines_edges_test.go writes it copied onto each and asserts
+# the shared read-back keeps every connection the copies state.
+version: 5
+key: conversation-edges-site
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+factions:
+  - id: watch
+dispositions:
+  - between:
+      - watch
+      - party
+    stance: neutral
+statuses:
+  welcomed:
+    name: Welcomed
+    changes:
+      - advantage: checks
+        when: { ability: charisma }
+    maintenance:
+      - ends_on: rest
+    again: ignored
+intel:
+  - id: invitation
+    reveals:
+      fact: feast-tonight
+conversations:
+  gate-lines:
+    lines:
+      - id: troupe
+        say: We are the troupe for tonight's feast.
+        loudness: whisper
+        check:
+          - ability: performance
+            dc: 13
+        requires:
+          - interaction:
+              id: front-gate
+              in: [fresh]
+          - not:
+              noted: turned-away
+        advance:
+          interaction: front-gate
+          success: admitted
+          failure: refused
+        success:
+          - say: Through to the hall, then.
+            give:
+              topic: admitted
+              to: spoken_to
+              about: party_in_sight
+              heard_by: carriers_who_witnessed
+        failure:
+          - say: Never seen you before.
+            loudness: shout
+            fact: troupe-refused
+            give:
+              topic: turned-away
+              to: spoken_to
+              about: speaker
+              heard_by: carriers_who_witnessed
+      - id: vouch
+        say: They are with us.
+        requires:
+          - interaction:
+              id: front-gate
+              in: [admitted]
+          - noted: admitted
+        success:
+          - say: Right you are.
+            activity: {ref: 'dnd5e:activities:thoughtful', cycles: 2}
+            give:
+              topic: admitted
+              to: spoken_to
+              about: speaker
+              heard_by: carriers_who_witnessed
+      - id: welcome
+        say: Is there a welcome for us?
+        requires:
+          - noted: admitted
+        success:
+          - say: Eat, then.
+            apply_status: welcomed
+          - say: Here is the invitation.
+            tells: invitation
+      - id: the-hall
+        say: Show us to the hall.
+        requires:
+          - noted: admitted
+        success:
+          - relocate:
+              to: region-hall
+              words: You are walked through to the hall.
+              rounds: 1
+room:
+  version: 3
+  id: room-1
+  name: Conversation Edges Site
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  scene:
+    version: 3
+    id: scene-1
+    name: Conversation Edges Site
+    items: []
+    groups: []
+    mapLabels: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Conversation Edges Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - r: -4
+            q: [[-6, 9]]
+          - r: -3
+            q: [[-6, 9]]
+          - r: -2
+            q: [[-7, 8]]
+          - r: -1
+            q: [[-7, 8]]
+          - r: 0
+            q: [[-8, 7]]
+          - r: 1
+            q: [[-8, 7]]
+          - r: 2
+            q: [[-9, 6]]
+          - r: 3
+            q: [[-9, 6]]
+          - r: 4
+            q: [[-10, 5]]
+          - r: 5
+            q: [[-10, 5]]
+          - r: 6
+            q: [[-11, 4]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: gate-1
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 1
+            r: 0
+          facing: s
+      - id: gate-2
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 3
+            r: 0
+          facing: s
+      - id: captain
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 5
+            r: 0
+          facing: s
+    partyStart:
+      q: 0
+      r: 6
+    monsterBindings:
+      gate-1:
+        faction: watch
+        options:
+          - use: gate-lines
+      gate-2:
+        faction: watch
+        options:
+          - use: gate-lines
+      captain:
+        faction: watch
+        options:
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              - say: Then welcome. Through to the hall.
+          - use: gate-lines
+interactions:
+  front-gate:
+    approach: { within: 2 }
+    recipe:
+      ref: site:interactions:front-gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: admitted, to: admitted, reason: let through }
+            - { on: guest-failed, to: refused, reason: the guest claim failed }
+            - { on: refused, to: refused, reason: turned away }
+        admitted: { terminal: true }
+        refused: { terminal: true }

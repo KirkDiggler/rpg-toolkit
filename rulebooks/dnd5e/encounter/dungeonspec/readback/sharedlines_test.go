@@ -79,9 +79,26 @@ func (s *SharedLinesSuite) TestTheConversationNamesItsCarriers() {
 		s.Contains(head.Connects, readback.Connection{Kind: "creature", ID: id, Role: "carries"})
 	}
 	s.Contains(head.Sentence, "It is carried by 3 carriers")
-	s.Contains(head.Sentence, "`troupe`, `come-quietly` and `never-alive`")
+	s.Contains(head.Sentence, "`troupe`, `come-quietly`, `never-alive` and `vouch`")
 	line := s.statement(readback.KindLine, "conversations.gate-claims.lines[0]")
 	s.Equal(readback.Subject{Kind: readback.ConnSharedLines, ID: "gate-claims"}, line.About)
+}
+
+// TestALineWrittenOnceGivesToEachCarrier: `vouch`, written once, is said to
+// any of the three gate guards, so each takes its give as the one spoken to
+// and is whose note its read asks of (rpg-toolkit#2485).
+func (s *SharedLinesSuite) TestALineWrittenOnceGivesToEachCarrier() {
+	give := s.statement(readback.KindLineGrant, "conversations.gate-claims.lines[3].success[0].give")
+	s.Contains(give.Connects, readback.Connection{Kind: readback.ConnWho, ID: "spoken_to", Role: "takes", Is: "judgement", At: "admitted"})
+	for _, id := range []string{"gate-1", "gate-2", "captain"} {
+		s.Contains(give.Connects, readback.Connection{Kind: "creature", ID: id, Role: readback.RoleMayNote, Is: "judgement", At: "admitted"})
+		s.Contains(give.Connects, readback.Connection{Kind: "creature", ID: id, Role: readback.RoleMayNote, Is: "heard", At: "admitted"})
+	}
+	s.Contains(give.Sentence, "each but the one the line was said to")
+	read := s.statement(readback.KindLineRequire, "conversations.gate-claims.lines[3].requires[1]")
+	for _, id := range []string{"gate-1", "gate-2", "captain"} {
+		s.Contains(read.Connects, readback.Connection{Kind: "creature", ID: id, Role: readback.RoleWhose, At: "admitted"})
+	}
 }
 
 // TestACarrierSaysWhichConversationItsLinesCameFrom: each carrier's use is

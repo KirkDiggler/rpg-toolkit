@@ -168,7 +168,7 @@
                 "kind": "creature",
                 "id": "gate-1"
               },
-              "sentence": "Guard (gate-1) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.",
+              "sentence": "Guard (gate-1) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly`, `never-alive` and `vouch`, each said once under the conversation.",
               "path": "room.room.monsterBindings.gate-1.options[0]",
               "connects": [
                 {
@@ -209,7 +209,7 @@
                 "kind": "creature",
                 "id": "gate-2"
               },
-              "sentence": "Guard (gate-2) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.",
+              "sentence": "Guard (gate-2) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly`, `never-alive` and `vouch`, each said once under the conversation.",
               "path": "room.room.monsterBindings.gate-2.options[0]",
               "connects": [
                 {
@@ -316,7 +316,7 @@
                 "kind": "creature",
                 "id": "captain"
               },
-              "sentence": "Guard (captain) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.",
+              "sentence": "Guard (captain) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly`, `never-alive` and `vouch`, each said once under the conversation.",
               "path": "room.room.monsterBindings.captain.options[1]",
               "connects": [
                 {
@@ -346,7 +346,7 @@
                 "kind": "shared-lines",
                 "id": "gate-claims"
               },
-              "sentence": "The conversation `gate-claims` is lines written once: `troupe`, `come-quietly` and `never-alive`. It is carried by 3 carriers, Guard (gate-1), Guard (gate-2) and Guard (captain); each offers these lines as if they were written on it, beside any lines of its own.",
+              "sentence": "The conversation `gate-claims` is lines written once: `troupe`, `come-quietly`, `never-alive` and `vouch`. It is carried by 3 carriers, Guard (gate-1), Guard (gate-2) and Guard (captain); each offers these lines as if they were written on it, beside any lines of its own.",
               "path": "conversations.gate-claims",
               "connects": [
                 {
@@ -559,6 +559,171 @@
                   "kind": "fact",
                   "id": "refused-arrest",
                   "role": "teaches"
+                }
+              ]
+            },
+            {
+              "kind": "line",
+              "about": {
+                "kind": "shared-lines",
+                "id": "gate-claims"
+              },
+              "sentence": "The speaker can say the line “They’re with us. The captain let us in.” (`vouch`) to the carrier. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "path": "conversations.gate-claims.lines[3]",
+              "connects": [
+                {
+                  "kind": "shared-lines",
+                  "id": "gate-claims",
+                  "role": "said-to"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "shared-lines",
+                "id": "gate-claims"
+              },
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while the conversation `front-gate` is in the state `admitted` (one state for the whole run, not per speaker).",
+              "path": "conversations.gate-claims.lines[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "conversation",
+                  "id": "front-gate",
+                  "role": "asks"
+                }
+              ]
+            },
+            {
+              "kind": "line.requires",
+              "about": {
+                "kind": "shared-lines",
+                "id": "gate-claims"
+              },
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while the carrier has noted `admitted` about the speaker.",
+              "path": "conversations.gate-claims.lines[3].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "whose",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "whose",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "admitted"
+                }
+              ]
+            },
+            {
+              "kind": "line.row",
+              "about": {
+                "kind": "shared-lines",
+                "id": "gate-claims"
+              },
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, the carrier answers “Right you are. Go on through, the lot of you.”, at `speak`: its words reach everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "path": "conversations.gate-claims.lines[3].success[0]"
+            },
+            {
+              "kind": "line.grant",
+              "about": {
+                "kind": "shared-lines",
+                "id": "gate-claims"
+              },
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, the carrier — the creature the line is said to — is given the topic `admitted`, and notes it about the speaker and each member of the speaker's party that the carrier sees at that moment (the carrier notes nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, notes `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach notes nothing, even if it saw the line said. When the one given it notes it about nobody, nobody else notes anything either.",
+              "path": "conversations.gate-claims.lines[3].success[0].give",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "who",
+                  "id": "party_in_sight",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "spoken_to",
+                  "role": "takes",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "carriers_who_witnessed",
+                  "role": "takes",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "option",
+                  "id": "vouch",
+                  "role": "on",
+                  "is": "said"
                 }
               ]
             }
@@ -887,6 +1052,22 @@
                 "kind": "conversation",
                 "id": "front-gate"
               },
+              "sentence": "The line `vouch` said to Guard (gate-1) is offered only while `front-gate` is in `admitted`.",
+              "path": "conversations.gate-claims.lines[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "carries"
+                }
+              ]
+            },
+            {
+              "kind": "conversation.asked",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
               "sentence": "The line `troupe` said to Guard (gate-2) is offered only while `front-gate` is in `fresh` or `warned-guest`.",
               "path": "conversations.gate-claims.lines[0].requires[1]",
               "connects": [
@@ -921,6 +1102,22 @@
               },
               "sentence": "The line `never-alive` said to Guard (gate-2) is offered only while `front-gate` is in `arrested`.",
               "path": "conversations.gate-claims.lines[2].requires[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "carries"
+                }
+              ]
+            },
+            {
+              "kind": "conversation.asked",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "The line `vouch` said to Guard (gate-2) is offered only while `front-gate` is in `admitted`.",
+              "path": "conversations.gate-claims.lines[3].requires[0]",
               "connects": [
                 {
                   "kind": "creature",
@@ -994,6 +1191,22 @@
               ]
             },
             {
+              "kind": "conversation.asked",
+              "about": {
+                "kind": "conversation",
+                "id": "front-gate"
+              },
+              "sentence": "The line `vouch` said to Guard (captain) is offered only while `front-gate` is in `admitted`.",
+              "path": "conversations.gate-claims.lines[3].requires[0]",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "carries"
+                }
+              ]
+            },
+            {
               "kind": "conversation.engine-rule",
               "about": {
                 "kind": "conversation",
@@ -1044,8 +1257,92 @@
                 "kind": "topic",
                 "id": "admitted"
               },
-              "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 1 place and asked for or woken on in 0 places.",
-              "path": "interactions.front-gate.outcomes.admitted[0].give"
+              "sentence": "The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 2 places and asked for or woken on in 1 place.",
+              "path": "conversations.gate-claims.lines[3].success[0].give"
+            },
+            {
+              "kind": "topic.grant",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "When the line “They’re with us. The captain let us in.” (`vouch`) is said, the carrier — the creature the line is said to — is given the topic `admitted`, and notes it about the speaker and each member of the speaker's party that the carrier sees at that moment (the carrier notes nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, notes `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach notes nothing, even if it saw the line said. When the one given it notes it about nobody, nobody else notes anything either.",
+              "path": "conversations.gate-claims.lines[3].success[0].give",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "grants"
+                },
+                {
+                  "kind": "who",
+                  "id": "party_in_sight",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "spoken_to",
+                  "role": "takes",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "who",
+                  "id": "carriers_who_witnessed",
+                  "role": "takes",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "may-note",
+                  "is": "judgement",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "may-note",
+                  "is": "heard",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "option",
+                  "id": "vouch",
+                  "role": "on",
+                  "is": "said"
+                }
+              ]
             },
             {
               "kind": "topic.grant",
@@ -1128,6 +1425,46 @@
                   "id": "front-gate",
                   "role": "enters",
                   "is": "admitted"
+                }
+              ]
+            },
+            {
+              "kind": "topic.ask",
+              "about": {
+                "kind": "topic",
+                "id": "admitted"
+              },
+              "sentence": "The line “They’re with us. The captain let us in.” (`vouch`) is offered to a speaker only while the carrier has noted `admitted` about the speaker.",
+              "path": "conversations.gate-claims.lines[3].requires[1]",
+              "connects": [
+                {
+                  "kind": "topic",
+                  "id": "admitted",
+                  "role": "asks"
+                },
+                {
+                  "kind": "who",
+                  "id": "the_speaker",
+                  "role": "about",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-1",
+                  "role": "whose",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "gate-2",
+                  "role": "whose",
+                  "at": "admitted"
+                },
+                {
+                  "kind": "creature",
+                  "id": "captain",
+                  "role": "whose",
+                  "at": "admitted"
                 }
               ]
             }

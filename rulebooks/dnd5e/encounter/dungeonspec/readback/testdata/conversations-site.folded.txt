@@ -29,18 +29,18 @@ CREATURES
 
   Guard (gate-1): a dnd5e:monsters:guard of `watch` at q 1, r 0 in Hall, facing s
       [room.room.monsterDeclarations[0]]
-    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
-        that conversation). [.options[0]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly`, `never-alive` and `vouch`
+        (said under that conversation). [.options[0]]
 
   Guard (gate-2): a dnd5e:monsters:guard of `watch` at q 3, r 0 in Hall, facing s
       [room.room.monsterDeclarations[1]]
-    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
-        that conversation). [.options[0]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly`, `never-alive` and `vouch`
+        (said under that conversation). [.options[0]]
 
   Guard (captain): a dnd5e:monsters:guard of `watch` at q 5, r 0 in Hall, facing s
       [room.room.monsterDeclarations[2]]
-    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly` and `never-alive` (said under
-        that conversation). [.options[1]]
+    - Carries the conversation `gate-claims`: its lines `troupe`, `come-quietly`, `never-alive` and `vouch`
+        (said under that conversation). [.options[1]]
     - At `speak`, the guard's words reach everyone in the guard's room (the wall partition the guard stands
         in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a
         closed door stops them), and whoever it is said to, wherever they stand. [said for every answer below
@@ -55,8 +55,8 @@ CREATURES
 
 CONVERSATIONS
 
-  The lines of `gate-claims` — Lines written once: `troupe`, `come-quietly` and `never-alive`. Carried by 3
-      carriers (Guard (gate-1), Guard (gate-2) and Guard (captain)). [conversations.gate-claims]
+  The lines of `gate-claims` — Lines written once: `troupe`, `come-quietly`, `never-alive` and `vouch`.
+      Carried by 3 carriers (Guard (gate-1), Guard (gate-2) and Guard (captain)). [conversations.gate-claims]
     - At `speak`, the carrier's words reach everyone in the carrier's room (the wall partition the carrier
         stands in), and anyone in the next room within 30 feet of the carrier by the way through an open
         doorway (a closed door stops them), and whoever it is said to, wherever they stand. [said for every
@@ -86,6 +86,15 @@ CONVERSATIONS
       - Offered while: `front-gate` is in `arrested`. [.requires[0]]
       - When said: the carrier answers “Then we do this the hard way. To arms!”, at `shout`; every member
           those words reach, seen or not, the carrier included, learns the fact `refused-arrest` [.success[0]]
+    - “They’re with us. The captain let us in.” (`vouch`), said to the carrier; plain: rolls nothing, cannot
+        be missed, free [conversations.gate-claims .lines[3]]
+      - Offered while: `front-gate` is in `admitted` and the carrier has noted `admitted` about the speaker.
+          [.requires[0], .requires[1]]
+      - When said: the carrier answers “Right you are. Go on through, the lot of you.”, at `speak`; the
+          carrier notes `admitted` about the speaker and every member of the speaker's party the carrier sees
+          then; so does each other carrier of `front-gate` the line's words reached and who is up, about the
+          same members, whether or not that carrier sees them (heard); if the carrier notes it about nobody,
+          nobody else notes anything [.success[0].give]
 
   Conversation `front-gate` — one state for the whole run, shared by every speaker; starts in `fresh`; recipe
       `site:interactions:front-gate`. Carried by Guard (gate-1), Guard (gate-2) and Guard (captain) (the
@@ -125,8 +134,9 @@ CONVERSATIONS
         carrier sees them (heard); if that creature notes it about nobody, nobody else notes anything.
         [.outcomes.admitted[0].give]
     - Lines offered only in a state of it: `troupe` (gate-1, gate-2, captain) in `fresh` or `warned-guest`;
-        `come-quietly` and `never-alive` (gate-1, gate-2, captain) in `arrested`; `guest` (captain) in `fresh`
-        or `warned-troupe`. [at each line's requires, above]
+        `come-quietly` and `never-alive` (gate-1, gate-2, captain) in `arrested`; `vouch` (gate-1, gate-2,
+        captain) in `admitted`; `guest` (captain) in `fresh` or `warned-troupe`. [at each line's requires,
+        above]
     - Engine rule, not authored: while a checked line that reads or steps `front-gate` waits on its speaker's
         decision about a held benefit, every line that reads or steps `front-gate` is pending for every
         speaker until that roll is settled or released. [(engine rule)]
@@ -139,9 +149,11 @@ CONVERSATIONS
 
 TOPICS
 
-  `admitted` — its meaning is not declared in the file. [interactions.front-gate .outcomes.admitted[0].give]
-    - Granted by: the conversation `front-gate` on entering `admitted`. [interactions.front-gate
+  `admitted` — its meaning is not declared in the file. [conversations.gate-claims .lines[3].success[0].give]
+    - Granted by: saying `vouch` (gate-claims); the conversation `front-gate` on entering `admitted`.
+        [conversations.gate-claims .lines[3].success[0].give; interactions.front-gate
         .outcomes.admitted[0].give]
+    - Asked by: `vouch` (gate-claims). [conversations.gate-claims .lines[3].requires[1]]
 
 FACTS
 

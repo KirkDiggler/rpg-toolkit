@@ -113,11 +113,11 @@ func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not 
 		case word.Word == "noted:" && isBoolTest(g.Fact.Op, val):
 			// WHOM IT ASKS ABOUT AND ITS POLARITY (rpg-project#1001): a note
 			// asked false, or under an odd number of nots, is negated.
-			say(noteAskEdges(id, "asks", not != !boolTestTrue(val), encounter.WhoTheOneNamed, "")...)
+			say(noteAskEdges(id, "asks", not != !boolTestTrue(val), encounter.WhoTheOneNamed)...)
 		case word.Word == "noted.anyone:" && isBoolTest(g.Fact.Op, val):
 			// `noted.anyone:<topic>` as authored, the engine's `topic:<id>`
 			// once compiled (rpg-project#1005).
-			say(noteAskEdges(id, "wakes-on", not != !boolTestTrue(val), encounter.WhoAnyone, "")...)
+			say(noteAskEdges(id, "wakes-on", not != !boolTestTrue(val), encounter.WhoAnyone)...)
 		default:
 			add(fill(cond("enemy").Long, "whose", whose(who), "name", quote(name), "op", opWords(g.Fact.Op), "value", val),
 				[]Connection{self})
