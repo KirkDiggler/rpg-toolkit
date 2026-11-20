@@ -54,7 +54,7 @@ var theCastleOnce struct {
 // castleSuites are the tests that read the shared castle.
 var castleSuites = []string{
 	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestEveryNoteGivenOrReadSaysWho", "TestTheCastleTracesAdmitted", "TestEveryCastleConditionIDResolves", "TestEveryDeedRowIsPinned", "TestEveryCastleStepsWhenRebuildsFromItsConnections", "TestFoldEachSuite", "TestJoinsCastleSuite",
-	"TestMachineCastleSuite", "TestThreadsSuite", "TestWaysCastleSuite",
+	"TestMachineCastleSuite", "TestThreadsSuite", "TestWaysCastleSuite", "TestAPassageThroughAConversationIsSaidAsItsCopy",
 }
 
 // TestMain builds the shared castle before any test runs, when the run's

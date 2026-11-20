@@ -933,10 +933,8 @@ func targetsOf(r machine.Recipe, beat machine.Beat) []string {
 // relocateWay is the line a passage is carried by: how the passage is
 // taken once its bars are lifted, not an alternative to lifting them.
 func (b *builder) relocateWay(join Statement, joinWords, kind, id string, ctx *wayCtx) Statement {
-	path := join.Path
-	i := strings.LastIndex(path, ".options[")
-	j := strings.IndexByte(path[i:], ']')
-	linePath := path[:i+j+1]
+	linePath := linePathOf(join.Path)
+	lineID := b.optionID(join.Path)
 	var opts []encounter.Option
 	short := "the creature spoken to"
 	switch kind {
@@ -960,11 +958,13 @@ func (b *builder) relocateWay(join Statement, joinWords, kind, id string, ctx *w
 	case "faction":
 		opts = b.factionLines(id)
 	}
-	var k int
-	_, _ = fmt.Sscanf(path[i+len(".options["):], "%d", &k)
+	// THE LINE BY ITS ID, which is unique on its carrier: a conversation's
+	// line sits at another index on each carrier (rpg-project#1025).
 	var o encounter.Option
-	if k < len(opts) {
-		o = opts[k]
+	for _, x := range opts {
+		if x.ID == lineID {
+			o = x
+		}
 	}
 	f := ctx.facets(linePath, short)
 	lead, tail := lineHow(o, f)

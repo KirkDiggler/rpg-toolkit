@@ -71,11 +71,14 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	if in.Spec == nil {
 		return Compiled{}, singleRoomCompileError("source", "single room spec is nil")
 	}
-	read, errs := validateSingleRoom(in.Spec)
+	// THE CALLER'S SPEC IS NOT REWRITTEN (rpg-project#1025): the
+	// conversations expand into a copy of the carriers' lists, which the
+	// compile below reads.
+	spec := withOwnLines(in.Spec)
+	read, errs := validateSingleRoom(spec)
 	if len(errs) > 0 {
 		return Compiled{}, &ValidationError{Errors: errs}
 	}
-	spec := in.Spec
 	// The cast this dialect placed, and what each declared side hands it.
 	cast := roomMembers(&spec.Room.Gameplay)
 	from := inheritedOrders(spec.Factions, spec.Tables)

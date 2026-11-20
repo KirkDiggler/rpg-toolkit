@@ -1,0 +1,202 @@
+# THE CONVERSATIONS SITE (rpg-project#1025): the hail site with three gate
+# speakers instead of one porter, and the castle gate's three claims written
+# once under `conversations:`. gate-1 and gate-2 say only the conversation;
+# the captain says it beside his own `guest`. Hand-written from the hail site;
+# the lines are the castle's (the-mad-king.yaml) as they stand.
+version: 5
+key: conversations-site
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+factions:
+  - id: watch
+dispositions:
+  - between:
+      - watch
+      - party
+    stance: neutral
+intel:
+  - id: invitation
+    reveals:
+      fact: feast-tonight
+conversations:
+  gate-claims:
+    lines:
+      - id: troupe
+        say: We’re the troupe for tonight’s feast.
+        check:
+          - ability: performance
+            dc: 13
+          - ability: deception
+            dc: 15
+        requires:
+          - fact: feast-tonight
+          - interaction:
+              id: front-gate
+              in: [fresh, warned-guest]
+        advance:
+          interaction: front-gate
+          success: admitted
+          failure: troupe-failed
+        success:
+          - say: Through to the hall, then. Don’t dawdle.
+        failure:
+          - say: Troupe? There’s no troupe on my list. What’s going on here?
+      - id: come-quietly
+        say: We’ll come quietly.
+        requires:
+          - interaction:
+              id: front-gate
+              in: [arrested]
+        advance:
+          interaction: front-gate
+          success: came-quietly
+        success:
+          - say: Sensible. This way, and keep your hands where I can see them.
+      - id: never-alive
+        say: You will never take me alive.
+        requires:
+          - interaction:
+              id: front-gate
+              in: [arrested]
+        success:
+          - say: Then we do this the hard way. To arms!
+            loudness: shout
+            fact: refused-arrest
+room:
+  version: 3
+  id: room-1
+  name: Conversations Site
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  scene:
+    version: 3
+    id: scene-1
+    name: Conversations Site
+    items: []
+    groups: []
+    mapLabels: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Conversations Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - r: -4
+            q: [[-6, 9]]
+          - r: -3
+            q: [[-6, 9]]
+          - r: -2
+            q: [[-7, 8]]
+          - r: -1
+            q: [[-7, 8]]
+          - r: 0
+            q: [[-8, 7]]
+          - r: 1
+            q: [[-8, 7]]
+          - r: 2
+            q: [[-9, 6]]
+          - r: 3
+            q: [[-9, 6]]
+          - r: 4
+            q: [[-10, 5]]
+          - r: 5
+            q: [[-10, 5]]
+          - r: 6
+            q: [[-11, 4]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: gate-1
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 1
+            r: 0
+          facing: s
+      - id: gate-2
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 3
+            r: 0
+          facing: s
+      - id: captain
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 5
+            r: 0
+          facing: s
+    partyStart:
+      q: 0
+      r: 6
+    monsterBindings:
+      gate-1:
+        faction: watch
+        options:
+          - use: gate-claims
+      gate-2:
+        faction: watch
+        options:
+          - use: gate-claims
+      captain:
+        faction: watch
+        options:
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              - say: Then welcome. Through to the hall.
+          - use: gate-claims
+interactions:
+  front-gate:
+    approach: { within: 2 }
+    outcomes:
+      admitted:
+        - give:
+            topic: admitted
+            to: spoken_to
+            about: party_in_sight
+            heard_by: carriers_who_witnessed
+    recipe:
+      ref: site:interactions:front-gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: guest-failed, to: warned-guest, reason: the guest claim failed }
+            - { on: troupe-failed, to: warned-troupe, reason: the troupe claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-guest:
+          transitions:
+            - { on: troupe-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-troupe:
+          transitions:
+            - { on: guest-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        admitted: { terminal: true }
+        arrested:
+          transitions:
+            - { on: came-quietly, to: admitted, reason: the arrested went quietly }

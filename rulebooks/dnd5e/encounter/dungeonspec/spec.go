@@ -1213,6 +1213,45 @@ type OptionSpec struct {
 	// Failure is the rows answered when the check was missed — the half that
 	// makes trying worse than not trying. Optional, with Success's rules.
 	Failure []AnswerSpec `yaml:"failure,omitempty" json:"failure,omitempty"`
+
+	// Use names a root conversation whose lines this entry stands for, in
+	// order, at this place in the list (rpg-project#1025): `- use: gate`.
+	// An entry that uses a conversation writes NOTHING ELSE; the lines are
+	// the conversation's. Expanded at load ([resolveConversations]); only a
+	// single-room site declares conversations.
+	Use string `yaml:"use,omitempty" json:"use,omitempty"`
+
+	// useWritten is whether `use` was written at all (an empty one is
+	// refused, not read as absent), and beside the other keys written with
+	// it, in the order written, for the refusal of an entry that uses a
+	// conversation and says something of its own.
+	useWritten bool
+	beside     []string
+}
+
+// ConversationSpec is one root `conversations:` entry (rpg-project#1025,
+// R20): the lines it offers, written once and applied wherever a carrier's
+// `options:` lists `- use: <id>`.
+//
+//	conversations:
+//	  gate-claims:
+//	    lines:
+//	      - id: troupe
+//	        say: We're the troupe for tonight's feast.
+//	        check: [ … ]
+//	monsterBindings:
+//	  captain:
+//	    options:
+//	      - id: guest            # the captain's own line, beside the shared ones
+//	        say: …
+//	      - use: gate-claims
+//
+// A line here is exactly an [OptionSpec], every key and every row kind
+// included, and is judged once, at `conversations.<id>.lines[k]`.
+type ConversationSpec struct {
+	// Lines are the conversation's lines, in order. REQUIRED and never
+	// empty; no line here may itself `use:` a conversation.
+	Lines []OptionSpec `yaml:"lines" json:"lines"`
 }
 
 // RequiresSpec is an option's `requires` (rpg-project#922): one predicate
@@ -1258,7 +1297,7 @@ func (r *RequiresSpec) UnmarshalYAML(value *yaml.Node) error {
 // unknown-key refusal.
 var optionKeys = map[string]bool{
 	"id": true, "say": true, "do": true, "seen": true, "loudness": true, "check": true, "requires": true, "advance": true, "success": true,
-	"failure": true,
+	"failure": true, "use": true,
 }
 
 // UnmarshalYAML reads an advance, refusing an unknown key by name — it is
@@ -1458,11 +1497,18 @@ func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
 		return fmt.Errorf("line %d: an option is { id, say, check } plus what it requires and answers", value.Line)
 	}
 	checkWrittenNull := false
+	useWritten := false
+	var beside []string
 	for i := 0; i < len(value.Content); i += 2 {
 		key := value.Content[i].Value
 		if !optionKeys[key] {
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.OptionSpec",
 				value.Content[i].Line, key)
+		}
+		if key == "use" {
+			useWritten = true
+		} else {
+			beside = append(beside, key)
 		}
 		if key == "check" && i+1 < len(value.Content) && isNull(value.Content[i+1]) {
 			checkWrittenNull = true
@@ -1492,6 +1538,12 @@ func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	*o = OptionSpec(obj)
+	// AN ENTRY THAT USES A CONVERSATION (rpg-project#1025) remembers that it
+	// was written, so an empty name is refused rather than read as a line
+	// with no id, and what else it says, so that is refused by name.
+	if useWritten {
+		o.useWritten, o.beside = true, beside
+	}
 	// A `check` WRITTEN NULL IS NOT AN ABSENT ONE (rpg-project#785 R5), the
 	// dialect's null law ([isNull]): absence means "not supplied", null
 	// means "supplied nothing". Absent is a plain line, free and never
