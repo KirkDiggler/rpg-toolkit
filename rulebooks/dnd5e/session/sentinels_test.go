@@ -297,6 +297,7 @@ var sessionSentinels = map[string]error{
 	"ErrLevelNotOffered":      session.ErrLevelNotOffered,
 	"ErrBadLevelRequest":      session.ErrBadLevelRequest,
 	"ErrCannotAdvance":        session.ErrCannotAdvance,
+	"ErrSavedByOlderVersion":  session.ErrSavedByOlderVersion,
 }
 
 // TestExportedSentinelAllowListIsComplete makes sessionSentinels an actual
