@@ -13,8 +13,8 @@ import (
 // make every assertion about the bubble depend on a roll nobody is testing.
 type orderAsGiven struct{}
 
-func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 // rollsLowest is the reaction die these tests install when they do not care

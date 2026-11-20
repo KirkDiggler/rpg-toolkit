@@ -295,7 +295,7 @@ construction rather than guarded later:
 
 ```go
 type InitiativeRoller interface {  // what order a fight goes in
-    RollInitiative(members []MemberID) ([]MemberID, error)
+    RollInitiative(members []MemberID) ([]InitiativeRoll, error)
 }
 
 type Participation interface {     // who is down, and who counts as present

@@ -1109,7 +1109,7 @@ type monstersBeforePlayers struct {
 	kinds map[core.EntityID]encounter.MemberKind
 }
 
-func (r monstersBeforePlayers) RollInitiative(members []core.EntityID) ([]core.EntityID, error) {
+func (r monstersBeforePlayers) RollInitiative(members []core.EntityID) ([]encounter.InitiativeRoll, error) {
 	out := make([]core.EntityID, 0, len(members))
 	for _, id := range members {
 		if r.kinds[id] == encounter.KindMonster {
@@ -1121,7 +1121,7 @@ func (r monstersBeforePlayers) RollInitiative(members []core.EntityID) ([]core.E
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return encounter.PlacedInOrder(out), nil
 }
 
 // TestFightStartDrivesAnUnplayedMemberFirstInInitiative is rpg-toolkit#1162's

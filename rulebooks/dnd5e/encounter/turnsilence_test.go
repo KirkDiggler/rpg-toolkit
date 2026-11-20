@@ -336,7 +336,7 @@ func (m *reachLeavingMover) Move(_ context.Context, enc *encounter.Encounter, st
 // the order they were handed over.
 type goblinFirst struct{}
 
-func (goblinFirst) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+func (goblinFirst) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	ordered := []encounter.MemberID{goblin}
 	for _, m := range members {
 		if m != goblin {
@@ -344,7 +344,7 @@ func (goblinFirst) RollInitiative(members []encounter.MemberID) ([]encounter.Mem
 		}
 	}
 
-	return ordered, nil
+	return encounter.PlacedInOrder(ordered), nil
 }
 
 // TestAnOpportunityAttackMidWalkRepointsAttacker is run 21865f05's beats

@@ -73,6 +73,7 @@ type recordInitiative struct {
 type formed struct {
 	seq   uint64
 	order []encounter.MemberID
+	rolls []encounter.InitiativeRoll
 }
 
 func newRecordInitiative(t *testing.T, log []record.EntryData) *recordInitiative {
@@ -80,19 +81,20 @@ func newRecordInitiative(t *testing.T, log []record.EntryData) *recordInitiative
 	out := &recordInitiative{}
 	for _, e := range log {
 		var b struct {
-			Beat  string               `json:"beat"`
-			Order []encounter.MemberID `json:"order"`
+			Beat  string                     `json:"beat"`
+			Order []encounter.MemberID       `json:"order"`
+			Rolls []encounter.InitiativeRoll `json:"rolls"`
 		}
 		require.NoError(t, json.Unmarshal(e.Payload, &b), "beat seq %d", e.Seq)
 		if b.Beat == encounter.BeatFightStarted {
-			out.orders = append(out.orders, formed{e.Seq, b.Order})
+			out.orders = append(out.orders, formed{e.Seq, b.Order, b.Rolls})
 		}
 	}
 
 	return out
 }
 
-func (r *recordInitiative) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+func (r *recordInitiative) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.next >= len(r.orders) {
@@ -107,7 +109,22 @@ func (r *recordInitiative) RollInitiative(members []encounter.MemberID) ([]encou
 	}
 	r.next++
 
-	return slices.Clone(f.order), nil
+	// A member the record holds a roll for gets that roll back, so a replay
+	// writes the entry it read; everyone else is placed.
+	recorded := make(map[encounter.MemberID]encounter.InitiativeRoll, len(f.rolls))
+	for _, roll := range f.rolls {
+		recorded[roll.Member] = roll
+	}
+	out := make([]encounter.InitiativeRoll, 0, len(f.order))
+	for _, id := range f.order {
+		if roll, ok := recorded[id]; ok {
+			out = append(out, roll)
+			continue
+		}
+		out = append(out, encounter.InitiativeRoll{Member: id})
+	}
+
+	return out, nil
 }
 
 // recordStriker lands each driven swing as the record's next act-tagged
@@ -176,4 +193,40 @@ func (h host) remaining() (swings, fights, sneaks int) {
 	}
 
 	return swings, fights, sneaks
+}
+
+// TestRecordInitiativeReturnsRecordedRolls: a roll on the record's
+// bubble-formed entry comes back for its member, and a member without one is
+// placed, in the recorded order.
+func TestRecordInitiativeReturnsRecordedRolls(t *testing.T) {
+	modifier := 2
+	payload, err := json.Marshal(map[string]any{
+		"beat":  encounter.BeatFightStarted,
+		"order": []encounter.MemberID{"alice", "goblin"},
+		"rolls": []encounter.InitiativeRoll{{
+			Member: "alice", Roll: 14, Total: 16,
+			Calculation: &encounter.RollCalculation{
+				Components: []encounter.RollComponent{
+					{
+						Source: encounter.RollSource{Ref: "dnd5e:dice:d20", Name: "d20", SourceID: "alice"},
+						Dice:   &encounter.DiceTrace{Notation: "1d20", DieSize: 20, OriginalRolls: []int{14}, FinalRolls: []int{14}, Subtotal: 14},
+					},
+					{Source: encounter.RollSource{Ref: "dnd5e:modifiers:dex", Name: "Dexterity"}, Modifier: &modifier},
+				},
+				Total: 16,
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	init := newRecordInitiative(t, []record.EntryData{{Seq: 7, Payload: payload}})
+	got, err := init.RollInitiative([]encounter.MemberID{"goblin", "alice"})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, encounter.MemberID("alice"), got[0].Member)
+	require.NotNil(t, got[0].Calculation)
+	require.Equal(t, 14, got[0].Roll)
+	require.Equal(t, 16, got[0].Total)
+	require.Equal(t, encounter.MemberID("goblin"), got[1].Member)
+	require.Nil(t, got[1].Calculation)
 }

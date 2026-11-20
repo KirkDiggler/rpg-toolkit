@@ -24,9 +24,35 @@ import (
 // Errors abort whatever verb was running, atomically (R5): a fight that cannot
 // be ordered does not half-start.
 type InitiativeRoller interface {
-	// RollInitiative returns the given members in the order they act, first
-	// to act first. The result must contain exactly the members it was given.
-	RollInitiative(members []MemberID) ([]MemberID, error)
+	// RollInitiative answers one entry per member it was given, exactly those
+	// members, in the order they act, first to act first. An entry with a
+	// Calculation is recorded on the fight's record entry.
+	RollInitiative(members []MemberID) ([]InitiativeRoll, error)
+}
+
+// InitiativeRoll is one member's place in a fight's order, and the roll
+// that put it there.
+type InitiativeRoll struct {
+	// Member is who this is.
+	Member MemberID `json:"member"`
+	// Roll is the d20 face. Read only when Calculation is set.
+	Roll int `json:"roll"`
+	// Total is the roll with everything added. Read only when Calculation is set.
+	Total int `json:"total"`
+	// Calculation is the sourced arithmetic behind Total: the d20 pool
+	// first, then each thing added with its source. Nil means the member
+	// was PLACED in the order without a roll; nothing is recorded for it.
+	Calculation *RollCalculation `json:"calculation"`
+}
+
+// PlacedInOrder is the answer of a roller that orders without rolling:
+// one InitiativeRoll per member, in the order given, with no Calculation.
+func PlacedInOrder(members []MemberID) []InitiativeRoll {
+	placed := make([]InitiativeRoll, len(members))
+	for i, id := range members {
+		placed[i] = InitiativeRoll{Member: id}
+	}
+	return placed
 }
 
 // contactKind is what one opposed pair's awareness amounts to after a sight
@@ -621,13 +647,17 @@ func (e *Encounter) applyVerdict(
 		return nil, outputDeltas, nil
 	}
 
-	order, err := e.initiative.RollInitiative(append([]MemberID(nil), verdict.form...))
+	rolls, err := e.initiative.RollInitiative(append([]MemberID(nil), verdict.form...))
 	if err != nil {
 		return nil, nil, fmt.Errorf("trigger roll initiative: %w", err)
 	}
+	order := make([]MemberID, len(rolls))
+	for i, roll := range rolls {
+		order[i] = roll.Member
+	}
 
 	formed, err := e.formWithParticipation(
-		&FormInput{Order: order, Surprised: verdict.surprised}, participation,
+		&FormInput{Order: order, Surprised: verdict.surprised, Rolls: rolls}, participation,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("trigger form: %w", err)

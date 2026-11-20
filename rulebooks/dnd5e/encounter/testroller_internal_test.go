@@ -8,6 +8,6 @@ package encounter
 // The rulebook's real roller is the production consumer's business.
 type orderAsGiven struct{}
 
-func (orderAsGiven) RollInitiative(members []MemberID) ([]MemberID, error) {
-	return members, nil
+func (orderAsGiven) RollInitiative(members []MemberID) ([]InitiativeRoll, error) {
+	return PlacedInOrder(members), nil
 }

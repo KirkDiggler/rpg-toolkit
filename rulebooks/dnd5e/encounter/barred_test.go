@@ -616,7 +616,7 @@ func TestTheAnswerIsInTheBumpsAct(t *testing.T) {
 // guardFirst rolls the gate guard to the top of a fight's order.
 type guardFirst struct{}
 
-func (guardFirst) RollInitiative(members []MemberID) ([]MemberID, error) {
+func (guardFirst) RollInitiative(members []MemberID) ([]InitiativeRoll, error) {
 	out := []MemberID{}
 	for _, id := range members {
 		if id == postedGuard {
@@ -626,7 +626,7 @@ func (guardFirst) RollInitiative(members []MemberID) ([]MemberID, error) {
 		out = append(out, id)
 	}
 
-	return out, nil
+	return PlacedInOrder(out), nil
 }
 
 // TestAFightTurnAfterABumpMintsItsOwnAct: only a world-clock reaction

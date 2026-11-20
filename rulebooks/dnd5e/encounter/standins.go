@@ -89,7 +89,7 @@ func (zeroSight) Sight(members []MemberID) (map[MemberID]int, error) {
 // [RefusingCapabilities] for why it refuses rather than ordering.
 type refusingInitiative struct{}
 
-func (refusingInitiative) RollInitiative([]MemberID) ([]MemberID, error) {
+func (refusingInitiative) RollInitiative([]MemberID) ([]InitiativeRoll, error) {
 	return nil, fmt.Errorf("roll initiative: %w", ErrRefusingInitiative)
 }
 
