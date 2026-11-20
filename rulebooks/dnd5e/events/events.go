@@ -44,6 +44,12 @@ const (
 	// this arm a cast either left the field unset or borrowed
 	// [ConditionSourceFeature], and a cantrip is not a feature activation.
 	ConditionSourceSpell ConditionSource = "spell"
+	// ConditionSourceSite indicates a status the site's content gave: an
+	// author wrote it, and a line's answer or another authored consequence
+	// delivered it (well fed after helping the cook). A KIND, like the others:
+	// the content that wrote it is the condition's origin ref, and who gave it
+	// is the origin's entity.
+	ConditionSourceSite ConditionSource = "site"
 )
 
 // ConditionBehavior represents the behavior of an active condition.
@@ -419,8 +425,12 @@ type CheckBonusSource struct {
 // advantage/disadvantage/bonuses to be collected. Mirrors SavingThrowChainEvent.
 type AbilityCheckChainEvent struct {
 	CheckerID string       // ID of the entity making the check
-	Skill     skills.Skill // The skill being checked (Stealth, Perception, etc)
-	DC        int          // Difficulty class (or the value being beaten)
+	Skill     skills.Skill // The skill being checked (Stealth, Perception, etc); empty for a bare-ability check
+	// Ability is the ability the check is made with: the skill's ability for a
+	// skill check, and the named ability for a bare-ability check (a lock's
+	// Strength check, say). Empty only when neither was stated.
+	Ability abilities.Ability
+	DC      int // Difficulty class (or the value being beaten)
 
 	AdvantageSources    []CheckModifierSource // Sources granting advantage
 	DisadvantageSources []CheckModifierSource // Sources imposing disadvantage

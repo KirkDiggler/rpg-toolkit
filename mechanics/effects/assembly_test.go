@@ -32,7 +32,7 @@ func counterPart(key string, remaining int, scope effects.EndScope) effects.Part
 				Initial: "active", Bag: machine.Bag{"remaining": remaining},
 				States: map[string]machine.State{
 					"active": {Outputs: rageOutputs()[:1], Transitions: []machine.Transition{
-						{On: beatTurnEnd, About: selSubject, When: &machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: 1}}, To: "ended", Reason: "expired"},
+						{On: beatTurnEnd, About: selSubject, When: &machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: machine.IntScalar(1)}}, To: "ended", Reason: "expired"},
 						{On: beatTurnEnd, About: selSubject, Do: []machine.Act{{Add: &machine.AddAct{Key: "remaining", Delta: -1}}}},
 					}},
 					"ended": {Terminal: true},

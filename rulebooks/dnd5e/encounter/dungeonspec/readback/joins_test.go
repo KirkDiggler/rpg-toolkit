@@ -399,7 +399,8 @@ func (s *JoinsSiteSuite) TestJoins_StableIDs() {
 // TestJoins_Castle_IDsNameTheirRegions: every castle join's id is built from
 // the regions it connects and what carries it, and no two share one. The
 // list is the castle's map read by hand: the seven doors, the two open wings
-// of the courtyard, the grate's two ways and the arrest.
+// of the courtyard, the cell drain's way out, the grate's two ways and the
+// arrest.
 func (s *JoinsCastleSuite) TestJoins_Castle_IDsNameTheirRegions() {
 	var ids []string
 	for _, j := range joinsOf(s.rb) {
@@ -418,6 +419,7 @@ func (s *JoinsCastleSuite) TestJoins_Castle_IDsNameTheirRegions() {
 		"door:region-great-hall:region-throne-room:throne-wall-door",
 		"open:region-armoury:region-courtyard",
 		"open:region-barracks:region-courtyard",
+		"passage:region-cells:region-armoury:prop-cell-drain",
 		"passage:region-kitchen:region-chapel:prop-grate",
 		"passage:region-kitchen:region-cells:prop-grate",
 		"passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate",

@@ -51,7 +51,7 @@ type CompiledGuard struct {
 
 	read  func(any) (any, bool)
 	op    Op
-	value any
+	value Scalar
 
 	flag   string
 	bagKey string
@@ -138,23 +138,22 @@ func (g *CompiledGuard) answerRounds(bag Bag, ev any) Verdict {
 	if g.rounds.WentBackwards {
 		return verdictOf(round < anchor)
 	}
-	return compare(g.rounds.SinceAnchor.Op, round-anchor, g.rounds.SinceAnchor.N)
+	return compare(g.rounds.SinceAnchor.Op, round-anchor, IntScalar(g.rounds.SinceAnchor.N))
 }
 
 // compare applies op to a known value and the leaf's operand. Operands of
 // different types answer Depends.
-func compare(op Op, got, want any) Verdict {
+func compare(op Op, got any, want Scalar) Verdict {
 	switch op {
 	case OpEq:
-		gk, ok1 := kindOf(got)
-		wk, ok2 := kindOf(want)
-		if !ok1 || !ok2 || gk != wk {
+		g, ok := ScalarOf(got)
+		if !ok || want.IsZero() || g.Kind() != want.Kind() {
 			return Depends
 		}
-		return verdictOf(got == want)
+		return verdictOf(g == want)
 	case OpGte:
 		g, ok1 := got.(int)
-		w, ok2 := want.(int)
+		w, ok2 := want.Int()
 		if !ok1 || !ok2 {
 			return Depends
 		}
@@ -211,7 +210,7 @@ func (c *checker) guard(g *Guard, spec *BeatSpec, where string, on Beat) *Compil
 			c.failf("%s: class %q is not an int fact in the vocabulary", where, cl.Class)
 			return nil
 		}
-		return c.fact(FactName(cl.Class), cl.Op, cl.N, where, "class_level "+cl.Class)
+		return c.fact(FactName(cl.Class), cl.Op, IntScalar(cl.N), where, "class_level "+cl.Class)
 	}
 }
 
@@ -226,14 +225,14 @@ func (c *checker) node(kind nodeKind, kids []Guard, spec *BeatSpec, where string
 	return cg
 }
 
-func (c *checker) fact(name FactName, op Op, value any, where, reason string) *CompiledGuard {
+func (c *checker) fact(name FactName, op Op, value Scalar, where, reason string) *CompiledGuard {
 	fs, ok := c.v.Facts[name]
 	if !ok || fs.Read == nil {
 		c.failf("%s: fact %q is not in the vocabulary", where, name)
 		return nil
 	}
-	if got, valid := kindOf(value); !valid || got != fs.Kind {
-		c.failf("%s: fact %q wants a %s value, got %T", where, name, fs.Kind, value)
+	if value.Kind() != fs.Kind {
+		c.failf("%s: fact %q wants a %s value, got %s", where, name, fs.Kind, value.kindName())
 	}
 	c.op(where, op, fs.Kind)
 	return &CompiledGuard{kind: nodeFact, read: fs.Read, op: op, value: value, reason: reason}
@@ -247,8 +246,8 @@ func (c *checker) bagLeaf(leaf BagLeaf, where string) *CompiledGuard {
 		return nil
 	}
 	c.key(where, "bag key", leaf.Key, kind)
-	if got, ok := kindOf(leaf.Value); !ok || got != kind {
-		c.failf("%s: bag key %q wants a %s value, got %T", where, leaf.Key, kind, leaf.Value)
+	if leaf.Value.Kind() != kind {
+		c.failf("%s: bag key %q wants a %s value, got %s", where, leaf.Key, kind, leaf.Value.kindName())
 	}
 	c.op(where, leaf.Op, kind)
 	return &CompiledGuard{kind: nodeBag, bagKey: leaf.Key, op: leaf.Op, value: leaf.Value, reason: "bag " + leaf.Key}

@@ -12,7 +12,7 @@ import (
 
 // Clone returns detached authored output data: params, guard tree and amount
 // strategy. It does not validate meaning, evaluate a guard/amount or capture a
-// live bag. Guard literals are scalar values or JSON-shaped containers.
+// live bag. Guard literals are machine.Scalar values, copied by value.
 func (o Output) Clone() Output {
 	out := o
 	out.Params = slices.Clone(o.Params)
@@ -42,12 +42,10 @@ func cloneOutputGuard(in *machine.Guard) *machine.Guard {
 	out.Not = cloneOutputGuard(in.Not)
 	if in.Fact != nil {
 		v := *in.Fact
-		v.Value = cloneOutputLiteral(v.Value)
 		out.Fact = &v
 	}
 	if in.Bag != nil {
 		v := *in.Bag
-		v.Value = cloneOutputLiteral(v.Value)
 		out.Bag = &v
 	}
 	if in.Rounds != nil {
@@ -73,22 +71,4 @@ func cloneOutputGuards(in []machine.Guard) []machine.Guard {
 		out[i] = *cloneOutputGuard(&in[i])
 	}
 	return out
-}
-func cloneOutputLiteral(in any) any {
-	switch v := in.(type) {
-	case []any:
-		out := make([]any, len(v))
-		for i := range v {
-			out[i] = cloneOutputLiteral(v[i])
-		}
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for k, value := range v {
-			out[k] = cloneOutputLiteral(value)
-		}
-		return out
-	default:
-		return in
-	}
 }

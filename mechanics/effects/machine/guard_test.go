@@ -94,7 +94,7 @@ const (
 // leafFor returns a fact leaf over name and the frame value that makes it
 // answer v.
 func leafFor(name machine.FactName, v machine.Verdict) (machine.Guard, any, bool) {
-	g := machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: true}}
+	g := machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: machine.BoolScalar(true)}}
 	switch v {
 	case machine.Applies:
 		return g, true, true
@@ -213,19 +213,19 @@ func (s *guardOpsSuite) verdict(g machine.Guard, frame probeFrame) machine.Verdi
 }
 
 func (s *guardOpsSuite) TestEqOnIntAndString() {
-	lvl := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpEq, Value: 3}}
+	lvl := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpEq, Value: machine.IntScalar(3)}}
 	s.Equal(A, s.verdict(lvl, probeFrame{factLevel: 3}))
 	s.Equal(N, s.verdict(lvl, probeFrame{factLevel: 4}))
 	s.Equal(D, s.verdict(lvl, probeFrame{}))
 
-	str := machine.Guard{Fact: &machine.FactLeaf{Name: factAbil, Op: machine.OpEq, Value: abilityStr}}
+	str := machine.Guard{Fact: &machine.FactLeaf{Name: factAbil, Op: machine.OpEq, Value: machine.StringScalar(abilityStr)}}
 	s.Equal(A, s.verdict(str, probeFrame{factAbil: abilityStr}))
 	s.Equal(N, s.verdict(str, probeFrame{factAbil: "dex"}))
 	s.Equal(D, s.verdict(str, probeFrame{}))
 }
 
 func (s *guardOpsSuite) TestGteOnInt() {
-	g := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpGte, Value: 9}}
+	g := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpGte, Value: machine.IntScalar(9)}}
 	s.Equal(N, s.verdict(g, probeFrame{factLevel: 8}))
 	s.Equal(A, s.verdict(g, probeFrame{factLevel: 9}))
 	s.Equal(A, s.verdict(g, probeFrame{factLevel: 16}))
@@ -234,7 +234,7 @@ func (s *guardOpsSuite) TestGteOnInt() {
 // gte has no meaning on a string fact; the recipe is refused at load rather
 // than answering by lexical order.
 func (s *guardOpsSuite) TestGteOnStringIsRefused() {
-	g := machine.Guard{Fact: &machine.FactLeaf{Name: factAbil, Op: machine.OpGte, Value: abilityStr}}
+	g := machine.Guard{Fact: &machine.FactLeaf{Name: factAbil, Op: machine.OpGte, Value: machine.StringScalar(abilityStr)}}
 	_, err := s.p.CompileGuard(&g, "")
 	s.Require().ErrorIs(err, machine.ErrInvalidRecipe)
 	s.Contains(err.Error(), `op "gte" does not apply to a string fact`)
@@ -243,7 +243,7 @@ func (s *guardOpsSuite) TestGteOnStringIsRefused() {
 // A reader that reports known with the wrong Go type is the plug's bug; the
 // leaf answers Depends rather than guessing.
 func (s *guardOpsSuite) TestAKnownValueOfTheWrongTypeDepends() {
-	g := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpGte, Value: 1}}
+	g := machine.Guard{Fact: &machine.FactLeaf{Name: factLevel, Op: machine.OpGte, Value: machine.IntScalar(1)}}
 	s.Equal(D, s.verdict(g, probeFrame{factLevel: "high"}))
 }
 

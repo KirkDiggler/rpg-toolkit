@@ -21,9 +21,9 @@ func BenchmarkGuardAnswer(b *testing.B) {
 		b.Fatal(err)
 	}
 	g, err := p.CompileGuard(&machine.Guard{All: []machine.Guard{
-		{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: true}},
-		{Fact: &machine.FactLeaf{Name: factWeaponPool, Op: machine.OpEq, Value: true}},
-		{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: abilitySTR}},
+		{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: machine.BoolScalar(true)}},
+		{Fact: &machine.FactLeaf{Name: factWeaponPool, Op: machine.OpEq, Value: machine.BoolScalar(true)}},
+		{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: machine.StringScalar(abilitySTR)}},
 	}}, "")
 	if err != nil {
 		b.Fatal(err)

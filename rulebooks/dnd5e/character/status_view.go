@@ -242,9 +242,24 @@ func (c *Character) projectFeatures() ([]FeatureView, []resourceReport, error) {
 // projectConditions builds the sorted ConditionView slice from each active
 // condition's ref, looked up in the conditions registry. An unknown
 // ref fails the whole projection with no partial output.
+//
+// One application, one row: a sheet holding both the coordinator and a
+// benefit of the same application shows only the coordinator's row, unless the
+// coordinator concentrates — "Concentrating on X" and the benefit of X are two
+// different things to read. See [heldWholeApplications].
 func (c *Character) projectConditions() ([]ConditionView, error) {
+	whole, err := heldWholeApplications(c.conditions)
+	if err != nil {
+		return nil, err
+	}
 	views := make([]ConditionView, 0, len(c.conditions))
 	for _, cond := range c.conditions {
+		if linked, ok := cond.(*conditions.LinkedCondition); ok {
+			info := linked.LinkedApplicationInfo()
+			if info.Role != conditions.LinkedCoordinator && whole[info.ID] {
+				continue
+			}
+		}
 		ref := cond.Ref()
 		if ref == nil {
 			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition reported a nil ref")
@@ -490,6 +505,29 @@ func featureID(f features.Feature) string {
 		return ref.String()
 	}
 	return "<unknown>"
+}
+
+// heldWholeApplications names the applications whose non-concentrating coordinator this sheet holds.
+func heldWholeApplications(held []dnd5eEvents.ConditionBehavior) (map[string]bool, error) {
+	whole := map[string]bool{}
+	for _, cond := range held {
+		linked, ok := cond.(*conditions.LinkedCondition)
+		if !ok {
+			continue
+		}
+		info := linked.LinkedApplicationInfo()
+		if info.Role != conditions.LinkedCoordinator {
+			continue
+		}
+		maintenance, err := linked.MaintenanceInfo()
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "condition status maintenance")
+		}
+		if maintenance.Concentration == nil {
+			whole[info.ID] = true
+		}
+	}
+	return whole, nil
 }
 
 // conditionSourceMember returns a detached source identity for source-qualified

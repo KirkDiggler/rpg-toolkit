@@ -263,7 +263,7 @@ func (s *composeSuite) TestRefusals() {
 		})), nil, `flag "is_frenzied" is not declared in the bag`},
 		{"an output guard over an unknown fact", withOutput(output(effects.Output{
 			Kind:   kindAdvantage,
-			When:   &machine.Guard{Fact: &machine.FactLeaf{Name: "action.finesse", Op: machine.OpEq, Value: true}},
+			When:   &machine.Guard{Fact: &machine.FactLeaf{Name: "action.finesse", Op: machine.OpEq, Value: machine.BoolScalar(true)}},
 			Params: jsontext.Value(`{"on":"saving_throws"}`),
 		})), nil, `fact "action.finesse" is not in the vocabulary`},
 		{"params the kind refuses", withOutput(output(effects.Output{

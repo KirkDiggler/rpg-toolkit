@@ -26,7 +26,7 @@ func countdownRecipe() machine.Recipe {
 		Initial: "active", Bag: machine.Bag{"remaining": 2},
 		States: map[string]machine.State{
 			"active": {Transitions: []machine.Transition{
-				{On: beatTurnEnd, About: selSubject, When: &machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: 1}}, To: "ended", Reason: "expired"},
+				{On: beatTurnEnd, About: selSubject, When: &machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: machine.IntScalar(1)}}, To: "ended", Reason: "expired"},
 				{On: beatTurnEnd, About: selSubject, Do: []machine.Act{{Add: &machine.AddAct{Key: "remaining", Delta: -1}}}},
 			}},
 			"ended": {Terminal: true},
@@ -65,11 +65,13 @@ func (s *bagArithmeticSuite) TestRefusesUnknownWrongTypedAndMultipleActForms() {
 		change func(*machine.Recipe)
 	}{
 		{"unknown comparison", func(r *machine.Recipe) { r.States["active"].Transitions[0].When.Bag.Key = "missing" }},
-		{"wrong comparison operand", func(r *machine.Recipe) { r.States["active"].Transitions[0].When.Bag.Value = "one" }},
+		{"wrong comparison operand", func(r *machine.Recipe) {
+			r.States["active"].Transitions[0].When.Bag.Value = machine.StringScalar("one")
+		}},
 		{"unknown delta key", func(r *machine.Recipe) { r.States["active"].Transitions[1].Do[0].Add.Key = "missing" }},
 		{"wrong delta key type", func(r *machine.Recipe) { r.Bag["remaining"] = false }},
 		{"two act forms", func(r *machine.Recipe) {
-			r.States["active"].Transitions[1].Do[0].Set = &machine.SetAct{Key: "remaining", Value: 1}
+			r.States["active"].Transitions[1].Do[0].Set = &machine.SetAct{Key: "remaining", Value: machine.IntScalar(1)}
 		}},
 		{"two guard forms", func(r *machine.Recipe) { r.States["active"].Transitions[0].When.Flag = "remaining" }},
 	} {
@@ -97,7 +99,7 @@ func (s *bagArithmeticSuite) TestOverflowDoesNotPartiallyWriteOrNotify() {
 			recipe.Bag = machine.Bag{"remaining": tc.start, "marked": false}
 			state := recipe.States["active"]
 			state.Transitions = []machine.Transition{{On: beatTurnEnd, About: selSubject, To: "ended", Reason: "wrong", Do: []machine.Act{
-				{Set: &machine.SetAct{Key: "marked", Value: true}},
+				{Set: &machine.SetAct{Key: "marked", Value: machine.BoolScalar(true)}},
 				{Add: &machine.AddAct{Key: "remaining", Delta: tc.delta}},
 			}}}
 			recipe.States["active"] = state
@@ -124,7 +126,7 @@ func (s *bagArithmeticSuite) TestOverflowDoesNotPartiallyWriteOrNotify() {
 func (s *bagArithmeticSuite) TestBagUnknownIsNotFalse() {
 	program, err := countdownRecipe().Compile(rageVocabulary())
 	s.Require().NoError(err)
-	guard, err := program.CompileGuard(&machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpGte, Value: 1}}, "")
+	guard, err := program.CompileGuard(&machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpGte, Value: machine.IntScalar(1)}}, "")
 	s.Require().NoError(err)
 	for _, tc := range []struct {
 		bag  machine.Bag
@@ -138,5 +140,5 @@ func (s *bagArithmeticSuite) TestBagUnknownIsNotFalse() {
 		got, _ := guard.Answer(nil, tc.bag, nil)
 		s.Equal(tc.want, got)
 	}
-	s.Equal([]string{"remaining"}, machine.GuardKeys(&machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: 1}}))
+	s.Equal([]string{"remaining"}, machine.GuardKeys(&machine.Guard{Bag: &machine.BagLeaf{Key: "remaining", Op: machine.OpEq, Value: machine.IntScalar(1)}}))
 }

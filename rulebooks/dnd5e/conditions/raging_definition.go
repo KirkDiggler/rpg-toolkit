@@ -74,12 +74,12 @@ func bindRaging(raw json.RawMessage) (boundComposition, error) {
 }
 
 func ragingRecipe(amount generic.Amount) (machine.Recipe, error) {
-	fact := func(name machine.FactName, value any) machine.Guard {
+	fact := func(name machine.FactName, value machine.Scalar) machine.Guard {
 		return machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: value}}
 	}
-	strength := fact(ruleeffects.FactAbility, string(abilities.STR))
+	strength := fact(ruleeffects.FactAbility, machine.StringScalar(string(abilities.STR)))
 	outputs := []generic.Output{
-		{Kind: ruleeffects.KindDamageBonus, When: &machine.Guard{All: []machine.Guard{fact(ruleeffects.FactMelee, true), fact(ruleeffects.FactWeaponPool, true), strength}}, Amount: &amount},
+		{Kind: ruleeffects.KindDamageBonus, When: &machine.Guard{All: []machine.Guard{fact(ruleeffects.FactMelee, machine.BoolScalar(true)), fact(ruleeffects.FactWeaponPool, machine.BoolScalar(true)), strength}}, Amount: &amount},
 		{Kind: ruleeffects.KindResistance, Params: jsontext.Value(`{"types":["bludgeoning","piercing","slashing"]}`)},
 		{Kind: ruleeffects.KindAdvantage, When: &strength, Params: jsontext.Value(`{"on":"saving_throw"}`)},
 		{Kind: ruleeffects.KindAdvantage, When: &strength, Params: jsontext.Value(`{"on":"ability_check"}`)},

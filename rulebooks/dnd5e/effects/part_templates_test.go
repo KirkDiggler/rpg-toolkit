@@ -17,7 +17,8 @@ type partTemplateSuite struct{ suite.Suite }
 func TestPartTemplateSuite(t *testing.T) { suite.Run(t, new(partTemplateSuite)) }
 func fixedBonus(n int) *fx.Amount        { return &fx.Amount{Fixed: &n} }
 func abilityGuard(value any) *machine.Guard {
-	return &machine.Guard{Fact: &machine.FactLeaf{Name: dndfx.FactAbility, Op: machine.OpEq, Value: value}}
+	scalar, _ := machine.ScalarOf(value)
+	return &machine.Guard{Fact: &machine.FactLeaf{Name: dndfx.FactAbility, Op: machine.OpEq, Value: scalar}}
 }
 
 func (s *partTemplateSuite) TestClassifiesThroughKindEntry() {
@@ -50,15 +51,15 @@ func (s *partTemplateSuite) TestRejectsUnknownFieldsKindsFactsAndStateGuards() {
 	for _, template := range []dndfx.PartTemplate{
 		{Kind: "unknown"},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), Params: json.RawMessage(`{"stage":"final"}`)},
-		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Fact: &machine.FactLeaf{Name: "unknown", Op: machine.OpEq, Value: true}}},
+		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Fact: &machine.FactLeaf{Name: "unknown", Op: machine.OpEq, Value: machine.BoolScalar(true)}}},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: abilityGuard("STR")},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: abilityGuard(true)},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Flag: "hidden"}},
-		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Bag: &machine.BagLeaf{Key: "x", Op: machine.OpEq, Value: 1}}},
+		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Bag: &machine.BagLeaf{Key: "x", Op: machine.OpEq, Value: machine.IntScalar(1)}}},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{Rounds: &machine.RoundsLeaf{WentBackwards: true}}},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{ClassLevel: &machine.ClassLevelLeaf{Class: "barbarian", Op: machine.OpGte, N: 1}}},
 		{Kind: dndfx.KindDamageBonus, Amount: fixedBonus(2), When: &machine.Guard{}},
-		{Kind: dndfx.KindAdvantage, Params: json.RawMessage(`{"on":"saving_throw"}`), When: &machine.Guard{Fact: &machine.FactLeaf{Name: dndfx.FactMelee, Op: machine.OpEq, Value: true}}},
+		{Kind: dndfx.KindAdvantage, Params: json.RawMessage(`{"on":"saving_throw"}`), When: &machine.Guard{Fact: &machine.FactLeaf{Name: dndfx.FactMelee, Op: machine.OpEq, Value: machine.BoolScalar(true)}}},
 	} {
 		_, err = dndfx.ValidatePartTemplate(&dndfx.ValidatePartTemplateInput{Template: template})
 		s.Error(err, "%+v", template)
