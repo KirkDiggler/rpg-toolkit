@@ -191,3 +191,43 @@ func TestPlacedInOrder(t *testing.T) {
 		require.Nil(t, got[i].Calculation)
 	}
 }
+
+// rollsWithCalculations answers every member with a roll that carries its
+// calculation, so a fight formed on sight has something to record.
+type rollsWithCalculations struct{}
+
+func (rollsWithCalculations) RollInitiative(members []MemberID) ([]InitiativeRoll, error) {
+	out := make([]InitiativeRoll, len(members))
+	for i, m := range members {
+		out[i] = initiativeRoll(m, 15-i, map[string]int{"Dexterity": 1}, []string{"Dexterity"})
+	}
+
+	return out, nil
+}
+
+func TestAFightThatFormsOnSightRecordsItsRolls(t *testing.T) {
+	g := bumpGuard(t)
+	g.Behaviors.Instances[0].Instance.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
+	in := postedSetup(everyoneSeesTheWholeMap{}, g)
+	in.Initiative = rollsWithCalculations{}
+	in.Field.Factions = []FactionInput{{ID: postedGarrison, Mind: postedGuard}}
+	in.Field.Dispositions = []DispositionInput{{
+		Between: [2]FactionID{postedGarrison, FactionParty}, Stance: StanceNeutral,
+		Until: []UntilStep{{When: TriggerFact{Fact: bumpKnown}, Then: StanceHostile}},
+	}}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+
+	out := bumped(t, enc, postedPost, postedGuard)
+	require.NotNil(t, out.Formed, "the fight formed through trigger detection")
+
+	formed := beatsTagged(t, enc, BeatFightStarted)
+	require.Len(t, formed, 1)
+	rolls, ok := formed[0]["rolls"].([]any)
+	require.True(t, ok, "the fight-forming entry carries the rolls")
+	var members []string
+	for _, r := range rolls {
+		members = append(members, r.(map[string]any)["member"].(string))
+	}
+	require.ElementsMatch(t, []string{"alice", string(postedGuard)}, members)
+}

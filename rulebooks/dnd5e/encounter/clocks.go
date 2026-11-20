@@ -2999,8 +2999,10 @@ type FormOutput struct {
 // (overlapping bubbles merge via a Merge verb then, but they never form).
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoMember (an empty order names no
-// member), ErrInvalidData (a duplicated entry), ErrNotMember (the order names somebody not in this encounter),
-// ErrInBubble.
+// member), ErrInvalidData (a duplicated entry; two rolls for one member; a
+// roll whose Calculation disagrees with its Roll or Total), ErrNotMember (the
+// order names somebody not in this encounter, or a roll is for somebody not in
+// the order), ErrInBubble.
 func (e *Encounter) form(in *FormInput) (*FormOutput, error) {
 	return e.formWithParticipation(in, nil)
 }
