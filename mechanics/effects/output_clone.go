@@ -28,6 +28,10 @@ func (o Output) Clone() Output {
 			steps.Steps = maps.Clone(steps.Steps)
 			amount.ByClassLevel = &steps
 		}
+		if amount.AbilityModifier != nil {
+			ability := *amount.AbilityModifier
+			amount.AbilityModifier = &ability
+		}
 		out.Amount = &amount
 	}
 	return out

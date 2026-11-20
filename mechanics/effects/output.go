@@ -6,6 +6,7 @@ package effects
 import (
 	"encoding/json/jsontext"
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
@@ -46,7 +47,14 @@ type Amount struct {
 	Fixed           *int        `json:"fixed,omitzero"`
 	Dice            string      `json:"dice,omitzero"`
 	ByClassLevel    *ClassSteps `json:"by_class_level,omitzero"`
-	AbilityModifier bool        `json:"ability_modifier,omitzero"`
+	AbilityModifier *AbilityRef `json:"ability_modifier,omitzero"`
+}
+
+// AbilityRef names the ability whose modifier an amount is. The name is
+// opaque here: the rulebook's vocabulary says which abilities exist and what
+// one's modifier is, as it says which classes exist for [ClassSteps].
+type AbilityRef struct {
+	Ability string `json:"ability"`
 }
 
 // ClassSteps maps a class level to a value: the highest step at or below
@@ -57,7 +65,7 @@ type ClassSteps struct {
 }
 
 // Name returns the name of the one field a sets, or an error when it sets
-// none or more than one.
+// none or more than one, or names an ability modifier with no ability.
 func (a *Amount) Name() (AmountName, error) {
 	var names []AmountName
 	if a.Fixed != nil {
@@ -69,7 +77,10 @@ func (a *Amount) Name() (AmountName, error) {
 	if a.ByClassLevel != nil {
 		names = append(names, AmountByClassLevel)
 	}
-	if a.AbilityModifier {
+	if a.AbilityModifier != nil {
+		if strings.TrimSpace(a.AbilityModifier.Ability) == "" {
+			return "", fmt.Errorf("ability_modifier amount names no ability")
+		}
 		names = append(names, AmountAbilityModifier)
 	}
 	if len(names) != 1 {
