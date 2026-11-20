@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -193,3 +194,19 @@ func (r *Resident) OpenActForTest(verb string) error {
 	_, err := r.enc.OpenAct(&encounter.OpenActInput{Verb: verb})
 	return err
 }
+
+// monsterSheetLoads counts every monster the sheet seam loads, in every test
+// of the package; read by benchmarks through [MonsterSheetLoadsForTest].
+var monsterSheetLoads atomic.Int64
+
+func init() {
+	load := loadMonsterForSheet
+	loadMonsterForSheet = func(ctx context.Context, d *monster.Data) (*monster.Monster, error) {
+		monsterSheetLoads.Add(1)
+		return load(ctx, d)
+	}
+}
+
+// MonsterSheetLoadsForTest is how many monsters the sheet seam has loaded so
+// far, package-wide (rpg-toolkit#2493). A count, never a gate.
+func MonsterSheetLoadsForTest() int { return int(monsterSheetLoads.Load()) }

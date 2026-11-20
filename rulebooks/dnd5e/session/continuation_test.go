@@ -299,14 +299,14 @@ func (s *ContinuationSuite) TestAContinuedWalkDeliversWhatAWholeWalkDelivers() {
 	// world-clock step draws no reaction (reactions are a fight's), so the
 	// due cell's admission and announcement write nothing. The host can see
 	// it: the announcement reads the walker's sheet, and a split placed after
-	// it would read it once in the answer and again in the rest. The only
-	// other difference is the asks themselves: PaceDue reads the walker's
-	// sheet (the pace is the speed of the moment), once per answered step and
-	// once for the due one, and the rest asks again before each of its steps
-	// to find its pace boundaries (S13).
-	asks := len(answer.Steps) + 1 + len(report.Move.Steps)
-	s.Equal(len(whole.reads)+asks, len(continued.reads),
-		"the answer and the rest together did exactly the work a whole walk does, and asked")
+	// it would read it once in the answer and again in the rest. The asks
+	// themselves cost nothing more: PaceDue reads the walker's sheet facts
+	// (the pace is the speed of the moment) before each step to find the pace
+	// boundaries (S13), and the continuation carries the verb's scope — its
+	// sheet facts memo included (rpg-toolkit#2493) — so the walker's sheet,
+	// unwritten in between, is read once for the whole verb.
+	s.Equal(len(whole.reads), len(continued.reads),
+		"the answer and the rest together did exactly the work a whole walk does")
 
 	moves := s.alicesMoves(continued)
 	walked := moves[len(moves)-len(longWalk()):]

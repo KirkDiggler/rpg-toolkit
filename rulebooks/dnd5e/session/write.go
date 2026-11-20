@@ -1260,6 +1260,9 @@ func (s *writeScope) noteSheetTouched(id string) {
 		s.sheetsWritten = make(map[encounter.MemberID]bool)
 	}
 	s.sheetsWritten[encounter.MemberID(id)] = true
+	// The sheet changed: what the verb read of it is about a sheet that no
+	// longer exists (sheetFactsMemo).
+	s.standing.facts.forget(id)
 }
 
 // noteWritten records one aggregate this verb made durable before persist,
@@ -1295,6 +1298,7 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 		// The sheet changed: the verb's kept participation answer for it is
 		// about a sheet that no longer exists (participationMemo).
 		s.standing.memo.forget(dirty.ID)
+		s.standing.facts.forget(dirty.ID)
 		s.touched = true
 		return
 	}

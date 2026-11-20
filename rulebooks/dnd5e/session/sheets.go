@@ -133,8 +133,34 @@ func (s sheetSeam) Sheets(members []encounter.MemberID) (map[encounter.MemberID]
 	return out, nil
 }
 
-// factsOf reads one member's sheet facts.
+// factsOf reads one member's sheet facts: what the sheet says, read at most
+// once per verb ([sheetFactsMemo]), and then the one fact the session answers
+// from the encounter's own state, the sneaker's halved speed.
 func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) {
+	facts, err := s.facts.read(id, s.readFacts)
+	if err != nil {
+		return encounter.SheetFacts{}, err
+	}
+	// HALF SPEED WHILE SNEAKING (rpg-project#606, design R8): the cost is
+	// time, so the answer every pace and budget asks for is the session's,
+	// and the encounter never learns the rule. Integer feet, rounded down. A
+	// fight engaging the sneaker ends the mode before any turn budget asks
+	// (R7), so only free-roam pace sees the half. Asked of the live
+	// encounter at every read, never kept: sneaking is not on the sheet.
+	//
+	// ONLY THE SNEAKER'S OWN WALKING (lead ruling on rpg-toolkit#2079,
+	// operator may veto): a move imposed on the sneaker — a cast push that
+	// runs it at its speed, any MoveImposed — runs at full speed, the same
+	// own-steps line facing draws (R17). The push budget asks [sheetSpeeds],
+	// which reads this seam with the slot cleared ([sheetSeam.unhalved]).
+	if s.kinds[string(id)] == encounter.KindPlayer && s.live.sneaking(id) {
+		facts.SpeedFeet /= 2
+	}
+	return facts, nil
+}
+
+// readFacts reads one member's sheet facts from its stored sheet.
+func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error) {
 	held, err := s.sheetOf(id)
 	if err != nil {
 		return encounter.SheetFacts{}, err
@@ -150,24 +176,8 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if readErr != nil {
 			return encounter.SheetFacts{}, readErr
 		}
-		speed := projected.Sheet.SpeedFeet
-		// HALF SPEED WHILE SNEAKING (rpg-project#606, design R8): the cost
-		// is time, so the answer every pace and budget asks for is the
-		// session's, and the encounter never learns the rule. Integer feet,
-		// rounded down. A fight engaging the sneaker ends the mode before
-		// any turn budget asks (R7), so only free-roam pace sees the half.
-		//
-		// ONLY THE SNEAKER'S OWN WALKING (lead ruling on rpg-toolkit#2079,
-		// operator may veto): a move imposed on the sneaker — a cast push
-		// that runs it at its speed, any MoveImposed — runs at full speed,
-		// the same own-steps line facing draws (R17). The push budget asks
-		// [sheetSpeeds], which reads this seam with the slot cleared
-		// ([sheetSeam.unhalved]).
-		if s.live.sneaking(id) {
-			speed /= 2
-		}
 		return encounter.SheetFacts{
-			SpeedFeet:         speed,
+			SpeedFeet:         projected.Sheet.SpeedFeet,
 			Actions:           memberActionsOf(projected.Actions),
 			PassivePerception: passive,
 			// A character is never a watcher (design R9), so it re-arms
@@ -251,6 +261,11 @@ func characterSheetReads(ctx context.Context, id string, record *character.Data)
 	return sheet.PassivePerception(), held.Sources, nil
 }
 
+// loadMonsterForSheet is the monster load the sheet seam asks, held in a
+// variable so a test can count the loads a verb pays
+// (MonsterSheetLoadsForTest).
+var loadMonsterForSheet = monstertraits.LoadMonster
+
 // monsterCannotMove is what holds a monster so that it cannot move under its
 // own power (rpg-project#990, [monster.Monster.CannotMove]), asked of its
 // stored record.
@@ -266,7 +281,7 @@ func monsterCannotMove(ctx context.Context, id string, record *monster.Data) ([]
 	if len(record.Conditions) == 0 {
 		return nil, nil
 	}
-	sheet, err := monstertraits.LoadMonster(ctx, record)
+	sheet, err := loadMonsterForSheet(ctx, record)
 	if err != nil {
 		return nil, fmt.Errorf("monster %q: %w", id, err)
 	}

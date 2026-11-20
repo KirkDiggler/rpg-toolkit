@@ -17,8 +17,9 @@ import (
 // TestTheEquipmentSeamCarriesEveryStandingField guards equipmentBeside's
 // field-by-field copy. The two seams used to convert, which made the compiler
 // prove they carried the same fields; the standing seam now also carries the
-// live encounter slot, which only the sheet seam reads, and the verb's
-// participation memo, which only standing reads, so the proof is here:
+// live encounter slot, which only the sheet seam reads, the verb's
+// participation memo, which only standing reads, and the verb's sheet facts
+// memo, which only the sheet seam reads, so the proof is here:
 // every other standing field must exist on the equipment seam with the same
 // type, and equipmentBeside must copy it. A field added to both seams but not
 // to the copy fails the second half.
@@ -27,7 +28,11 @@ func TestTheEquipmentSeamCarriesEveryStandingField(t *testing.T) {
 	equipment := reflect.TypeOf(equipmentSeam{})
 	for i := 0; i < standing.NumField(); i++ {
 		f := standing.Field(i)
-		if f.Name == "live" || f.Name == "memo" {
+		// live: only the sheet seam reads it (a sneaker's halved speed).
+		// memo: only standing reads it (monster participation answers).
+		// facts: only the sheet seam reads it (a member's sheet facts, read
+		// once per verb, rpg-toolkit#2493); equipment asks no sheet facts.
+		if f.Name == "live" || f.Name == "memo" || f.Name == "facts" {
 			continue
 		}
 		got, ok := equipment.FieldByName(f.Name)
@@ -35,7 +40,7 @@ func TestTheEquipmentSeamCarriesEveryStandingField(t *testing.T) {
 			assert.Equal(t, f.Type, got.Type, "field %q", f.Name)
 		}
 	}
-	assert.Equal(t, standing.NumField()-2, equipment.NumField(),
+	assert.Equal(t, standing.NumField()-3, equipment.NumField(),
 		"equipmentSeam carries a field standingSeam does not")
 
 	// Every copied field is non-zero on the source, so a dropped one reads zero.
