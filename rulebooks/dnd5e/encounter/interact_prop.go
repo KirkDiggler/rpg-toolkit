@@ -151,9 +151,10 @@ func (e *Encounter) interactWithProp(ctx context.Context, in *InteractInput) (*I
 	}
 
 	var formed *FormedBubble
+	var statuses []GrantedStatus
 	if answered.pick != nil && len(option.Grants) > 0 {
 		iid, _ := optionInteraction(option)
-		if formed, err = e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
+		if formed, statuses, err = e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, witnesses: witnesses, at: at,
 			learners: answered.learners, reach: in.Range,
 			seen: admitted.seen, perceived: admitted.perceived, partyAt: admitted.partyAt,
@@ -182,7 +183,7 @@ func (e *Encounter) interactWithProp(ctx context.Context, in *InteractInput) (*I
 	}
 
 	return &InteractOutput{
-		Prop: in.Prop, Seq: seq, Beaten: beaten, Witnesses: witnesses, Answered: answered.pick, Formed: formed,
+		Prop: in.Prop, Seq: seq, Beaten: beaten, Witnesses: witnesses, Answered: answered.pick, Formed: formed, Statuses: statuses,
 	}, nil
 }
 

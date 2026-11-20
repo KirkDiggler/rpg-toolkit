@@ -21,6 +21,17 @@ dispositions:
       - watch
       - party
     stance: neutral
+# Hand edit (rpg-project#1024): a status the porter's welcome gives, so the
+# read-back's golden says a declared status and a row that gives one.
+statuses:
+  welcomed:
+    name: Welcomed
+    changes:
+      - advantage: checks
+        when: { ability: charisma }
+    maintenance:
+      - ends_on: rest
+    again: ignored
 room:
   version: 3
   id: room-1
@@ -99,6 +110,7 @@ room:
               success: admitted
             success:
               - say: In you go.
+                apply_status: welcomed
         behaviors:
           - id: policy
             use: porter-policy

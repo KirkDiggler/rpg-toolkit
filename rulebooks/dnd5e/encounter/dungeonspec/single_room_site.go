@@ -346,6 +346,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	concealments := singleRoomConcealmentValues(s, g, add)
 	declared := intelRecords(s.Intel, concealments, add)
 	g.intelIDs, g.regionIDs = declared, regionIDsOf(s)
+	g.statusIDs = statusesDeclared(s.Statuses, add)
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref

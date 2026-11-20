@@ -13,6 +13,8 @@ THE PLACE
         at room.room.partyStart
     - The party's sharing is not set, so it is shared view, the default.
         at (engine rule)
+    - The status `welcomed`, named “Welcomed”, is a status effect a line's row can give its speaker. What it changes and what ends it are written in its own words under `statuses.welcomed`, and the rules judge them when it is given.
+        at statuses.welcomed
 
   Where the places join
     - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another region.
@@ -43,6 +45,8 @@ CREATURES
         at room.room.monsterBindings.porter.options[0].advance
     - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and anyone in the next room within 30 feet of Guard (porter) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered and what Guard (porter) is seen doing, and, if they see the speaker, sees the line said without its words.
         at room.room.monsterBindings.porter.options[0].success[0]
+    - When the line “We're expected.” (`guest`) is said, the speaker is given the status “Welcomed” (`welcomed`). The rules apply it to them; a second giving does what the status's `again` says.
+        at room.room.monsterBindings.porter.options[0].success[0].apply_status
 
 CONVERSATIONS
 

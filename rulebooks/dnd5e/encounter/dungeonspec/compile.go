@@ -4,6 +4,7 @@
 package dungeonspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -805,7 +806,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			// first frame.
 			Arrives: predicateOf(p.Arrives),
 			// The lines a character can say to it (rpg-project#569).
-			Options: optionsOf(spec.Key, p.Options, orientations[spec.Orientation]),
+			Options: optionsOf(spec.Key, p.Options, orientations[spec.Orientation], nil),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -1197,7 +1198,7 @@ func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.An
 // NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
 // compiles exactly as it did before options existed and the committed
 // pictures omit the key.
-func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encounter.Option {
+func optionsOf(key string, specs []OptionSpec, o encounter.Orientation, statuses map[string]json.RawMessage) []encounter.Option {
 	if len(specs) == 0 {
 		return nil
 	}
@@ -1231,6 +1232,10 @@ func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encoun
 				case row.Relocate != nil:
 					c.Relocate = &encounter.RelocateGrant{
 						To: encounter.RegionID(row.Relocate.To), Words: row.Relocate.Words, Rounds: row.Relocate.Rounds,
+					}
+				case row.ApplyStatus != "":
+					if c.ApplyStatus = statusGrantOf(row.ApplyStatus, statuses); c.ApplyStatus == nil {
+						continue
 					}
 				default:
 					continue
@@ -1644,7 +1649,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Options = optionsOf(spec.Key, from.optionsFor(p.Options, p.Faction), o)
+		mp.Options = optionsOf(spec.Key, from.optionsFor(p.Options, p.Faction), o, nil)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

@@ -647,6 +647,12 @@ type SpeakOutput struct {
 	// and nil when the row relocated nobody or formed nothing. Reporting
 	// every fight a verb forms is rpg-toolkit#2428.
 	Formed *FormedBubble
+
+	// Statuses are the status effects this line's landed row gave its
+	// speaker (status_grant.go, rpg-project#1024), as authored: the encounter
+	// does not apply them; the caller hands each to the rules. Nil when the
+	// row gave none.
+	Statuses []GrantedStatus
 }
 
 // Speak reports a line said to a creature or a prop, lands the deed its skill
@@ -829,9 +835,10 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// failure row when it is missed — after the answer that says it, before
 	// the interaction moves, every time the row lands.
 	var formed *FormedBubble
+	var statuses []GrantedStatus
 	if answered.pick != nil && len(option.Grants) > 0 {
 		iid, _ := optionInteraction(option)
-		if formed, err = e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
+		if formed, statuses, err = e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
 			learners: answered.learners, reach: in.Range,
 			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, partyAt: admitted.partyAt, hearers: heardLine.catchers,
@@ -881,7 +888,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 
 	return &SpeakOutput{
 		Beaten: beaten, Witnesses: witnesses, Hearers: heardLine.catchers, Deed: landed, Seq: seq, Answered: answered.pick,
-		Formed: formed,
+		Formed: formed, Statuses: statuses,
 	}, nil
 }
 

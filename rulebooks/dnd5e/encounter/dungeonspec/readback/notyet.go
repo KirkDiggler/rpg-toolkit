@@ -24,7 +24,7 @@ import (
 // saidKeys is, for each kind of authored mapping, the keys the read-back
 // says or summarises. A key absent from its list is not yet said.
 var saidKeys = map[string][]string{
-	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments"},
+	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments", "statuses"},
 	"concealment":        {"checks", "cells", "props"},
 	"party":              {"sharing"},
 	"room":               {"version", "id", "name", "coordinateFrame", "scene", "room"},
@@ -46,7 +46,7 @@ var saidKeys = map[string][]string{
 	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
-	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "activity", "weight"},
+	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "apply_status", "activity", "weight"},
 	"relocate":           {"to", "words", "rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
