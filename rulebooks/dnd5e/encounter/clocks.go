@@ -1184,7 +1184,7 @@ func (e *Encounter) executeTurnIntent(
 		return false, nil, nil
 
 	case Move:
-		// A HELD MEMBER'S OWN WALK DOES NOT HAPPEN (rpg-project#990): before
+		// A HELD MEMBER'S WALK DOES NOT HAPPEN (rpg-project#990): before
 		// anything is charged, a run included, it stays where it is, the
 		// story says why, and its turn ends. The world round goes on.
 		if len(view.CannotMove) > 0 {
@@ -1341,10 +1341,10 @@ func (e *Encounter) executeTurnIntent(
 			return true, nil, nil
 		}
 
-		// The Move arm's hold (rpg-project#990), for an OWN walk only: a
-		// compelled one is somebody else's order, not this member's will,
-		// and walks as it always did.
-		if it.Kind.Own() && len(view.CannotMove) > 0 {
+		// The Move arm's hold (rpg-project#990), for ANY walk on this
+		// member's own legs: a compelled one is still the member moving under
+		// its own power, and a held creature ordered to flee does not walk.
+		if len(view.CannotMove) > 0 {
 			return e.stayHeld(activeID, it.Cause, view.CannotMove)
 		}
 

@@ -205,10 +205,10 @@ type MonsterView struct {
 	SpeedFeet int
 
 	// CannotMove is the sheet's [SheetFacts.CannotMove], asked when the view
-	// is built: the names of what holds this member so that it cannot move by
-	// its own will, empty when it may move. A driver may read it to choose
-	// something else; one that picks its own [Move] or own [Routed] walk
-	// anyway does not walk — the member stays where it is, a stayed beat says
+	// is built: the names of what holds this member so that it cannot move
+	// under its own power, empty when it may move. A driver may read it to
+	// choose something else; one that picks a [Move] or a [Routed] walk of
+	// any kind, own or compelled, anyway does not walk — the member stays where it is, a stayed beat says
 	// why, and its turn ends (rpg-project#990).
 	CannotMove []string
 

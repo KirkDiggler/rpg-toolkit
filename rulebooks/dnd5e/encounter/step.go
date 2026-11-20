@@ -127,7 +127,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	// HELD BY AN EFFECT (rpg-project#990): a member whose sheet says it
-	// cannot move by its own will does not step — a dash included. Asked
+	// cannot move under its own power does not step — a dash included. Asked
 	// AFTER custody, so a member both in custody and held always hears
 	// custody's sentence; nothing has been spent or moved yet.
 	if err := e.refuseCannotMove("step", in.Member); err != nil {

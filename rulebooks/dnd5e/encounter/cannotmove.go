@@ -11,16 +11,17 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// ErrCannotMove is returned when a member whose sheet says it cannot move by
-// its own will ([SheetFacts.CannotMove]) tries to: a player's
+// ErrCannotMove is returned when a member whose sheet says it cannot move
+// under its own power ([SheetFacts.CannotMove]) tries to: a player's
 // [Encounter.Step] (a dash included) or a cast whose landing moves its own
 // caster (rpg-project#990). It arrives as a [CannotMoveError], whose text is
 // the sentence the player is shown and whose HeldBy names what holds them.
 //
 // A move made ON the member — a push, a pull, [Encounter.Direct],
-// [Encounter.Relocate] — is never refused by it. Nor is a driven member's own
-// walk: that walk simply does not happen ([MonsterView.CannotMove]).
-var ErrCannotMove = errors.New("encounter: cannot move by its own will")
+// [Encounter.Relocate] — is never refused by it. A driven member's walk is
+// not refused with it either: that walk simply does not happen
+// ([MonsterView.CannotMove]).
+var ErrCannotMove = errors.New("encounter: cannot move under its own power")
 
 // CannotMoveError is the refusal of a held member's own move. It is
 // [ErrCannotMove] to errors.Is.
@@ -68,7 +69,7 @@ func (e *Encounter) refuseCannotMove(verb string, id MemberID) error {
 }
 
 // refuseHeldCaster refuses a cast whose landing would move its own caster
-// while the caster's sheet says it cannot move by its own will
+// while the caster's sheet says it cannot move under its own power
 // (rpg-project#990), before anything of the cast lands. A push on anybody
 // else — a held member included — is not the pushed member's own move and
 // is not refused. Asked after custody ([Encounter.holdTheHeldInPlace]). A nil
@@ -90,7 +91,7 @@ func (e *Encounter) refuseHeldCaster(in *RecordCastInput) error {
 // attack refusal's shape ([intentCauseAttack]).
 var intentCauseMove = core.Ref{Module: "encounter", Type: "intent", ID: "move"}
 
-// stayHeld is a driven member's own walk as a hold answers it
+// stayHeld is a driven member's walk, willing or compelled, as a hold answers it
 // (rpg-project#990): the walk the driver picked does not happen, nothing is
 // charged, a [BeatStayed] names the cause and "cannot move: <what holds it>",
 // and the member's turn (or its share of the world's round) ends. It is not

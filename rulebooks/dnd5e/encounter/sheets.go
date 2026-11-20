@@ -129,19 +129,20 @@ type SheetFacts struct {
 	// the red floor never shows less than what sees the sneaker (R22).
 	WatchArc int
 
-	// CannotMove names what holds this member so that it cannot move by its
-	// own will — the display names of the held effects that take moving
+	// CannotMove names what holds this member so that it cannot move under
+	// its own power — the display names of the held effects that take moving
 	// away, in the order the sheet holds them (rpg-project#990). EMPTY, the
 	// zero value, MEANS IT MAY MOVE, so a host that has never heard of a hold
 	// keeps every member walking.
 	//
-	// OWN WILL ONLY. A non-empty list refuses what the member chooses to do
-	// with its own legs: a player's [Encounter.Step] (a dash included), a cast
-	// whose landing moves its own caster, and a driven member's own [Move] or
-	// own [Routed] walk (that walk does not happen; the member stays, told by
-	// a stayed beat, and its turn ends). It refuses NOTHING done to the
-	// member: a push, a pull, a compelled flee, [Encounter.Direct],
-	// [Encounter.Relocate]. Attacking, being attacked, speaking, sneaking and
+	// UNDER ITS OWN POWER, willing or compelled. A non-empty list refuses
+	// every move the member makes on its own legs: a player's [Encounter.Step]
+	// (a dash included), a cast whose landing moves its own caster, and a
+	// driven member's [Move] or [Routed] walk of any kind — its own choice or
+	// a compulsion's order (that walk does not happen; the member stays, told
+	// by a stayed beat, and its turn ends). It refuses NOTHING done to the
+	// member: a push or a pull, [Encounter.Direct], [Encounter.Relocate],
+	// being set down somewhere. Attacking, being attacked, speaking, sneaking and
 	// a fight forming are untouched.
 	//
 	// The names are carried verbatim into the refusal's sentence

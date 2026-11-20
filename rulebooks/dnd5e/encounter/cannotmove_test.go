@@ -4,9 +4,9 @@
 package encounter_test
 
 // cannotmove_test.go is the Keep's hold in the composition (rpg-project#990):
-// a member whose sheet says it cannot move by its own will
+// a member whose sheet says it cannot move under its own power
 // ([encounter.SheetFacts.CannotMove]) does not step, does not carry itself off
-// with its own cast, and — driven — does not take its own walk; everything
+// with its own cast, and — driven — does not walk, willing or compelled; everything
 // done TO it still moves it, and attacking, being attacked, sneaking and a
 // fight forming are untouched. A fight starting is told for each member in it,
 // once, and for nobody outside it.
@@ -134,8 +134,9 @@ func (s *CannotMoveSuite) TestAHeldPlayerCannotStepOnTheirOwnTurn() {
 	s.Equal(cellAt(2, 2), whereIs(s.T(), enc, alice))
 }
 
-// Catches a hold copied onto the moves custody refuses: a shove, a compelled
-// flee and a relocation are not the held member's own, and move them.
+// Catches a hold copied onto the moves custody refuses: [encounter.Direct],
+// whatever kind its caller names, and a relocation are done TO the held
+// member, and move them.
 func (s *CannotMoveSuite) TestMovesMadeOnTheHeldStillMoveThem() {
 	enc := s.twoPlayers(true)
 	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
@@ -231,9 +232,10 @@ func (s *CannotMoveSuite) TestAHeldMonstersOwnWalkDoesNotHappenAndTheRoundGoesOn
 	}
 }
 
-// Catches a hold applied to a walk somebody else ordered: a compelled route
-// is not the member's own will, and walks.
-func (s *CannotMoveSuite) TestAHeldMonsterCompelledToWalkStillWalks() {
+// Catches a compelled walk let through a hold: ordered to flee, a held
+// creature still moves under its own power, so it stays, the story says why,
+// and the round goes on.
+func (s *CannotMoveSuite) TestAHeldMonsterCompelledToWalkStaysPut() {
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Routed{
 		Policy: encounter.MoveToward, AnchorAt: cmCell(cellAt(6, 2)), Cause: cmCause, Kind: encounter.MoveCompelled,
 	}}}
@@ -241,8 +243,12 @@ func (s *CannotMoveSuite) TestAHeldMonsterCompelledToWalkStillWalks() {
 		driver, &scriptedStriker{kind: encounter.OutcomeMissed}, quietAnnouncer{})
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
-	s.Require().NoError(err)
-	s.NotEqual(cellAt(3, 2), whereIs(s.T(), enc, goblin), "ordered to walk, it walks")
+	s.Require().NoError(err, "a held walk does not error the round")
+	s.Equal(cellAt(3, 2), whereIs(s.T(), enc, goblin), "ordered to walk, it still stays")
+	s.Equal(encounter.MemberID(alice), s.clockOf(enc, alice).Active, "the round goes on")
+	stayed := stayedBeats(goblinBeats(s.T(), enc))
+	s.Require().NotEmpty(stayed)
+	s.Equal("cannot move: Held", stayed[len(stayed)-1]["why"])
 }
 
 // combatStarts is the subjects of every combat-started boundary in j.
