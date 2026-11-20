@@ -393,6 +393,18 @@ var (
 	// guards is the one other way out.
 	ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
 
+	// ErrCannotMove is a member a held effect holds trying to move under
+	// their own power (rpg-project#990): a step or a dash, or a cast whose
+	// landing would carry the caster off. It arrives as a [CannotMoveError]
+	// naming what holds them, whose text is the sentence the player is shown:
+	// "You are Held; you cannot move." Nothing of the move happened.
+	//
+	// Speaking, sneaking and attacking stay open, and a fight the member is
+	// in starting ends a hold written to end then. Leaving the run is never
+	// refused. NOT custody: a member both in custody and held is refused with
+	// [ErrInCustody].
+	ErrCannotMove = errors.New("you cannot move")
+
 	// ErrNoRoom is a line said or a thing done refused whole because its
 	// verdict would set somebody down where there is no room for them now:
 	// a passage's far end full (rpg-project#958), or the cells a jail
@@ -1072,6 +1084,32 @@ func (e *CustodyMoveError) Sentence(viewer string) string {
 
 // Unwrap makes errors.Is(err, ErrInCustody) true for this detail type.
 func (e *CustodyMoveError) Unwrap() error { return ErrInCustody }
+
+// CannotMoveError is [ErrCannotMove]'s detail: who tried to move and what
+// holds them, by the names their sheet gives (rpg-project#990). It is
+// [ErrCannotMove] to errors.Is.
+type CannotMoveError struct {
+	// Member is who tried to move.
+	Member string
+	// HeldBy is what holds them, in the order their sheet holds it.
+	HeldBy []string
+}
+
+// Error is the sentence the held player is shown: "You are Held; you cannot
+// move.", naming every hold ("You are Held and Snared; ...").
+func (e *CannotMoveError) Error() string {
+	switch n := len(e.HeldBy); n {
+	case 0:
+		return "You cannot move."
+	case 1:
+		return "You are " + e.HeldBy[0] + "; you cannot move."
+	default:
+		return "You are " + strings.Join(e.HeldBy[:n-1], ", ") + " and " + e.HeldBy[n-1] + "; you cannot move."
+	}
+}
+
+// Unwrap makes errors.Is(err, ErrCannotMove) true for this detail type.
+func (e *CannotMoveError) Unwrap() error { return ErrCannotMove }
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
 // each of them is waiting on.

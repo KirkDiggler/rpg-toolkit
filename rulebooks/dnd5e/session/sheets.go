@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -145,9 +146,9 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if projectErr != nil {
 			return encounter.SheetFacts{}, projectErr
 		}
-		passive, passiveErr := characterPassivePerception(s.ctx, string(id), held.character)
-		if passiveErr != nil {
-			return encounter.SheetFacts{}, passiveErr
+		passive, cannotMove, readErr := characterSheetReads(s.ctx, string(id), held.character)
+		if readErr != nil {
+			return encounter.SheetFacts{}, readErr
 		}
 		speed := projected.Sheet.SpeedFeet
 		// HALF SPEED WHILE SNEAKING (rpg-project#606, design R8): the cost
@@ -172,6 +173,10 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 			// A character is never a watcher (design R9), so it re-arms
 			// nobody; zero is the encounter's no-hysteresis answer.
 			WatchResetCells: 0,
+			// What holds it so that it cannot move under its own power
+			// (rpg-project#990), asked of the sheet with its held effects
+			// loaded; empty when nothing does.
+			CannotMove: cannotMove,
 			// Nobody's zone is a character's (design R9, R14), so it states
 			// no arc; zero is the encounter's no-arc, all-round answer.
 			WatchArc: 0,
@@ -181,7 +186,12 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 		if err != nil {
 			return encounter.SheetFacts{}, err
 		}
+		cannotMove, err := monsterCannotMove(s.ctx, string(id), held.monster)
+		if err != nil {
+			return encounter.SheetFacts{}, err
+		}
 		return encounter.SheetFacts{
+			CannotMove:     cannotMove,
 			SpeedFeet:      held.monster.Speed.Walk,
 			Actions:        memberActionsOf(held.monster.Actions),
 			Targeting:      held.monster.Targeting.String(),
@@ -210,8 +220,13 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 	}
 }
 
-// characterPassivePerception is how hard a player listens without trying —
-// the sheet's own answer ([character.Character.PassivePerception]: 10 plus
+// characterSheetReads is what the encounter is told from a player's loaded
+// sheet: how hard they listen without trying, and what holds them so that
+// they cannot move under their own power (rpg-project#990,
+// [character.Character.CannotMove]: the names of the held effects that take
+// moving away, empty when none does).
+//
+// The listening is the sheet's own answer ([character.Character.PassivePerception]: 10 plus
 // its Perception modifier, proficiency and expertise included), asked of the
 // stored record at this consult (rpg-project#569 R5).
 //
@@ -223,13 +238,43 @@ func (s sheetSeam) factsOf(id encounter.MemberID) (encounter.SheetFacts, error) 
 // A record that will not load is refused as [ErrBadCharacter], never
 // answered zero: zero is a real answer (deaf above DC 0), and a sheet that
 // cannot be read has given none.
-func characterPassivePerception(ctx context.Context, id string, record *character.Data) (int, error) {
+func characterSheetReads(ctx context.Context, id string, record *character.Data) (int, []string, error) {
 	sheet, err := character.Load(ctx, record)
 	if err != nil {
-		return 0, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+		return 0, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
+	}
+	held, err := sheet.CannotMove()
+	if err != nil {
+		return 0, nil, fmt.Errorf("character %q: %w: %v", id, ErrBadCharacter, err)
 	}
 
-	return sheet.PassivePerception(), nil
+	return sheet.PassivePerception(), held.Sources, nil
+}
+
+// monsterCannotMove is what holds a monster so that it cannot move under its
+// own power (rpg-project#990, [monster.Monster.CannotMove]), asked of its
+// stored record.
+//
+// LOADED WITH ITS CONDITIONS, NEVER BARE. monster.Load only carries a
+// record's condition blobs, unapplied, and a monster read that way holds
+// nothing — it would answer "may move" for a held one. So the record is
+// reconstituted by [monstertraits.LoadMonster], which prepares every carried
+// condition onto the sheet (bus-free; nothing is subscribed) before it is
+// asked: a monster saved and loaded while held answers held. A record that
+// carries no condition holds nothing, and is answered without a load.
+func monsterCannotMove(ctx context.Context, id string, record *monster.Data) ([]string, error) {
+	if len(record.Conditions) == 0 {
+		return nil, nil
+	}
+	sheet, err := monstertraits.LoadMonster(ctx, record)
+	if err != nil {
+		return nil, fmt.Errorf("monster %q: %w", id, err)
+	}
+	held, err := sheet.CannotMove()
+	if err != nil {
+		return nil, fmt.Errorf("monster %q: %w", id, err)
+	}
+	return held.Sources, nil
 }
 
 // bonusDisengageOf names the trait that lets a monster Disengage as a bonus
