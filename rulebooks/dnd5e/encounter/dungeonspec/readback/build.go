@@ -42,6 +42,15 @@ type builder struct {
 	bundleSaid map[string]string
 	routineNow string
 
+	// convCarriers is, by conversation, every carrier that uses it
+	// (rpg-project#1025); convLines and convLinePaths are its compiled lines
+	// and their authored paths, read off convFrom, the first carrier that
+	// compiled them.
+	convCarriers  map[string][]Connection
+	convLines     map[string][]encounter.Option
+	convLinePaths map[string][]string
+	convFrom      map[string]string
+
 	// doorHolders is, by door, every creature with a post on it, in the
 	// order the file places them.
 	doorHolders map[string][]string
@@ -53,6 +62,8 @@ func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw [
 		names: map[string]string{}, monsters: map[string]*dungeonspec.MonsterPlacement{},
 		declIndex: map[string]int{}, factions: map[string]int{}, carriers: map[string][]string{},
 		bundleSaid: map[string]string{}, doorHolders: map[string][]string{},
+		convCarriers: map[string][]Connection{}, convLines: map[string][]encounter.Option{},
+		convLinePaths: map[string][]string{}, convFrom: map[string]string{},
 	}
 	for i, f := range spec.Factions {
 		b.factions[f.ID] = i
@@ -93,6 +104,7 @@ func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw [
 			}
 		}
 	}
+	b.indexConversations()
 	return b
 }
 
@@ -217,7 +229,7 @@ func (b *builder) build() *ReadBack {
 		Section{Title: "The place", Groups: b.place()},
 		Section{Title: "Sides", Groups: b.sides()},
 		Section{Title: "Creatures", Groups: b.creatureGroups()},
-		Section{Title: "Conversations", Groups: b.conversations()},
+		Section{Title: "Conversations", Groups: append(b.sharedLineGroups(), b.conversations()...)},
 		Section{Title: "Routines", Groups: b.routines()},
 	)
 	// THE JOINS, under the place but said last of the sections above: a

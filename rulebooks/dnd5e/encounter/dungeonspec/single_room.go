@@ -204,7 +204,26 @@ type SingleRoomSpec struct {
 	// a name. See [BundleSpec].
 	Bundles map[string]BundleSpec `yaml:"bundles,omitempty" json:"bundles,omitempty"`
 
+	// Conversations are the lines this site writes once, keyed by id
+	// (rpg-project#1025, R20): a conversation's lines are applied to every
+	// creature, prop or faction whose `options:` lists `- use: <id>`.
+	// Optional; absent means none, and every document authored before this
+	// key existed decodes, compiles and marshals exactly as it did.
+	//
+	// EXPANDED AT LOAD ([resolveConversations]): each `use:` entry is
+	// replaced by the conversation's lines, in order, at that place, before
+	// the grammar or the compiler reads the list. The engine never holds a
+	// conversation's name; a carrier says the lines it would say had they
+	// been copied onto it. See [ConversationSpec].
+	Conversations map[string]ConversationSpec `yaml:"conversations,omitempty" json:"conversations,omitempty"`
+
 	Room RoomSource `yaml:"room" json:"room"`
+
+	// authoredLines is each carrier's `options:` as it was decoded, by the
+	// carrier's path, kept by the first [resolveConversations] so every later
+	// run expands the authored list and never an expanded one (validation
+	// and compile both run it).
+	authoredLines map[string][]OptionSpec
 }
 
 // TemplateSpec is one authored stat block at the root: a rulebook base plus

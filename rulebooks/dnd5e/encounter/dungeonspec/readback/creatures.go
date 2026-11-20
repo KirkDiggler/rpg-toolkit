@@ -106,7 +106,7 @@ func (b *builder) creatureGroups() []Group {
 		}
 		switch {
 		case len(bind.Options) > 0:
-			g.Statements = append(g.Statements, b.lineStatements(m.Options, bindPath+".options",
+			g.Statements = append(g.Statements, b.carrierLineStatements(m.Options, bindPath, bind.Options,
 				lineTarget{name: name, short: b.shortName(d.ID), about: about, id: d.ID})...)
 		case len(m.Options) > 0:
 			fi, ok := b.factions[m.Faction]

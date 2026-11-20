@@ -298,7 +298,7 @@ func (b *builder) propStatements(id string) []Statement {
 	}
 	out := []Statement{b.fstmt(KindProp, about, path, s+".", foldInfo{site: "the prop " + quote(id) + " arriving"}, conns...)}
 	if prop != nil && len(prop.Options) > 0 {
-		out = append(out, b.lineStatements(prop.Options, path+".options", lineTarget{name: "the prop " + name, short: "the prop", about: about, prop: true})...)
+		out = append(out, b.carrierLineStatements(prop.Options, path, bind.Options, lineTarget{name: "the prop " + name, short: "the prop", about: about, prop: true})...)
 	}
 	return out
 }
@@ -347,7 +347,7 @@ func (b *builder) sides() []Group {
 				b.unsaid = append(b.unsaid, Unsaid{Path: fmt.Sprintf("factions[%d].options", i), Kind: "faction lines",
 					Why: "no creature of the faction speaks them, so they are not in the compiled encounter to be said"})
 			}
-			g.Statements = append(g.Statements, b.lineStatements(opts, fmt.Sprintf("factions[%d].options", i),
+			g.Statements = append(g.Statements, b.carrierLineStatements(opts, fmt.Sprintf("factions[%d]", i), f.Options,
 				lineTarget{name: fmt.Sprintf("any creature of the faction %s that has no lines of its own", quote(f.ID)),
 					short: "the creature spoken to", about: about})...)
 		}

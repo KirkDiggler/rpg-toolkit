@@ -174,6 +174,10 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 		sortFieldErrors(errs)
 		return nil, &ValidationError{Errors: errs}
 	}
+	// THE LINES AS AUTHORED (rpg-project#1025): validation expanded every
+	// `use:` entry; the decoded spec hands back each list as written, and
+	// the compile expands it again.
+	restoreAuthoredLines(&spec)
 	return &SingleRoomDecodeResult{Spec: &spec}, nil
 }
 
@@ -747,6 +751,10 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	// THE BUNDLES BEFORE THE GRAMMAR (rpg-project#670): every `use:` row is
 	// resolved into its group's rows here, so the grammar below judges the
 	// rows a creature will roll, and the compile that follows reads them.
+	// THE CONVERSATIONS BEFORE THE BUNDLES (rpg-project#1025): every `use:`
+	// entry in an `options:` list is replaced by its conversation's lines,
+	// and every refusal after it is said at the line's own path, once.
+	add = saidOnceAt(add, resolveConversations(s, add))
 	resolveBundles(s, add)
 	siteGrammar(s, add)
 

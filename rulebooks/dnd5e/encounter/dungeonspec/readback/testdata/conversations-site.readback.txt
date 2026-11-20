@@ -1,0 +1,190 @@
+READ-BACK: Conversations Site (conversations-site)
+
+THE PLACE
+
+  Conversations Site (conversations-site)
+    - The site `conversations-site` is “Conversations Site”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered.
+        at key
+    - The floor is 1 region with cells: Hall (region-hall). Summarised: their cells, lighting and ground are not said one by one.
+        at room.room.regions
+    - Summarised: the coordinate frame, 0 wall lines with 0 doors in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one.
+        at room.room.walls
+    - The party starts at q 0, r 6, in Hall (region-hall).
+        at room.room.partyStart
+    - The party's sharing is not set, so it is shared view, the default.
+        at (engine rule)
+    - The record `invitation`: whoever comes to hold it learns the fact `feast-tonight`.
+        at intel[0]
+
+  Where the places join
+    - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another region.
+        at room.room.regions[1]
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (gate-1), Guard (gate-2) and Guard (captain).
+        at factions[0]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral.
+        at dispositions[0]
+
+CREATURES
+
+  Guard (gate-1)
+    - Guard (gate-1) is a dnd5e:monsters:guard of the faction `watch`, standing at q 1, r 0 in Hall (region-hall), facing s.
+        at room.room.monsterDeclarations[0]
+    - Guard (gate-1) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.
+        at room.room.monsterBindings.gate-1.options[0]
+
+  Guard (gate-2)
+    - Guard (gate-2) is a dnd5e:monsters:guard of the faction `watch`, standing at q 3, r 0 in Hall (region-hall), facing s.
+        at room.room.monsterDeclarations[1]
+    - Guard (gate-2) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.
+        at room.room.monsterBindings.gate-2.options[0]
+
+  Guard (captain)
+    - Guard (captain) is a dnd5e:monsters:guard of the faction `watch`, standing at q 5, r 0 in Hall (region-hall), facing s.
+        at room.room.monsterDeclarations[2]
+    - The speaker can say the line “We’re invited guests of His Majesty, here for the feast.” (`guest`) to Guard (captain). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.
+        at room.room.monsterBindings.captain.options[0]
+    - To win the line “We’re invited guests of His Majesty, here for the feast.” (`guest`), the speaker rolls Persuasion against DC 11; beating the DC wins the line and missing it misses.
+        at room.room.monsterBindings.captain.options[0].check
+    - The line “We’re invited guests of His Majesty, here for the feast.” (`guest`) is offered to a speaker only while the conversation `front-gate` is in one of the states `fresh` or `warned-troupe` (one state for the whole run, not per speaker).
+        at room.room.monsterBindings.captain.options[0].requires[0]
+    - Said to Guard (captain), the line “We’re invited guests of His Majesty, here for the feast.” (`guest`): winning it steps the conversation `front-gate` with the beat `admitted`, which moves it from `fresh` to `admitted` or from `warned-troupe` to `admitted`; missing it steps the conversation `front-gate` with the beat `guest-failed`, which moves it from `fresh` to `warned-guest` or from `warned-troupe` to `arrested` (the line is offered only in `fresh` or `warned-troupe`).
+        at room.room.monsterBindings.captain.options[0].advance
+    - On a win of the line “We’re invited guests of His Majesty, here for the feast.” (`guest`), Guard (captain) answers “Then welcome. Through to the hall.”, at `speak`: its words reach everyone in Guard (captain)'s room (the wall partition Guard (captain) stands in), and anyone in the next room within 30 feet of Guard (captain) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (captain) answer and caught none of the line is told only that Guard (captain) answered and what Guard (captain) is seen doing, and, if they see the speaker, sees the line said without its words.
+        at room.room.monsterBindings.captain.options[0].success[0]
+    - Guard (captain) carries the conversation `gate-claims`: it offers that conversation's lines `troupe`, `come-quietly` and `never-alive`, each said once under the conversation.
+        at room.room.monsterBindings.captain.options[1]
+
+CONVERSATIONS
+
+  The lines of `gate-claims`
+    - The conversation `gate-claims` is lines written once: `troupe`, `come-quietly` and `never-alive`. It is carried by 3 carriers, Guard (gate-1), Guard (gate-2) and Guard (captain); each offers these lines as if they were written on it, beside any lines of its own.
+        at conversations.gate-claims
+    - The speaker can say the line “We’re the troupe for tonight’s feast.” (`troupe`) to the carrier. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a checked line: it costs an action, one round of the world out of a fight.
+        at conversations.gate-claims.lines[0]
+    - To win the line “We’re the troupe for tonight’s feast.” (`troupe`), the speaker rolls Performance against DC 13, or Deception against DC 15; beating the DC wins the line and missing it misses.
+        at conversations.gate-claims.lines[0].check
+    - The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.
+        at conversations.gate-claims.lines[0].requires[0]
+    - The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the conversation `front-gate` is in one of the states `fresh` or `warned-guest` (one state for the whole run, not per speaker).
+        at conversations.gate-claims.lines[0].requires[1]
+    - Said to the carrier, the line “We’re the troupe for tonight’s feast.” (`troupe`): winning it steps the conversation `front-gate` with the beat `admitted`, which moves it from `fresh` to `admitted` or from `warned-guest` to `admitted`; missing it steps the conversation `front-gate` with the beat `troupe-failed`, which moves it from `fresh` to `warned-troupe` or from `warned-guest` to `arrested` (the line is offered only in `fresh` or `warned-guest`).
+        at conversations.gate-claims.lines[0].advance
+    - On a win of the line “We’re the troupe for tonight’s feast.” (`troupe`), the carrier answers “Through to the hall, then. Don’t dawdle.”, at `speak`: its words reach everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.
+        at conversations.gate-claims.lines[0].success[0]
+    - On a miss of the line “We’re the troupe for tonight’s feast.” (`troupe`), the carrier answers “Troupe? There’s no troupe on my list. What’s going on here?”, at `speak`: its words reach everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.
+        at conversations.gate-claims.lines[0].failure[0]
+    - The speaker can say the line “We’ll come quietly.” (`come-quietly`) to the carrier. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.
+        at conversations.gate-claims.lines[1]
+    - The line “We’ll come quietly.” (`come-quietly`) is offered to a speaker only while the conversation `front-gate` is in the state `arrested` (one state for the whole run, not per speaker).
+        at conversations.gate-claims.lines[1].requires[0]
+    - Said to the carrier, the line “We’ll come quietly.” (`come-quietly`): winning it steps the conversation `front-gate` with the beat `came-quietly`, which moves it from `arrested` to `admitted` (the line is offered only in `arrested`).
+        at conversations.gate-claims.lines[1].advance
+    - When the line “We’ll come quietly.” (`come-quietly`) is said, the carrier answers “Sensible. This way, and keep your hands where I can see them.”, at `speak`: its words reach everyone in the carrier's room (the wall partition the carrier stands in), and anyone in the next room within 30 feet of the carrier by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.
+        at conversations.gate-claims.lines[1].success[0]
+    - The speaker can say the line “You will never take me alive.” (`never-alive`) to the carrier. It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.
+        at conversations.gate-claims.lines[2]
+    - The line “You will never take me alive.” (`never-alive`) is offered to a speaker only while the conversation `front-gate` is in the state `arrested` (one state for the whole run, not per speaker).
+        at conversations.gate-claims.lines[2].requires[0]
+    - When the line “You will never take me alive.” (`never-alive`) is said, the carrier answers “Then we do this the hard way. To arms!”, at `shout`: its words reach everyone in the carrier's room and the next room over (a closed door on the way counts as a room), and whoever it is said to, wherever they stand, every member the carrier's words reach (everyone in the carrier's room and the next room over (a closed door on the way counts as a room), and whoever it is said to, wherever they stand), whether or not they see the carrier, the carrier included, learns the fact `refused-arrest` and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.
+        at conversations.gate-claims.lines[2].success[0]
+
+  Conversation `front-gate`
+    - The conversation `front-gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (gate-1), Guard (gate-2) and Guard (captain). Its recipe is `site:interactions:front-gate`.
+        at interactions.front-gate
+    - When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up and out of a fight, and that carrier offers them a line that steps `front-gate`, the nearest such carrier (then by id) hails them and hears the beat `approached`, unless `front-gate` is already addressing someone. A line that only reads `front-gate` does not hail. It is opened within 2 cells, and stands while the other conditions hold and the character is within Speak reach of that carrier (never less than 2 cells); it ends when any fails.
+        at interactions.front-gate.approach
+    - Who can hail for `front-gate`, by its state: in `fresh`, Guard (gate-1) and Guard (gate-2) (by `troupe`, if the speaker knows the fact `feast-tonight`), and Guard (captain) (by `guest`; by `troupe`, if the speaker knows the fact `feast-tonight`); in `arrested`, Guard (gate-1), Guard (gate-2) and Guard (captain) (by `come-quietly`); in `warned-guest`, Guard (gate-1), Guard (gate-2) and Guard (captain) (by `troupe`, if the speaker knows the fact `feast-tonight`); in `warned-troupe`, Guard (captain) (by `guest`); in `admitted`, nobody.
+        at interactions.front-gate.approach
+    - In the state `fresh`, the conversation `front-gate` listens for 3 beats.
+        at interactions.front-gate.recipe.states.fresh
+    - In the state `fresh`, the beat `guest-failed` moves the conversation to `warned-guest` (“the guest claim failed”). The beat is sent by missing `guest` said to Guard (captain).
+        at interactions.front-gate.recipe.states.fresh.transitions[0]
+    - In the state `fresh`, the beat `troupe-failed` moves the conversation to `warned-troupe` (“the troupe claim failed”). The beat is sent by missing `troupe` said to Guard (gate-1), missing `troupe` said to Guard (gate-2) or missing `troupe` said to Guard (captain).
+        at interactions.front-gate.recipe.states.fresh.transitions[1]
+    - In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `troupe` said to Guard (gate-1), winning `troupe` said to Guard (gate-2), winning `guest` said to Guard (captain) or winning `troupe` said to Guard (captain).
+        at interactions.front-gate.recipe.states.fresh.transitions[2]
+    - The state `admitted` of `front-gate` is final: once entered, nothing moves the conversation again.
+        at interactions.front-gate.recipe.states.admitted
+    - In the state `arrested`, the conversation `front-gate` listens for 1 beat.
+        at interactions.front-gate.recipe.states.arrested
+    - In the state `arrested`, the beat `came-quietly` moves the conversation to `admitted` (“the arrested went quietly”). The beat is sent by saying `come-quietly` to Guard (gate-1), saying `come-quietly` to Guard (gate-2) or saying `come-quietly` to Guard (captain).
+        at interactions.front-gate.recipe.states.arrested.transitions[0]
+    - In the state `warned-guest`, the conversation `front-gate` listens for 2 beats.
+        at interactions.front-gate.recipe.states.warned-guest
+    - In the state `warned-guest`, the beat `troupe-failed` moves the conversation to `arrested` (“the second claim failed”). The beat is sent by missing `troupe` said to Guard (gate-1), missing `troupe` said to Guard (gate-2) or missing `troupe` said to Guard (captain).
+        at interactions.front-gate.recipe.states.warned-guest.transitions[0]
+    - In the state `warned-guest`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `troupe` said to Guard (gate-1), winning `troupe` said to Guard (gate-2) or winning `troupe` said to Guard (captain).
+        at interactions.front-gate.recipe.states.warned-guest.transitions[1]
+    - In the state `warned-troupe`, the conversation `front-gate` listens for 2 beats.
+        at interactions.front-gate.recipe.states.warned-troupe
+    - In the state `warned-troupe`, the beat `guest-failed` moves the conversation to `arrested` (“the second claim failed”). The beat is sent by missing `guest` said to Guard (captain).
+        at interactions.front-gate.recipe.states.warned-troupe.transitions[0]
+    - In the state `warned-troupe`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `guest` said to Guard (captain).
+        at interactions.front-gate.recipe.states.warned-troupe.transitions[1]
+    - When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to (whichever of Guard (gate-1), Guard (gate-2) and Guard (captain) that was) is given the topic `admitted`, and notes it about the speaker and each member of the speaker's party that the creature sees at that moment (the creature notes nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, notes `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach notes nothing, even if it saw the line said. When the one given it notes it about nobody, nobody else notes anything either.
+        at interactions.front-gate.outcomes.admitted[0].give
+    - The line `troupe` said to Guard (gate-1) is offered only while `front-gate` is in `fresh` or `warned-guest`.
+        at conversations.gate-claims.lines[0].requires[1]
+    - The line `come-quietly` said to Guard (gate-1) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[1].requires[0]
+    - The line `never-alive` said to Guard (gate-1) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[2].requires[0]
+    - The line `troupe` said to Guard (gate-2) is offered only while `front-gate` is in `fresh` or `warned-guest`.
+        at conversations.gate-claims.lines[0].requires[1]
+    - The line `come-quietly` said to Guard (gate-2) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[1].requires[0]
+    - The line `never-alive` said to Guard (gate-2) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[2].requires[0]
+    - The line `guest` said to Guard (captain) is offered only while `front-gate` is in `fresh` or `warned-troupe`.
+        at room.room.monsterBindings.captain.options[0].requires[0]
+    - The line `troupe` said to Guard (captain) is offered only while `front-gate` is in `fresh` or `warned-guest`.
+        at conversations.gate-claims.lines[0].requires[1]
+    - The line `come-quietly` said to Guard (captain) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[1].requires[0]
+    - The line `never-alive` said to Guard (captain) is offered only while `front-gate` is in `arrested`.
+        at conversations.gate-claims.lines[2].requires[0]
+    - Engine rule, not authored: while a checked line that reads or steps `front-gate` waits on its speaker's decision about a held benefit, every line that reads or steps `front-gate` is pending for every speaker until that roll is settled or released.
+        at (engine rule)
+    - Engine rule, not authored: if the speaker and the creature spoken to lose reach or sight of each other while that roll waits, the speaker keeps the roll they made: it is settled as rolled, judged where the words were spoken.
+        at (engine rule)
+    - Engine rule, not authored: a reply sent from a menu offered before `front-gate` last changed (a state change, or a roll beginning or ending its wait on it) is refused with nothing spent; the speaker must be offered the menu again.
+        at (engine rule)
+
+TOPICS
+
+  Topic `admitted`
+    - The file does not say what the topic `admitted` means: topics carry no declared meaning yet. It is granted in 1 place and asked for or woken on in 0 places.
+        at interactions.front-gate.outcomes.admitted[0].give
+    - When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to (whichever of Guard (gate-1), Guard (gate-2) and Guard (captain) that was) is given the topic `admitted`, and notes it about the speaker and each member of the speaker's party that the creature sees at that moment (the creature notes nothing about a member out of its sight). Every other creature that carries the conversation `front-gate` (of Guard (gate-1), Guard (gate-2) and Guard (captain), each but the one the line was said to), was among those the line's words reached when it was said, and is up, notes `admitted` about the same members too, having heard it, whether or not it sees them itself; one the words did not reach notes nothing, even if it saw the line said. When the one given it notes it about nobody, nobody else notes anything either.
+        at interactions.front-gate.outcomes.admitted[0].give
+
+FACTS
+
+  Fact `feast-tonight`
+    - The file does not say what the fact `feast-tonight` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 1 place.
+        at intel[0]
+    - The record `invitation`: whoever comes to hold it learns the fact `feast-tonight`.
+        at intel[0]
+    - The line “We’re the troupe for tonight’s feast.” (`troupe`) is offered to a speaker only while the speaker knows the fact `feast-tonight`.
+        at conversations.gate-claims.lines[0].requires[0]
+
+  Fact `refused-arrest`
+    - The file does not say what the fact `refused-arrest` means: facts carry no declared meaning yet. It is taught in 1 place and asked for or woken on in 0 places.
+        at conversations.gate-claims.lines[2].success[0]
+    - When the line “You will never take me alive.” (`never-alive`) is said, the carrier answers “Then we do this the hard way. To arms!”, at `shout`: its words reach everyone in the carrier's room and the next room over (a closed door on the way counts as a room), and whoever it is said to, wherever they stand, every member the carrier's words reach (everyone in the carrier's room and the next room over (a closed door on the way counts as a room), and whoever it is said to, wherever they stand), whether or not they see the carrier, the carrier included, learns the fact `refused-arrest` and whoever sees the carrier answer and caught none of the line is told only that the carrier answered and what the carrier is seen doing, and, if they see the speaker, sees the line said without its words.
+        at conversations.gate-claims.lines[2].success[0]
+
+RECORDS
+
+  Record `invitation`
+    - The record `invitation`: whoever comes to hold it learns the fact `feast-tonight`.
+        at intel[0]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.

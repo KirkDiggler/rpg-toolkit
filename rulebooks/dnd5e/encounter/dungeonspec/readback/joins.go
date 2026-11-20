@@ -352,7 +352,28 @@ func (b *builder) relocatePassages(lines []Statement, topo encounter.FloorTopolo
 		if to == "" {
 			continue
 		}
-		carrier := st.About
+		// A CONVERSATION'S ROW (rpg-project#1025) is carried by each of the
+		// conversation's carriers: one passage for each.
+		carriers := []Subject{st.About}
+		if st.About.Kind == "lines" {
+			carriers = nil
+			for _, c := range b.convCarriers[st.About.ID] {
+				carriers = append(carriers, Subject{Kind: c.Kind, ID: c.ID})
+			}
+		}
+		for _, carrier := range carriers {
+			out = append(out, b.relocatePassage(st, to, carrier, placedAt, regionOf, hidden, said)...)
+		}
+	}
+	return out
+}
+
+// relocatePassage says the passage one relocating row makes for one
+// carrier, unless that passage is already said.
+func (b *builder) relocatePassage(st Statement, to string, carrier Subject, placedAt map[string][]spatial.Position,
+	regionOf map[spatial.Position]string, hidden func(kind, id string) []Connection, said map[string]bool) []Statement {
+	var out []Statement
+	{
 		var from []string
 		var who string
 		switch carrier.Kind {
@@ -377,7 +398,7 @@ func (b *builder) relocatePassages(lines []Statement, topo encounter.FloorTopolo
 		}
 		id := fmt.Sprintf("passage:%s:%s:%s-%s", strings.Join(from, "+"), to, carrier.Kind, carrier.ID)
 		if said[id] {
-			continue
+			return nil
 		}
 		said[id] = true
 		line := b.optionID(st.Path)
@@ -397,20 +418,31 @@ func (b *builder) relocatePassages(lines []Statement, topo encounter.FloorTopolo
 // optionID is the id of the line a row's path is under
 // (`….options[2].success[0].relocate` → the id written at `….options[2]`).
 func (b *builder) optionID(path string) string {
+	at := linePathOf(path)
+	if n := b.doc.node(at); n != nil {
+		for k := 0; k+1 < len(n.Content); k += 2 {
+			if n.Content[k].Value == "id" {
+				return n.Content[k+1].Value
+			}
+		}
+	}
+	return at
+}
+
+// linePathOf is the path of the line a facet's path is under: through
+// `….options[i]`, or a conversation's `conversations.<id>.lines[k]`
+// (rpg-project#1025). A path under no line is returned as it is.
+func linePathOf(path string) string {
 	i := strings.LastIndex(path, ".options[")
+	if i < 0 && strings.HasPrefix(path, "conversations.") {
+		i = strings.Index(path, ".lines[")
+	}
 	if i < 0 {
 		return path
 	}
 	j := strings.IndexByte(path[i:], ']')
 	if j < 0 {
 		return path
-	}
-	if n := b.doc.node(path[:i+j+1]); n != nil {
-		for k := 0; k+1 < len(n.Content); k += 2 {
-			if n.Content[k].Value == "id" {
-				return n.Content[k+1].Value
-			}
-		}
 	}
 	return path[:i+j+1]
 }

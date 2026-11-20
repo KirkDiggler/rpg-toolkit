@@ -138,6 +138,22 @@
 // the rules' words, judged when it is given; the read-back does not restate
 // them.
 //
+// # A conversation's lines written once (rpg-project#1025)
+//
+// Each entry under the root's `conversations:` is one group in the
+// Conversations section, before the interactions, about {lines, <id>}: a
+// statement of kind `lines` ([KindSharedLines]) at `conversations.<id>`
+// naming its lines and its carriers, connected {creature|prop|faction,
+// <carrier>, carries} to each, then each of its lines said once, in full, at
+// `conversations.<id>.lines[k]`, to "the carrier". A carrier says each
+// conversation it uses as one statement of kind `lines.use`
+// ([KindUsesLines]) at its `use:` entry, `<carrier>.options[i]`, naming the
+// lines it brings and connected {lines, <id>, speaks-lines-of}; its own
+// lines stay at their own paths. Wherever else a line is named (an
+// interaction's asked lines and senders, a passage), it is at its authored
+// path, so a conversation's line is the conversation's path on every
+// carrier.
+//
 // # Nothing skipped silently
 //
 // Whatever the file authors and this package cannot yet say is listed in

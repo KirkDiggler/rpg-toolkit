@@ -24,7 +24,7 @@ import (
 // saidKeys is, for each kind of authored mapping, the keys the read-back
 // says or summarises. A key absent from its list is not yet said.
 var saidKeys = map[string][]string{
-	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments", "statuses"},
+	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments", "statuses", "conversations"},
 	"concealment":        {"checks", "cells", "props"},
 	"party":              {"sharing"},
 	"room":               {"version", "id", "name", "coordinateFrame", "scene", "room"},
@@ -43,7 +43,8 @@ var saidKeys = map[string][]string{
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
 	"give":               {"topic", "to", "about", "heard_by"},
-	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure"},
+	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure", "use"},
+	"conversation":       {"lines"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
 	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "apply_status", "activity", "weight"},
@@ -162,6 +163,10 @@ func (b *builder) notYetSaid() []Unsaid {
 	each(at(root, "factions"), "factions", func(n *yaml.Node, p string) {
 		check(n, p, "faction")
 		options(at(n, "options"), p+".options")
+	})
+	each(at(root, "conversations"), "conversations", func(n *yaml.Node, p string) {
+		check(n, p, "conversation")
+		options(at(n, "lines"), p+".lines")
 	})
 	each(at(root, "dispositions"), "dispositions", func(n *yaml.Node, p string) { check(n, p, "disposition") })
 	each(at(gp, "propBindings"), "room.room.propBindings", func(n *yaml.Node, p string) {

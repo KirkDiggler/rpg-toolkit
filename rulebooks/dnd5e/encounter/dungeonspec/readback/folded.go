@@ -80,6 +80,10 @@ func (r *ReadBack) fold(share bool) []FoldedSection {
 			items = foldCreatures(s.Groups, share)
 		case "Conversations":
 			for _, g := range s.Groups {
+				if g.About.Kind == "lines" {
+					items = append(items, foldSharedLines(g))
+					continue
+				}
 				items = append(items, foldConversation(g))
 			}
 		case "Routines":
@@ -107,11 +111,32 @@ func (r *ReadBack) fold(share bool) []FoldedSection {
 // foldPlain folds a group of the place or a side: each statement as itself,
 // and each line as a block.
 func foldPlain(g Group) Item {
-	head := Item{Text: g.Title}
 	short := "the creature spoken to"
 	if g.About.Kind == "site" {
 		short = "the prop"
 	}
+	return foldPlainAs(g, short)
+}
+
+// foldSharedLines folds a conversation's lines (rpg-project#1025): its
+// head beside the title, then each line as a block said to the carrier.
+func foldSharedLines(g Group) Item {
+	if len(g.Statements) == 0 || g.Statements[0].Kind != KindSharedLines {
+		return foldPlainAs(g, "the carrier")
+	}
+	first := g.Statements[0]
+	rest := g
+	rest.Statements = g.Statements[1:]
+	out := foldPlainAs(rest, "the carrier")
+	out.Text = g.Title + " — " + first.fold.text
+	out.Paths = []string{first.Path}
+	return out
+}
+
+// foldPlainAs is [foldPlain] with the name a line's facets call whoever it
+// is said to.
+func foldPlainAs(g Group, short string) Item {
+	head := Item{Text: g.Title}
 	var bundles Item
 	loudSaid := false
 	for _, chunk := range chunkLines(g.Statements) {
