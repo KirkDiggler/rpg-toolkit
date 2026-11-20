@@ -69,6 +69,8 @@ var kindTable = map[generic.KindName]kindDefinition{
 	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
 	KindRollModifier: {class: PartClassBenefit, validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
+	KindHitPointMaximum: hitPointMaximumBonus.definition(),
+	KindInitiativeBonus: initiativeBonus.definition(),
 }
 
 func decodeParams[T any](raw jsontext.Value) (T, error) {

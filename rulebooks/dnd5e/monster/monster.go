@@ -160,9 +160,10 @@ func (m *Monster) HP() int {
 	return m.hp
 }
 
-// MaxHP returns maximum hit points
+// MaxHP returns the effective hit point maximum: the stored base plus what
+// every held condition raises it by. See [Monster.GetMaxHitPoints].
 func (m *Monster) MaxHP() int {
-	return m.maxHP
+	return m.GetMaxHitPoints()
 }
 
 // GetHitPoints returns current HP.
@@ -171,10 +172,35 @@ func (m *Monster) GetHitPoints() int {
 	return m.hp
 }
 
-// GetMaxHitPoints returns maximum HP.
+// GetMaxHitPoints returns the effective hit point maximum: the stored base
+// (what the stat block set and ToData persists) plus what every held
+// condition raises it by, summed at each read with no cache.
 // Implements combat.Combatant interface.
+//
+// A held raise whose amount cannot be read falls back to the base. That is
+// unreachable through the rulebook: the kind refuses any amount but a fixed
+// positive whole number when the condition is bound, and the readers that can
+// return an error (healing, a condition's removal) do.
 func (m *Monster) GetMaxHitPoints() int {
-	return m.maxHP
+	maximum, err := m.effectiveMaxHP()
+	if err != nil {
+		return m.maxHP
+	}
+	return maximum
+}
+
+// effectiveMaxHP is the stored base plus every held condition's raise. Every
+// READ of the maximum goes through here; every WRITE touches only the base.
+func (m *Monster) effectiveMaxHP() (int, error) {
+	maximum := m.maxHP
+	for _, held := range m.conditions {
+		raise, err := conditions.HitPointMaximumBonus(&conditions.HeldBonusInput{Condition: held})
+		if err != nil {
+			return 0, rpgerr.Wrapf(err, "monster %s hit point maximum", m.id)
+		}
+		maximum += raise.Amount
+	}
+	return maximum, nil
 }
 
 // ApplyDamage reduces the monster's HP by the damage amount(s).
@@ -455,10 +481,11 @@ func (m *Monster) IsAlive() bool {
 
 // HPPercent returns current HP as a percentage of max HP
 func (m *Monster) HPPercent() int {
-	if m.maxHP == 0 {
+	maximum := m.GetMaxHitPoints()
+	if maximum == 0 {
 		return 0
 	}
-	return (m.hp * 100) / m.maxHP
+	return (m.hp * 100) / maximum
 }
 
 // Speed returns the monster's movement speeds
@@ -648,10 +675,16 @@ func (m *Monster) onHealingReceived(
 		}
 	}
 
+	// Healing caps at the effective maximum: a held raise is room to heal into.
+	maximum, err := m.effectiveMaxHP()
+	if err != nil {
+		return err
+	}
+
 	hpBefore := m.hp
 	m.hp += event.Amount
-	if m.hp > m.maxHP {
-		m.hp = m.maxHP
+	if m.hp > maximum {
+		m.hp = maximum
 	}
 
 	// The mutation and dirty mark precede publication so a failing observer
@@ -780,12 +813,31 @@ func (m *Monster) onConditionRemoved(
 	}
 	m.conditions = filtered
 
+	// A raise that ended lowers the maximum; current hit points above it are
+	// capped there. Read after filtering, so the removed condition is not
+	// counted. Gaining a raise never moves current hit points.
+	capErr := m.capHPAtMaximum()
+
 	if len(detachErrs) > 0 {
-		return rpgerr.Wrapf(errors.Join(detachErrs...),
+		return rpgerr.Wrapf(errors.Join(append(detachErrs, capErr)...),
 			"failed to detach %d removed condition(s) %s from monster %s",
 			len(detachErrs), event.ConditionRef, m.id)
 	}
 
+	return capErr
+}
+
+// capHPAtMaximum lowers current hit points to the effective maximum, marking
+// the sheet changed when it moves them.
+func (m *Monster) capHPAtMaximum() error {
+	maximum, err := m.effectiveMaxHP()
+	if err != nil {
+		return err
+	}
+	if m.hp > maximum {
+		m.hp = maximum
+		m.dirty = true
+	}
 	return nil
 }
 
