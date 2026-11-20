@@ -48,11 +48,13 @@ func keepAt(t *testing.T, hexes int) *generated {
 		if err != nil {
 			panic(err)
 		}
-		g.doc, g.report, err = Generate(p, g.opts)
+		// Generate's own two steps, kept apart so the site is compiled once:
+		// the proof's compile is the one the tests read.
+		g.doc, g.report, err = write(p, g.opts)
 		if err != nil {
 			panic(err)
 		}
-		g.compiled, err = dungeonspec.Load(g.doc)
+		g.compiled, err = Prove(g.doc)
 		if err != nil {
 			panic(err)
 		}
@@ -61,6 +63,27 @@ func keepAt(t *testing.T, hexes int) *generated {
 	g, ok := generatedAt.Load(hexes)
 	require.True(t, ok, "the keep at %d hexes generated", hexes)
 	return g.(*generated)
+}
+
+// written is the bytes and report [Generate] would return for o, without the
+// proof: for a test whose claim is about the bytes alone (a golden, a header,
+// determinism). The proof compiles the whole site, which is nearly all of a
+// generation's time; [keepAt] pays it once for the tests that read the
+// compiled site.
+func written(t *testing.T, o Options) ([]byte, Report) {
+	t.Helper()
+	doc, r, err := write(DefaultPlan(), o)
+	require.NoError(t, err)
+	return doc, r
+}
+
+// defaultWritten is the default keep's options at hexes, as [keepAt] makes
+// it: command line "keepgen".
+func defaultWritten(hexes int) Options {
+	o := DefaultOptions()
+	o.Hexes = hexes
+	o.CommandLine = "keepgen"
+	return o
 }
 
 // floorCells is every compiled floor cell and the region that owns it.

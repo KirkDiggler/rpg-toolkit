@@ -140,8 +140,7 @@ func TestGarrison_OffIsGolden(t *testing.T) {
 	o := DefaultOptions()
 	o.CommandLine = "keepgen"
 	o.Garrison, o.Patrols = 0, 0
-	doc, _, err := Generate(DefaultPlan(), o)
-	require.NoError(t, err)
+	doc, _ := written(t, o)
 	sum := sha256.Sum256(doc)
 	require.Equal(t, goldenKeep, hex.EncodeToString(sum[:]))
 }
@@ -153,8 +152,7 @@ const goldenGarrison = "0682f23aa193e3a8fac4b723d47bf9935542e880c0805bf591c0bf44
 
 // TestGenerate_GoldenGarrison pins the garrison document's bytes.
 func TestGenerate_GoldenGarrison(t *testing.T) {
-	doc, _, err := Generate(DefaultPlan(), garrisonOptions(99, 20))
-	require.NoError(t, err)
+	doc, _ := written(t, garrisonOptions(99, 20))
 	sum := sha256.Sum256(doc)
 	require.Equal(t, goldenGarrison, hex.EncodeToString(sum[:]))
 }
@@ -236,19 +234,17 @@ func TestGarrison_Refuses(t *testing.T) {
 func TestOptionsFromHeader_Garrison(t *testing.T) {
 	o := garrisonOptions(7, 3)
 	o.CommandLine = "keepgen -garrison 7 -patrols 3 -key bench-keep-garrison -out k.yaml"
-	doc, _, err := Generate(DefaultPlan(), o)
-	require.NoError(t, err)
+	doc, _ := written(t, o)
 	require.Contains(t, string(doc), " garrison=7 patrols=3\n")
 	got, err := OptionsFromHeader(doc)
 	require.NoError(t, err)
 	require.Equal(t, o, got)
-	again, _, err := Generate(DefaultPlan(), got)
-	require.NoError(t, err)
+	again, _ := written(t, got)
 	require.Equal(t, doc, again)
 
-	g := keepAt(t, 10000)
-	require.NotContains(t, string(g.doc), "garrison=")
-	got, err = OptionsFromHeader(g.doc)
+	off, _ := written(t, defaultWritten(10000))
+	require.NotContains(t, string(off), "garrison=")
+	got, err = OptionsFromHeader(off)
 	require.NoError(t, err)
 	require.Zero(t, got.Garrison)
 	require.Zero(t, got.Patrols)
