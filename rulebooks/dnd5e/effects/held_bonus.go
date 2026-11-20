@@ -5,7 +5,11 @@ package effects
 
 import (
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 )
@@ -37,6 +41,9 @@ type heldBonus struct {
 	describe func(int) string
 	// general is the sentence when no amount is in hand (the kind's meaning).
 	general string
+	// fromAbility describes an ability-modifier amount, for a kind that takes
+	// one; nil means the kind takes a fixed whole number only.
+	fromAbility func(abilities.Ability) string
 }
 
 var (
@@ -47,7 +54,10 @@ var (
 	initiativeBonus = heldBonus{kind: KindInitiativeBonus, domain: domainInitiative,
 		noun:     "initiative bonus",
 		describe: func(n int) string { return fmt.Sprintf("Adds %d to the holder's initiative.", n) },
-		general:  "Adds to the holder's initiative."}
+		general:  "Adds to the holder's initiative.",
+		fromAbility: func(a abilities.Ability) string {
+			return "Adds the holder's " + a.Display() + " modifier to the holder's initiative."
+		}}
 )
 
 func (b heldBonus) meaning(raw jsontext.Value) (meaning, error) {
@@ -59,9 +69,10 @@ func (b heldBonus) meaning(raw jsontext.Value) (meaning, error) {
 	return meaning{domain: b.domain, description: b.general}, nil
 }
 
-// check refuses everything but a fixed positive whole number and no guard.
-// A fraction never reaches here: the amount's fixed field is an int, so the
-// definition's own decoding refuses it.
+// check refuses everything but a fixed positive whole number (or, for a kind
+// that takes one, an ability-modifier amount naming a real ability) and no
+// guard. A fraction never reaches here: the amount's fixed field is an int, so
+// the definition's own decoding refuses it.
 func (b heldBonus) check(out generic.Output) error {
 	if _, err := b.meaning(out.Params); err != nil {
 		return err
@@ -76,13 +87,22 @@ func (b heldBonus) check(out generic.Output) error {
 	if err != nil {
 		return err
 	}
-	if name != generic.AmountFixed {
+	switch {
+	case name == generic.AmountFixed:
+		if *out.Amount.Fixed < 1 {
+			return fmt.Errorf("%s must be a positive whole number, got %d", b.noun, *out.Amount.Fixed)
+		}
+		return nil
+	case name == generic.AmountAbilityModifier && b.fromAbility != nil:
+		if err := checkAbilityModifier(out.Amount); err != nil {
+			return fmt.Errorf("%s: %w", b.noun, err)
+		}
+		return nil
+	case b.fromAbility != nil:
+		return fmt.Errorf("%s requires a fixed whole number or an ability modifier, not %q", b.noun, name)
+	default:
 		return fmt.Errorf("%s requires a fixed whole number, not %q", b.noun, name)
 	}
-	if *out.Amount.Fixed < 1 {
-		return fmt.Errorf("%s must be a positive whole number, got %d", b.noun, *out.Amount.Fixed)
-	}
-	return nil
 }
 
 func (b heldBonus) payload(decl PartDeclaration) (generic.Output, error) {
@@ -124,20 +144,16 @@ func (b heldBonus) assess(in *AssessInput, m meaning) (assessment, error) {
 	if err != nil {
 		return result, err
 	}
-	n, err := b.amount(in.Output)
-	if err != nil {
+	definition := in.Output.Definition()
+	if err := b.check(definition); err != nil {
 		return result, err
 	}
-	result.effect.Description = b.describe(n)
-	return result, nil
-}
-
-func (b heldBonus) amount(out *generic.Bound) (int, error) {
-	definition := out.Definition()
-	if err := b.check(definition); err != nil {
-		return 0, err
+	if definition.Amount.AbilityModifier != nil {
+		result.effect.Description = b.fromAbility(abilities.Ability(definition.Amount.AbilityModifier.Ability))
+		return result, nil
 	}
-	return *definition.Amount.Fixed, nil
+	result.effect.Description = b.describe(*definition.Amount.Fixed)
+	return result, nil
 }
 
 func (b heldBonus) definition() kindDefinition {
@@ -148,12 +164,18 @@ func (b heldBonus) definition() kindDefinition {
 // HeldBonusInput asks one bound output what it adds to one held number.
 type HeldBonusInput struct {
 	Output *generic.Bound
+	// Holder is the holder and its scores, which an ability-modifier amount
+	// reads. Nil is legal for a fixed amount.
+	Holder *HolderQuery
 }
 
-// HeldBonusOutput is the whole number the output adds. Zero means the output
-// is of another kind and adds nothing to this number.
+// HeldBonusOutput is the whole number the output adds, which may be negative
+// for an ability modifier. Answered is false when the output is of another
+// kind, or reads a score the holder's sheet does not state; Amount is then 0
+// and the output contributes nothing.
 type HeldBonusOutput struct {
-	Amount int
+	Amount   int
+	Answered bool
 }
 
 func readHeldBonus(b heldBonus, in *HeldBonusInput) (*HeldBonusOutput, error) {
@@ -163,11 +185,25 @@ func readHeldBonus(b heldBonus, in *HeldBonusInput) (*HeldBonusOutput, error) {
 	if in.Output.Kind() != b.kind {
 		return &HeldBonusOutput{}, nil
 	}
-	n, err := b.amount(in.Output)
+	if err := b.check(in.Output.Definition()); err != nil {
+		return nil, err
+	}
+	var frame Query
+	if in.Holder != nil {
+		frame.Holder = in.Holder
+	}
+	value, err := in.Output.Amount(frame)
+	if errors.Is(err, contributions.ErrRuleCannotAnswer) {
+		return &HeldBonusOutput{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &HeldBonusOutput{Amount: n}, nil
+	n, err := value.ScalarValue()
+	if err != nil {
+		return nil, err
+	}
+	return &HeldBonusOutput{Amount: n, Answered: true}, nil
 }
 
 // HitPointMaximumOf answers how much one bound output raises its holder's hit
@@ -178,7 +214,10 @@ func HitPointMaximumOf(in *HeldBonusInput) (*HeldBonusOutput, error) {
 }
 
 // InitiativeBonusOf answers how much one bound output adds to its holder's
-// initiative. Errors as [HitPointMaximumOf].
+// initiative: a fixed amount, or the holder's modifier for a named ability
+// read from in.Holder. Errors: a nil input or output, or an initiative output
+// whose amount is neither a fixed positive whole number nor an ability
+// modifier naming a real ability.
 func InitiativeBonusOf(in *HeldBonusInput) (*HeldBonusOutput, error) {
 	return readHeldBonus(initiativeBonus, in)
 }

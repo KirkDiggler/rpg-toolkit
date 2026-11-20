@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
@@ -24,6 +25,17 @@ type Query struct {
 	Check    *dndevents.AbilityCheckChainEvent
 	// Roll describes the recipient's own roll for pull-based contribution selection.
 	Roll *RollQuery
+	// Holder describes a holder outside any roll or action: who it is and
+	// what its sheet says, for a number read off the sheet (initiative).
+	Holder *HolderQuery
+}
+
+// HolderQuery is a holder and its ability scores, for an amount that reads
+// them. Scores missing an ability means the sheet states no such score, which
+// is not the same as a score of zero.
+type HolderQuery struct {
+	MemberID string
+	Scores   shared.AbilityScores
 }
 
 // RollQuery identifies whose roll is described, independently of an outgoing
@@ -43,6 +55,7 @@ const (
 	domainIncoming    domain = "incoming_damage"
 	domainSave        domain = "saving_throw"
 	domainCheck       domain = "ability_check"
+	domainHolder      domain = "holder"
 )
 
 // Validate refuses ambiguous contexts and malformed known identities/facts.
@@ -63,6 +76,12 @@ func (q Query) Validate() error {
 	}
 	if q.Roll != nil {
 		count++
+	}
+	if q.Holder != nil {
+		count++
+		if q.Holder.MemberID == "" {
+			return fmt.Errorf("holder query requires a member")
+		}
 	}
 	if count > 1 {
 		return fmt.Errorf("effect query must name at most one context")
@@ -121,6 +140,8 @@ func (q Query) domain() domain {
 		return domainSave
 	case q.Check != nil:
 		return domainCheck
+	case q.Holder != nil:
+		return domainHolder
 	default:
 		return domainNone
 	}
@@ -138,6 +159,8 @@ func (q Query) subject() string {
 		return q.Save.SaverID
 	case q.Check != nil:
 		return q.Check.CheckerID
+	case q.Holder != nil:
+		return q.Holder.MemberID
 	default:
 		return ""
 	}

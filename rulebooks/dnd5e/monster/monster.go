@@ -155,6 +155,15 @@ func (m *Monster) Ref() *core.Ref {
 	return m.ref
 }
 
+// Initiative is everything the monster adds to initiative, with each source:
+// the rules every creature has (Dexterity), read from its stat block's
+// ability scores, then each held effect that adds to initiative.
+//
+// Errors: whatever [conditions.Initiative] refuses.
+func (m *Monster) Initiative() (*conditions.InitiativeOutput, error) {
+	return conditions.Initiative(&conditions.InitiativeInput{MemberID: m.id, Scores: m.abilityScores, Conditions: m.conditions})
+}
+
 // HP returns current hit points
 func (m *Monster) HP() int {
 	return m.hp

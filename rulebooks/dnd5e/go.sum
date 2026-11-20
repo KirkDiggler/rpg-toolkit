@@ -8,6 +8,8 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.7.0 h1:BXXfXcjKJQ1ahjxTzr47+IBnigP5nh1hDwXeActs23Q=
 github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.7.0/go.mod h1:LzDmcu7qEGVOM087Hb/rOHQnxMVuai8xvg1sGbYd1kw=
+github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.8.0 h1:75tyWI2uZqFyMP2371NPrBuFCJNctsA6/w/xdUqBGf8=
+github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.8.0/go.mod h1:LzDmcu7qEGVOM087Hb/rOHQnxMVuai8xvg1sGbYd1kw=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 h1:wRshHQZfLnEh03/Gqy96ZvuZ6Wc/Zl3whhBLbFGWnQY=
 github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1/go.mod h1:LzyZd5OAAic1UnyPwCx6HnmWcOQ/jZvqMSc+Q0k7fH8=
 github.com/KirkDiggler/rpg-toolkit/npc v0.2.0 h1:B1N01TGvp3FvolPsFGKnIsVb0GPUZVrE1s0dXZXcDGA=
