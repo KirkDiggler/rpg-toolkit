@@ -1288,10 +1288,16 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		Cell      spatial.Position `json:"cell"`
 		From      spatial.Position `json:"from"`
 		To        spatial.Position `json:"to"`
-		Ending    string           `json:"ending"`
-		Outcome   string           `json:"outcome"`
-		Ended     json.RawMessage  `json:"ended"`
-		Windows   []struct {
+		Rolls     []struct {
+			Member      string          `json:"member"`
+			Roll        int             `json:"roll"`
+			Total       int             `json:"total"`
+			Calculation json.RawMessage `json:"calculation"`
+		} `json:"rolls"`
+		Ending  string          `json:"ending"`
+		Outcome string          `json:"outcome"`
+		Ended   json.RawMessage `json:"ended"`
+		Windows []struct {
 			Audience string       `json:"audience"`
 			Reaction beatReaction `json:"reaction"`
 		} `json:"windows"`
@@ -1322,7 +1328,15 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 	case encounter.BeatTurnEnded:
 		entry.Mark, entry.Turn = ClockTurnEnded, &TurnPassed{Member: member(p.Member), Next: member(p.Next)}
 	case encounter.BeatFightStarted:
-		entry.Mark, entry.Fight = ClockFightFormed, &FightFormed{Order: parties(p.Order), Surprised: parties(p.Surprised)}
+		fight := &FightFormed{Order: parties(p.Order), Surprised: parties(p.Surprised)}
+		for _, r := range p.Rolls {
+			roll, err := rollOf(r.Calculation, facesOf(r.Roll), r.Total, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			fight.Rolls = append(fight.Rolls, InitiativeRoll{Member: member(r.Member), Roll: roll})
+		}
+		entry.Mark, entry.Fight = ClockFightFormed, fight
 	case encounter.BeatFightEnded:
 		entry.Mark, entry.Dissolved = ClockFightDissolved, &FightDissolved{Members: parties(p.Members), Cause: p.Cause}
 	case encounter.BeatJoined:

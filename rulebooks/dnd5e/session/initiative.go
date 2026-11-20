@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
@@ -63,122 +64,106 @@ func (m *Manager) initiativeFor(sheets sheetSeam) initiativeSeam {
 	return initiativeSeam{dice: m.dice, sheets: sheets}
 }
 
-// initiativeModifier is what a member adds to its initiative roll: the
-// total its own sheet answers to [character.Character.Initiative] or
-// [monster.Monster.Initiative]. The session names no source and sums nothing
-// itself; what adds to initiative (Dexterity by rule, a held status's bonus)
-// is the rulebook's, read off the sheet at the moment the fight forms.
+// initiativeAnswer is what a member's own sheet answers to
+// [character.Character.Initiative] or [monster.Monster.Initiative]: the whole
+// answer, the total and each contribution behind it. The session names no
+// source and sums nothing itself; what adds to initiative (Dexterity by rule,
+// a held status's bonus) is the rulebook's, read off the sheet at the moment
+// the fight forms.
 //
 // A monster is loaded with its carried conditions prepared, so a status it
 // holds is counted. A world NPC's recorded content has no sheet to ask, so it
 // adds nothing — the true answer from that content, as [sheetSeam.Sheets]
 // answers zero speed. A member the verb holds no sheet for is refused by
-// [sheetSeam.sheetOf], never answered with zero: zero is a real modifier.
-func (s initiativeSeam) initiativeModifier(id encounter.MemberID) (int, error) {
+// [sheetSeam.sheetOf], never answered with an empty answer: zero is a real
+// modifier.
+func (s initiativeSeam) initiativeAnswer(id encounter.MemberID) (*conditions.InitiativeOutput, error) {
 	held, err := s.sheets.sheetOf(id)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	switch {
 	case held.character != nil:
 		sheet, err := character.Load(s.sheets.ctx, held.character)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		answer, err := sheet.Initiative()
-		if err != nil {
-			return 0, err
-		}
-		return answer.Total, nil
+		return sheet.Initiative()
 	case held.monster != nil:
 		sheet, err := monstertraits.LoadMonster(s.sheets.ctx, held.monster)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		answer, err := sheet.Initiative()
-		if err != nil {
-			return 0, err
-		}
-		return answer.Total, nil
+		return sheet.Initiative()
 	default:
-		return 0, nil
+		return &conditions.InitiativeOutput{}, nil
 	}
 }
 
-// RollInitiative asks the rulebook to order the members a fight is starting
-// between, using the host's dice.
+// RollInitiative rolls each member's initiative with the host's dice and
+// hands every roll back to the composition, which records it and orders the
+// fight by it.
 //
-// It asks ONE MEMBER AT A TIME, in sorted order, and that loop is the point of
-// this function rather than an accident of it. dnd5e/initiative.RollForOrder
-// takes a map and iterates it, so handing it the whole fight would draw the
-// rolls in a random order and assign them to whoever came up first — two
-// replays of the same session, with the same dice, ordering the fight
-// differently. Its own source says so (TODO #285). Asking per member keeps the
-// rule where it belongs (the d20 and the modifier are still the rulebook's) and
-// puts the only non-reproducible part, the ORDER OF THE ASKING, under this
-// package's control.
+// It asks ONE MEMBER AT A TIME, in sorted ID order, and that loop is the point
+// of this function rather than an accident of it. Handing the rulebook the
+// whole fight as a map would draw the rolls in map-iteration order and assign
+// them to whoever came up first: two replays of the same session, with the
+// same dice, ordering the fight differently. Asking per member keeps the rule
+// where it belongs (the d20 and the modifiers are the rulebook's, through
+// [initiative.RollOne], its one d20 entry) and puts the only non-reproducible
+// part, the ORDER OF THE ASKING, under this package's control.
+//
+// EACH MEMBER ADDS WHAT ITS OWN SHEET ANSWERS ([initiativeSeam.initiativeAnswer],
+// rpg-project#990): every initiative effect it has, by rule (Dexterity) and
+// held (a status's bonus), one modifier per contribution, in the sheet's
+// order. The rulebook builds the calculation from them and the session carries
+// it as is, so the roll everyone reads is the roll the rulebook made.
 //
 // The result is then ordered by total, and equal totals by ID. Ordering equal
 // rolls is not something 5e states — it leaves ties to the table — so choosing
 // one is a reproducibility decision (C8: identical inputs, identical outputs),
-// made in the open rather than left to map iteration. Flat rolls make ties
-// common rather than rare, which is what makes it load-bearing today.
+// made in the open. Ties are NOT broken by Dexterity.
 //
-// EACH MEMBER ADDS ITS MODIFIER, the total its own sheet answers
-// ([initiativeSeam.initiativeModifier], rpg-project#990): every initiative
-// effect it has, by rule (Dexterity) and held (a status's bonus). Neither
-// the host's interface nor the composition's changed to carry it; the
-// composition still hands over IDs only, and the
-// order is still all it gets back. Ties are NOT broken by Dexterity: equal
-// totals order by ID, as before.
-//
-// A dice failure ABORTS, and has to be caught rather than returned: RollForOrder
-// discards the roller's error (`roll, _ := roller.Roll(...)`) and would hand
-// back a member who rolled zero. A fight that cannot be ordered must not
-// half-start, so the seam remembers what the rulebook dropped.
-func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+// A dice failure ABORTS: the rulebook returns the roller's error itself, and a
+// fight that cannot be ordered must not half-start.
+func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
 	asking := append([]encounter.MemberID(nil), members...)
 	sort.Slice(asking, func(i, j int) bool { return asking[i] < asking[j] })
 
-	dice := &diceSeam{roller: s.dice}
-	rolls := make([]initiative.Roll, 0, len(asking))
+	rolls := make([]encounter.InitiativeRoll, 0, len(asking))
 	for _, id := range asking {
-		modifier, err := s.initiativeModifier(id)
+		answer, err := s.initiativeAnswer(id)
 		if err != nil {
 			return nil, fmt.Errorf("initiative modifier for %q: %w", id, err)
 		}
-		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): modifier}, dice)
-		if dice.err != nil {
-			return nil, fmt.Errorf("rolling initiative for %q: %w", id, dice.err)
+		modifiers := make([]initiative.Modifier, 0, len(answer.Contributions))
+		for _, c := range answer.Contributions {
+			modifiers = append(modifiers, initiative.Modifier{
+				Source: dnd5eEvents.RollSource{Ref: c.Ref, Name: c.Source},
+				Amount: c.Amount,
+			})
 		}
-		rolls = append(rolls, one...)
+		out, err := initiative.RollOne(s.sheets.ctx, &initiative.RollOneInput{
+			MemberID:  string(id),
+			Modifiers: modifiers,
+			Roller:    &diceSeam{roller: s.dice},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("rolling initiative for %q: %w", id, err)
+		}
+		rolls = append(rolls, encounter.InitiativeRoll{
+			Member: id, Roll: out.Face, Total: out.Total, Calculation: rollCalculationFor(out.Calculation),
+		})
 	}
 
 	sort.SliceStable(rolls, func(i, j int) bool {
 		if rolls[i].Total != rolls[j].Total {
 			return rolls[i].Total > rolls[j].Total
 		}
-		return rolls[i].Entity.GetID() < rolls[j].Entity.GetID()
+		return rolls[i].Member < rolls[j].Member
 	})
-
-	order := make([]encounter.MemberID, 0, len(rolls))
-	for _, r := range rolls {
-		order = append(order, core.EntityID(r.Entity.GetID()))
-	}
-	return order, nil
+	return rolls, nil
 }
-
-// memberEntity is a member ID wearing the entity interface the rulebook's
-// initiative rule asks for.
-//
-// The rule wants entities because it was written for a stack that had them in
-// hand; all this seam has at formation time is an ID, and an ID is all the
-// ordering actually uses. Widening the rulebook's signature is a change in
-// another module and is not this wave's.
-type memberEntity string
-
-func (m memberEntity) GetID() string          { return string(m) }
-func (memberEntity) GetType() core.EntityType { return "member" }
 
 // diceSeam adapts the host's Roller to the one the rulebook takes, and
 // remembers the error the rulebook throws away.
@@ -219,5 +204,4 @@ func (d *diceSeam) RollN(ctx context.Context, count, size int) ([]int, error) {
 var (
 	_ encounter.InitiativeRoller = initiativeSeam{}
 	_ dice.Roller                = &diceSeam{}
-	_ core.Entity                = memberEntity("")
 )

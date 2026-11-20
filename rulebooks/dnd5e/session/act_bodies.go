@@ -855,6 +855,17 @@ type FightFormed struct {
 	Order []Party
 	// Surprised are the surprised (bubble-formed `surprised`).
 	Surprised []Party
+	// Rolls are the initiative rolls behind Order (bubble-formed `rolls`), in
+	// the entry's order; empty when nobody rolled.
+	Rolls []InitiativeRoll
+}
+
+// InitiativeRoll is one member's roll for its place in a fight's order.
+type InitiativeRoll struct {
+	// Member is who rolled.
+	Member Party
+	// Roll is the roll as the fight recorded it.
+	Roll *Roll
 }
 
 // FightDissolved is a fight ending (bubble-dissolved).
