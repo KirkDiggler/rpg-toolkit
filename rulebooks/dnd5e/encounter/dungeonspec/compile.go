@@ -1234,9 +1234,7 @@ func optionsOf(key string, specs []OptionSpec, o encounter.Orientation, statuses
 						To: encounter.RegionID(row.Relocate.To), Words: row.Relocate.Words, Rounds: row.Relocate.Rounds,
 					}
 				case row.ApplyStatus != "":
-					if c.ApplyStatus = statusGrantOf(row.ApplyStatus, statuses); c.ApplyStatus == nil {
-						continue
-					}
+					c.ApplyStatus = statusGrantOf(row.ApplyStatus, statuses)
 				default:
 					continue
 				}

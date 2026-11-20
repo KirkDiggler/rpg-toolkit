@@ -89,6 +89,10 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 			"statuses.rested.again", "a status says what a second giving does: write again"},
 		"a status with an unknown word": {"    again: ignored\n", "    again: ignored\n    lasts: forever\n",
 			"statuses.rested.lasts", `"lasts" is not a word of a status: a status is written with name, changes, maintenance, again`},
+		"a status holding NaN": {"      - advantage: saves\n", "      - advantage: saves\n        weight: .nan\n",
+			"statuses.rested", "the value NaN at changes[0].weight cannot be written: a status holds only text, whole numbers, yes/no, and lists and maps of those"},
+		"a status holding infinity": {"      - ends_on: rest\n", "      - ends_on: rest\n        after: .inf\n",
+			"statuses.rested", "the value +Inf at maintenance[0].after cannot be written: a status holds only text, whole numbers, yes/no, and lists and maps of those"},
 		"a status beside another grant": {vaultApply, vaultApply + "                tells: vault-map\n",
 			asked, "a row grants one thing: `give`, `tells`, `relocate` or `apply_status`, not two"},
 	} {
@@ -113,4 +117,22 @@ func TestDungeonspec_AStatusNeedsADeclaration(t *testing.T) {
 	source := vaultWithAStatus(t, vaultStatus, "")
 	requireExactDefect(t, refusals(t, source), "room.room.monsterBindings.captain.options[0].success[0].apply_status",
 		`"rested" is not a status of this site: this site declares no statuses`)
+}
+
+// EVERY DECLARED STATUS A ROW NAMES IS ITS GRANT: in a site the grammar
+// accepts, each row that names a status compiles to a grant carrying that
+// status's block — never to a row with no grant.
+func TestDungeonspec_ARowNamingAStatusAlwaysCarriesIt(t *testing.T) {
+	c := loadSource(t, vaultWithAStatus(t, vaultApply, vaultApply))
+	var grants []encounter.RowGrant
+	for _, o := range monsterNamed(t, c, "captain").Options {
+		grants = append(grants, o.Grants...)
+	}
+	require.NotEmpty(t, grants, "the row that names the status carries a grant")
+	for _, g := range grants {
+		require.NotNil(t, g.Consequence.ApplyStatus)
+		require.Equal(t, "rested", g.Consequence.ApplyStatus.ID)
+		require.JSONEq(t, `{"name":"Rested","changes":[{"advantage":"saves"}],"maintenance":[{"ends_on":"rest"}],"again":"ignored"}`,
+			string(g.Consequence.ApplyStatus.Status))
+	}
 }
