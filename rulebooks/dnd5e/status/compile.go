@@ -56,7 +56,7 @@ type CompileOutput struct {
 type WhenGivenKind string
 
 // WhenGivenHeal heals the holder by the act's Amount of hit points.
-const WhenGivenHeal WhenGivenKind = "heal"
+const WhenGivenHeal WhenGivenKind = wordHeal
 
 // WhenGivenAct is one thing a status does once, when it is given.
 type WhenGivenAct struct {
@@ -178,14 +178,16 @@ func (c *compiler) act(raw jsontext.Value, path string) error {
 		return fmt.Errorf("%w: %s: one act per entry; an act is one of: %s", ErrBadStatus, path, wordsAt(PlaceWhenGiven))
 	}
 	for word, value := range fields {
-		if _, ok := lookup(PlaceWhenGiven, word); !ok {
+		e, ok := lookup(PlaceWhenGiven, word)
+		if !ok {
 			return fmt.Errorf("%w: %s.%s: not something done when given; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceWhenGiven))
 		}
-		n, err := positive(value, path+"."+word)
+		n, err := number(e, value, path+"."+word)
 		if err != nil {
 			return err
 		}
-		c.whenGiven = append(c.whenGiven, WhenGivenAct{Kind: WhenGivenHeal, Amount: n})
+		// The kind IS the word matched: a when_given word names its own act.
+		c.whenGiven = append(c.whenGiven, WhenGivenAct{Kind: WhenGivenKind(e.word), Amount: n})
 	}
 	return nil
 }
@@ -232,16 +234,8 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 		part["kind"] = "resistance"
 		part["params"] = map[string]any{"types": types}
 		whenWords = changeWhen[kind]
-	case wordDamage:
-		var n int
-		if err := jsonv2.Unmarshal(fields[kind], &n); err != nil || n == 0 {
-			return fmt.Errorf("%w: %s: must be a whole number other than zero, such as 2 or -1", ErrBadStatus, at)
-		}
-		part["kind"] = changeKind[kind]
-		part["amount"] = map[string]any{"fixed": n}
-		whenWords = changeWhen[kind]
-	case wordMaxHP, wordInitiative:
-		n, err := positive(fields[kind], at)
+	case wordDamage, wordMaxHP, wordInitiative:
+		n, err := number(e, fields[kind], at)
 		if err != nil {
 			return err
 		}
@@ -379,11 +373,15 @@ func list(raw jsontext.Value, path string) ([]jsontext.Value, error) {
 	return items, nil
 }
 
-// positive decodes a whole number of one or more.
-func positive(raw jsontext.Value, path string) (int, error) {
+// number decodes a whole number within its word's shape's bound.
+func number(e entry, raw jsontext.Value, path string) (int, error) {
+	bound, ok := numberBounds[e.shape]
+	if !ok {
+		return 0, fmt.Errorf("%w: %s: %s is not a number word", ErrBadStatus, path, e.word)
+	}
 	var n int
-	if err := jsonv2.Unmarshal(raw, &n); err != nil || n < 1 {
-		return 0, fmt.Errorf("%w: %s: must be a whole number of one or more, such as 1 or 2", ErrBadStatus, path)
+	if err := jsonv2.Unmarshal(raw, &n); err != nil || n < bound.min || n > bound.max || (n == 0 && !bound.zero) {
+		return 0, fmt.Errorf("%w: %s: %s", ErrBadStatus, path, bound.says)
 	}
 	return n, nil
 }

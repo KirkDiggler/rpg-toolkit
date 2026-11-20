@@ -41,9 +41,10 @@ const (
 	ShapeOneOf Shape = "one of"
 	// ShapeListOf takes a non-empty list of the word's Values, none repeated.
 	ShapeListOf Shape = "list of"
-	// ShapeWholeNumber takes a whole number other than zero, signed.
+	// ShapeWholeNumber takes a whole number other than zero, signed, from
+	// -1000 to 1000.
 	ShapeWholeNumber Shape = "whole number"
-	// ShapePositiveWholeNumber takes a whole number of one or more.
+	// ShapePositiveWholeNumber takes a whole number from 1 to 1000.
 	ShapePositiveWholeNumber Shape = "positive whole number"
 	// ShapeText takes non-empty text.
 	ShapeText Shape = "text"
@@ -180,6 +181,22 @@ var table = []entry{
 	}},
 
 	{place: PlaceWhenGiven, word: wordHeal, shape: ShapePositiveWholeNumber, label: "heals the holder by {value} when given"},
+}
+
+// numberBound is the range a number shape accepts. Every authored whole
+// number is bounded here, by its shape, and only here: an unbounded one would
+// overflow the sheet it lands on (a maximum or a heal wrapping negative).
+type numberBound struct {
+	min, max int
+	// zero is whether zero is allowed inside the range.
+	zero bool
+	// says is the refusal's wording, with the bound in it.
+	says string
+}
+
+var numberBounds = map[Shape]numberBound{
+	ShapeWholeNumber:         {min: -1000, max: 1000, says: "must be a whole number other than zero, from -1000 to 1000, such as 2 or -1"},
+	ShapePositiveWholeNumber: {min: 1, max: 1000, says: "must be a whole number of one or more, at most 1000, such as 1 or 2"},
 }
 
 // changeWhen is which when words each change word may use, for a change whose

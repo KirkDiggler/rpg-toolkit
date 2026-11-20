@@ -350,8 +350,8 @@ func (s *statusSuite) TestNewNumbersRefuseWhatIsNotOneOrMore() {
 		},
 	}
 	for path, doc := range numbers {
-		for _, v := range []string{"0", "-2", "1.5", `"two"`} {
-			s.Run(path+"="+v, func() { s.refused(doc(v), path+": must be a whole number of one or more") })
+		for _, v := range []string{"0", "-2", "1.5", `"two"`, "2.0", "true", "null"} {
+			s.Run(path+"="+v, func() { s.refused(doc(v), path+": must be a whole number of one or more, at most 1000") })
 		}
 	}
 	for _, word := range []string{"max_hit_points", "initiative"} {
@@ -360,6 +360,59 @@ func (s *statusSuite) TestNewNumbersRefuseWhatIsNotOneOrMore() {
 				"changes[0].when.ability: "+word+" cannot be narrowed by ability; it can use nothing: it takes no when")
 		})
 	}
+}
+
+// EVERY AUTHORED NUMBER IS BOUNDED BY ITS SHAPE: the bound itself compiles,
+// one past it is refused naming the largest allowed, and the int64 maximum is
+// refused. Catches an unbounded number, which would wrap a raised maximum or a
+// heal negative on the sheet and leave its holder dead.
+func (s *statusSuite) TestEveryNumberIsBounded() {
+	numbers := map[string]struct {
+		doc     func(string) string
+		bounds  []string
+		past    []string
+		refusal string
+	}{
+		"changes[0].max_hit_points": {func(v string) string { return s.withChange(`{"max_hit_points":` + v + `}`) },
+			[]string{"1000"}, []string{"1001"}, "must be a whole number of one or more, at most 1000"},
+		"changes[0].initiative": {func(v string) string { return s.withChange(`{"initiative":` + v + `}`) },
+			[]string{"1000"}, []string{"1001"}, "must be a whole number of one or more, at most 1000"},
+		"when_given[0].heal": {func(v string) string {
+			return strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"heal":`+v+`}]`, 1)
+		}, []string{"1000"}, []string{"1001"}, "must be a whole number of one or more, at most 1000"},
+		"changes[0].damage": {func(v string) string { return s.withChange(`{"damage":` + v + `}`) },
+			[]string{"1000", "-1000"}, []string{"1001", "-1001", "-9223372036854775808", "2.0", "true", "null"}, "must be a whole number other than zero, from -1000 to 1000"},
+	}
+	for path, tc := range numbers {
+		for _, v := range tc.bounds {
+			s.Run(path+"="+v+" is allowed", func() {
+				_, err := status.Compile(&status.CompileInput{ID: "well-fed", Status: json.RawMessage(tc.doc(v))})
+				s.Require().NoError(err)
+			})
+		}
+		for _, v := range append(tc.past, "9223372036854775807") {
+			s.Run(path+"="+v+" is refused", func() { s.refused(tc.doc(v), path+": "+tc.refusal) })
+		}
+	}
+}
+
+// EACH WHEN_GIVEN WORD COMES BACK AS ITS OWN KIND: the act's kind is the word
+// the author wrote. Catches a second word mapped to heal (or any act's kind
+// fixed rather than read from the word matched).
+func (s *statusSuite) TestEachWhenGivenWordIsItsOwnKind() {
+	found := 0
+	for _, w := range status.Words(&status.WordsInput{}).Words {
+		if w.Place != status.PlaceWhenGiven {
+			continue
+		}
+		found++
+		doc := strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"`+w.Word+`":3}]`, 1)
+		out, err := status.Compile(&status.CompileInput{ID: "well-fed", Status: json.RawMessage(doc)})
+		s.Require().NoError(err, w.Word)
+		s.Equal([]status.WhenGivenAct{{Kind: status.WhenGivenKind(w.Word), Amount: 3}}, out.WhenGiven)
+	}
+	s.Positive(found, "the table has a when_given word")
+	s.Equal(status.WhenGivenKind("heal"), status.WhenGivenHeal)
 }
 
 // withChange is the cook's status with its one change replaced.
