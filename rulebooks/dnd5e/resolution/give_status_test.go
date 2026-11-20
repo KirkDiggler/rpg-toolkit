@@ -23,14 +23,16 @@ import (
 )
 
 // wellFedLibrary is a status an author wrote: it lasts until the holder's run
-// ends, and grants advantage on Charisma checks and Constitution saves.
+// ends, and grants advantage on Charisma and Strength checks and on
+// Constitution saves.
 const wellFedLibrary = `{
  "parts":{
   "cha-checks":{"kind":"advantage","params":{"on":"ability_check"},"when":{"fact":{"name":"action.ability","op":"eq","value":"cha"}}},
   "con-saves":{"kind":"advantage","params":{"on":"saving_throw"},"when":{"fact":{"name":"action.ability","op":"eq","value":"con"}}},
+  "str-checks":{"kind":"advantage","params":{"on":"ability_check"},"when":{"fact":{"name":"action.ability","op":"eq","value":"str"}}},
   "run-end":{"kind":"end_on","params":{"beat":"run_end","reason":"run_ended"}}
  },
- "benefit_sets":{"fed":["cha-checks","con-saves"]},
+ "benefit_sets":{"fed":["cha-checks","con-saves","str-checks"]},
  "definitions":{
   "well-fed":{"name":"Well fed","coordinator":"recipient","maintenance":[{"key":"run-end","part":"run-end"}],"benefits":[{"key":"fed","set":"fed"}]}
  }
@@ -143,9 +145,8 @@ func (s *GiveStatusTestSuite) TestACharacterHoldsItAfterAReloadAndItGrantsTheRol
 	s.Equal(dnd5eEvents.KeepAdvantage, keep.Rule)
 	s.True(grantedBy(keep, wellFedName), "the status names itself as the advantage's source: %+v", keep.Granted)
 
-	// The plan's risk, recorded: one status is two linked conditions on the
-	// sheet (its coordinator and its benefit). This pins how many rows the
-	// player's status view shows for it.
+	// One status is two linked conditions on the sheet (its coordinator and
+	// its benefit); the player's status view shows it once.
 	loaded, err := character.Load(s.ctx, saved)
 	s.Require().NoError(err)
 	view, err := loaded.StatusView(&character.StatusViewInput{})
@@ -156,7 +157,32 @@ func (s *GiveStatusTestSuite) TestACharacterHoldsItAfterAReloadAndItGrantsTheRol
 			rows++
 		}
 	}
-	s.Equal(2, rows, "one status shows as this many rows in the status view")
+	s.Equal(1, rows, "one status shows as one row in the status view")
+}
+
+// A BARE-ABILITY ROUTE SEES THE STATUS: picking a lock with Strength, a route
+// that names an ability and no skill, carries the Strength-guarded advantage
+// naming the status; a Dexterity route carries none of it.
+func (s *GiveStatusTestSuite) TestABareAbilityLockCheckCarriesTheAdvantage() {
+	fixtures := s.fixtures()
+	out, err := s.give(s.interaction(fixtures,
+		Participant{Character: fixtures.saver(14)}, Participant{Character: fixtures.bard(1)}), heroID, "well-fed:hero")
+	s.Require().NoError(err)
+	saved := fixtures.sheet(out.Resolved, heroID)
+
+	strength, err := MakeCheck(s.ctx, &CheckInput{
+		Character: saved, Approaches: []encounter.CheckApproach{route(string(abilities.STR), 10)},
+		Roller: dice.NewRoller(),
+	})
+	s.Require().NoError(err)
+	s.True(grantedBy(keepOf(s.T(), strength.Calculation), wellFedName), "a bare Strength route carries the status's advantage")
+
+	dexterity, err := MakeCheck(s.ctx, &CheckInput{
+		Character: saved, Approaches: []encounter.CheckApproach{route(string(abilities.DEX), 10)},
+		Roller: dice.NewRoller(),
+	})
+	s.Require().NoError(err)
+	s.False(grantedBy(keepOf(s.T(), dexterity.Calculation), wellFedName), "a bare Dexterity route does not")
 }
 
 // A MONSTER KEEPS IT ACROSS A SAVE too, and a Constitution save rolled from

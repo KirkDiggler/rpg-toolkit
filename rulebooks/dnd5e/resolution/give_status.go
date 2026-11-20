@@ -213,7 +213,7 @@ func (m *giveStatusMachine) Start(_ context.Context, cast *Participants) (Step, 
 			return nil, err
 		}
 		if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
-			Target: coordinator, Condition: owner.Condition, ApplicationID: m.in.ApplicationID,
+			Target: coordinator, Source: dnd5eEvents.ConditionSourceSite, Condition: owner.Condition, ApplicationID: m.in.ApplicationID,
 		}); err != nil {
 			return nil, fmt.Errorf("give status %q to %q: %w", m.in.StatusID, member, err)
 		}
@@ -233,7 +233,7 @@ func (m *giveStatusMachine) Start(_ context.Context, cast *Participants) (Step, 
 				delivery.applicationID = m.in.ApplicationID
 				delivery.memberKey = made.Candidate.Key
 			}
-			replaced, err := publishCondition(ctx, bus, cast, delivery, target, "")
+			replaced, err := publishCondition(ctx, bus, cast, delivery, target, dnd5eEvents.ConditionSourceSite)
 			if err != nil {
 				return nil, err
 			}

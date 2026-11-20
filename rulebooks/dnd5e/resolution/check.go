@@ -232,11 +232,19 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 	// and this package is the only lawful supplier.
 	ref, name := checkApproachSource(applied, skill)
 	route := dnd5eEvents.RollSource{Ref: ref, Name: name}
+	// A bare-ability route (a lock's Strength check) names its ability, so an
+	// effect guarded on an ability answers for it; a skill route's ability is
+	// the skill's, which the rules package fills in.
+	var ability abilities.Ability
+	if skill == "" {
+		ability = abilities.Ability(applied.Ability)
+	}
 	result, checkErr := checks.MakeAbilityCheck(ctx, &checks.AbilityCheckInput{
 		Roller:    in.Roller,
 		EventBus:  surf,
 		CheckerID: one.ID(),
 		Skill:     skill,
+		Ability:   ability,
 		DC:        applied.DC,
 		Modifier:  modifier,
 		// The route names both the die and the modifier; the rules package
