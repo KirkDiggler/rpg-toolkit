@@ -166,15 +166,12 @@ func containsWord(words []string, w string) bool {
 
 // statusesOf compiles every declared status to canonical JSON — keys sorted
 // at every depth — so a status hashes the same however its YAML was laid out.
-// Nil when the site declares none.
+// Empty when the site declares none.
 //
 // FAILS CLOSED: a status that cannot be written is an error naming it, never
 // a status quietly dropped — a dropped one would leave every row that gives
 // it compiling with no grant.
 func statusesOf(statuses map[string]StatusSpec) (map[string]json.RawMessage, error) {
-	if len(statuses) == 0 {
-		return nil, nil
-	}
 	out := make(map[string]json.RawMessage, len(statuses))
 	for _, id := range sortedStatusIDs(statuses) {
 		st := statuses[id]
