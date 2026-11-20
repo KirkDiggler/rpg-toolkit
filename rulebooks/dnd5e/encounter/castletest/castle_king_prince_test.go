@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // The rightful king's ids, as the file gives them.
@@ -40,19 +41,34 @@ var (
 	eastInTheCell  = castleCell(-18, 13)
 )
 
-// princeScene is the jail with the hero walked to the rightful king and
-// the king's purpose said: built once, before any test, and loaded by each
-// test that starts from it. Nobody knows the drain yet, and he is the
-// party's to take on.
+// princeScene is the cells scene played twice from the jail, once before
+// any test, and loaded by each test that reads it. The hero walks to the
+// rightful king (nobody knows the drain yet, and he is civil) and says the
+// king's purpose; then, from there:
+//
+//   - recruited: the hero takes him on, walks east across the cell and
+//     steps on twice, which gives him rounds to follow;
+//   - left: the hero leaves him and walks to the drain.
 var princeScene struct {
-	once sync.Once
-	err  error
-	blob []byte
+	once      sync.Once
+	err       error
+	post      spatial.Position
+	recruited []byte
+	left      []byte
 }
 
 // princeSceneTests are the tests that start from [princeScene].
 var princeSceneTests = []string{
 	"TestMadKingTheRightfulKingJoinsAndShowsTheWayOut", "TestMadKingTheRightfulKingLeftBehindStillTellsTheWay",
+}
+
+// princeHost is the jail's host, not saved and loaded back between rounds:
+// the cells' walks are short, and the reload is proved on its own route.
+func princeHost() castleHost {
+	host := arrestScene.host
+	host.noReload = true
+
+	return host
 }
 
 // buildThePrinceScene plays [princeScene] from the jailed scene.
@@ -68,31 +84,41 @@ func buildThePrinceScene() {
 	}()
 	jailedScene.once.Do(buildTheJailedScene)
 	require.NoError(tb, jailedScene.err)
-	s := loadTheSceneOn(tb, jailedScene.blob, arrestScene.compiled, arrestScene.host)
+	s := loadTheSceneOn(tb, jailedScene.blob, arrestScene.compiled, princeHost())
 	require.Equal(tb, theCells, s.regionOf(s.at(hero)), "precondition: the hero was marched to the cells")
 	require.Equal(tb, theCells, s.regionOf(s.at(kingPrince)), "the rightful king is in the cells")
+	princeScene.post = s.at(kingPrince)
 	s.walkTo(s.at(kingPrince))
 	require.Equal(tb, theCells, s.regionOf(s.at(hero)))
 	_, err := s.enc.PropOptionsFor(hero, kingCellDrain)
 	require.ErrorIs(tb, err, encounter.ErrNoProp, "precondition: nobody knows the drain is there")
 	require.Equal(tb, encounter.StanceNeutral, s.stance(trueCrown, encounter.FactionParty), "he is civil to the party")
+	require.True(tb, s.offersTo(hero, kingPrince, "join-us"))
 	s.sayPlain(kingPrince, "kill-the-king")
-	princeScene.blob, err = json.Marshal(s.enc.ToData())
+	talked, err := json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+
+	s.sayPlain(kingPrince, "join-us")
+	s.walkTo(eastInTheCell)
+	s.stepAway(kingPrince)
+	s.stepAway(kingPrince)
+	princeScene.recruited, err = json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+
+	s = loadTheSceneOn(tb, talked, arrestScene.compiled, princeHost())
+	s.sayPlain(kingPrince, "leave-him")
+	s.walkTo(besideTheDrain)
+	princeScene.left, err = json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
 }
 
-// toThePrince loads [princeScene] into a fresh run.
-func toThePrince(t *testing.T) *kingScene {
+// princeSceneFrom loads one of [princeScene]'s saved runs.
+func princeSceneFrom(t *testing.T, which func() []byte) *kingScene {
 	t.Helper()
 	princeScene.once.Do(buildThePrinceScene)
 	require.NoError(t, princeScene.err)
 
-	// The jail's host, not saved and loaded back between rounds: the
-	// cells' walks are short, and the reload is proved on its own route.
-	host := arrestScene.host
-	host.noReload = true
-
-	return loadTheSceneOn(t, princeScene.blob, arrestScene.compiled, host)
+	return loadTheSceneOn(t, which(), arrestScene.compiled, princeHost())
 }
 
 // sayPlain has the hero say one of a creature's plain lines: no check.
@@ -131,14 +157,11 @@ func (s *kingScene) throughTheDrain() {
 
 // TestMadKingTheRightfulKingJoinsAndShowsTheWayOut: taken on with no check,
 // the rightful king's side is the party's and the king's court his enemy;
-// he follows the hero across the cell, and the hero knows the drain and
+// he followed the hero across the cell, and the hero knows the drain and
 // takes it out to the armoury, out of the gate's sight.
 func TestMadKingTheRightfulKingJoinsAndShowsTheWayOut(t *testing.T) {
 	t.Parallel()
-	s := toThePrince(t)
-	require.True(t, s.offersTo(hero, kingPrince, "join-us"))
-
-	s.sayPlain(kingPrince, "join-us")
+	s := princeSceneFrom(t, func() []byte { return princeScene.recruited })
 
 	require.True(t, s.learners("prince-recruited")[kingPrince], "he took the party's offer")
 	require.Equal(t, encounter.StanceAllied, s.stance(trueCrown, encounter.FactionParty), "his side is the party's")
@@ -146,10 +169,7 @@ func TestMadKingTheRightfulKingJoinsAndShowsTheWayOut(t *testing.T) {
 	require.Equal(t, encounter.StanceHostile, s.stance(trueCrown, loyalists), "the king's court is his enemy")
 	require.False(t, s.offersTo(hero, kingPrince, "join-us"), "taken on once")
 
-	post := s.at(kingPrince)
-	s.walkTo(eastInTheCell)
-	s.stepAway(kingPrince)
-	s.stepAway(kingPrince)
+	post := princeScene.post
 	require.Positive(t, s.pickedTowardAlly(kingPrince), "he follows the party")
 	require.NotEqual(t, post, s.at(kingPrince), "he left where he stood")
 	require.Less(t, s.enc.Distance(s.at(kingPrince), s.at(hero)), s.enc.Distance(post, s.at(hero)),
@@ -163,14 +183,10 @@ func TestMadKingTheRightfulKingJoinsAndShowsTheWayOut(t *testing.T) {
 // not the party's side and holds where he stands, and still tells the drain.
 func TestMadKingTheRightfulKingLeftBehindStillTellsTheWay(t *testing.T) {
 	t.Parallel()
-	s := toThePrince(t)
-	post := s.at(kingPrince)
-
-	s.sayPlain(kingPrince, "leave-him")
+	s := princeSceneFrom(t, func() []byte { return princeScene.left })
 
 	require.False(t, s.learners("prince-recruited")[kingPrince])
 	require.Equal(t, encounter.StanceNeutral, s.stance(trueCrown, encounter.FactionParty), "left, he is not the party's side")
-	s.walkTo(besideTheDrain)
 	s.throughTheDrain()
-	require.Equal(t, post, s.at(kingPrince), "he stays in the cell")
+	require.Equal(t, princeScene.post, s.at(kingPrince), "he stays in the cell")
 }
