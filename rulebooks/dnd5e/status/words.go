@@ -16,8 +16,8 @@ import (
 type Place string
 
 const (
-	// PlaceStatus is the status itself: name, changes and maintenance, three
-	// of its four top-level words; the fourth, again, has a place of its own.
+	// PlaceStatus is the status itself: name, changes, maintenance and
+	// when_given; its other top-level word, again, has a place of its own.
 	PlaceStatus Place = "status"
 	// PlaceChange is one entry of changes: what the status does.
 	PlaceChange Place = "change"
@@ -25,9 +25,12 @@ const (
 	PlaceWhen Place = "when"
 	// PlaceMaintenance is one rule of maintenance: what ends the status.
 	PlaceMaintenance Place = "maintenance rule"
-	// PlaceAgain is again, the status's fourth top-level word, whose closed
-	// values say what a second giving does.
+	// PlaceAgain is again, a top-level word of the status, whose closed values
+	// say what a second giving does.
 	PlaceAgain Place = "again"
+	// PlaceWhenGiven is one entry of when_given: something done once, when the
+	// status is first given, not while it is held.
+	PlaceWhenGiven Place = "when given"
 )
 
 // Shape is what an authored word takes as its value.
@@ -40,6 +43,8 @@ const (
 	ShapeListOf Shape = "list of"
 	// ShapeWholeNumber takes a whole number other than zero, signed.
 	ShapeWholeNumber Shape = "whole number"
+	// ShapePositiveWholeNumber takes a whole number of one or more.
+	ShapePositiveWholeNumber Shape = "positive whole number"
 	// ShapeText takes non-empty text.
 	ShapeText Shape = "text"
 	// ShapeList takes a list of entries, each written with the words of
@@ -101,10 +106,15 @@ const (
 	wordChanges     = "changes"
 	wordMaintenance = "maintenance"
 	wordAgain       = "again"
+	wordWhenGiven   = "when_given"
 
 	wordAdvantage  = "advantage"
 	wordResistance = "resistance"
 	wordDamage     = "damage"
+	wordMaxHP      = "max_hit_points"
+	wordInitiative = "initiative"
+
+	wordHeal = "heal"
 
 	wordWhen = "when"
 
@@ -139,6 +149,7 @@ var table = []entry{
 	{place: PlaceStatus, word: wordName, shape: ShapeText, label: "the name players see"},
 	{place: PlaceStatus, word: wordChanges, shape: ShapeList, label: "what the status changes"},
 	{place: PlaceStatus, word: wordMaintenance, shape: ShapeList, label: "what ends the status; any one rule ends it"},
+	{place: PlaceStatus, word: wordWhenGiven, shape: ShapeList, label: "what happens once, when the status is first given"},
 	{place: PlaceAgain, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
 		{word: "ignored", label: "a second giving is ignored"},
 	}},
@@ -151,6 +162,8 @@ var table = []entry{
 	}},
 	{place: PlaceChange, word: wordResistance, shape: ShapeListOf, label: "resistance to {value} damage", values: damageValues()},
 	{place: PlaceChange, word: wordDamage, shape: ShapeWholeNumber, label: "{value} to the damage the holder deals"},
+	{place: PlaceChange, word: wordMaxHP, shape: ShapePositiveWholeNumber, label: "raises the holder's hit point maximum by {value}"},
+	{place: PlaceChange, word: wordInitiative, shape: ShapePositiveWholeNumber, label: "adds {value} to the holder's initiative"},
 	{place: PlaceChange, word: wordWhen, shape: ShapeEntries, label: "narrows the change it sits beside"},
 
 	{place: PlaceWhen, word: wordAbility, shape: ShapeOneOf, label: "only when the ability is {value}", values: abilityValues()},
@@ -165,6 +178,8 @@ var table = []entry{
 		{word: "next turn", label: "ends when the holder's next turn starts", to: "turn_start", reason: "next_turn"},
 		{word: "dropped to zero", label: "ends when the holder drops to zero hit points", to: "dropped_to_zero", reason: "dropped_to_zero"},
 	}},
+
+	{place: PlaceWhenGiven, word: wordHeal, shape: ShapePositiveWholeNumber, label: "heals the holder by {value} when given"},
 }
 
 // changeWhen is which when words each change word may use, for a change whose
@@ -172,6 +187,15 @@ var table = []entry{
 var changeWhen = map[string][]string{
 	wordResistance: nil,
 	wordDamage:     {wordAbility, wordAttack},
+	wordMaxHP:      nil,
+	wordInitiative: nil,
+}
+
+// changeKind is the effect part kind each fixed-number change word maps to.
+var changeKind = map[string]string{
+	wordDamage:     "damage_bonus",
+	wordMaxHP:      "hit_point_maximum",
+	wordInitiative: "initiative_bonus",
 }
 
 func abilityValues() []value {

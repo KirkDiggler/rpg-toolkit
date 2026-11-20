@@ -27,7 +27,8 @@ type CompileInput struct {
 	ID string
 
 	// Status is the status in the author's words, as JSON:
-	// {"name":…, "changes":[…], "maintenance":[…], "again":…}.
+	// {"name":…, "changes":[…], "maintenance":[…], "again":…}, with an
+	// optional "when_given":[…].
 	Status json.RawMessage
 }
 
@@ -42,6 +43,27 @@ type CompileOutput struct {
 
 	// DefinitionID is the status's definition inside Library.
 	DefinitionID string
+
+	// WhenGiven is what the status does once, when it is given, in the order
+	// the author wrote it; nil when the author wrote no when_given. These are
+	// not effect parts and are not in Library: the caller runs them, and runs
+	// them only on a FIRST giving — a member who already holds the status, and
+	// so is answered "already held", receives none of them again.
+	WhenGiven []WhenGivenAct
+}
+
+// WhenGivenKind names one thing a status does once, when it is given.
+type WhenGivenKind string
+
+// WhenGivenHeal heals the holder by the act's Amount of hit points.
+const WhenGivenHeal WhenGivenKind = "heal"
+
+// WhenGivenAct is one thing a status does once, when it is given.
+type WhenGivenAct struct {
+	// Kind is what is done.
+	Kind WhenGivenKind
+	// Amount is how much: a whole number of one or more.
+	Amount int
 }
 
 // Compile turns a status written in an author's words into the definition
@@ -54,6 +76,11 @@ type CompileOutput struct {
 // its own changes. "again": "ignored" adds nothing to the library — a second
 // giving is answered by resolution's GiveStatus, which gives nothing to a
 // member already holding the status.
+//
+// when_given is optional and returns as [CompileOutput.WhenGiven], beside the
+// library rather than in it. changes stays required even beside a when_given:
+// the engine's definitions need at least one benefit, so a status that only
+// heals once is not one this engine can hold.
 func Compile(in *CompileInput) (*CompileOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("%w: no input", ErrBadStatus)
@@ -77,7 +104,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	if _, err := conditions.CompileDefinitions(&conditions.CompileDefinitionsInput{Data: library}); err != nil {
 		return nil, fmt.Errorf("%w: %q compiles to a definition the engine refuses: %w", ErrBadStatus, id, err)
 	}
-	return &CompileOutput{Name: c.name, Library: library, DefinitionID: id}, nil
+	return &CompileOutput{Name: c.name, Library: library, DefinitionID: id, WhenGiven: c.whenGiven}, nil
 }
 
 // compiler gathers one status's library pieces.
@@ -87,6 +114,7 @@ type compiler struct {
 	parts       map[string]any
 	benefits    []string
 	maintenance []string
+	whenGiven   []WhenGivenAct
 }
 
 func (c *compiler) status(top map[string]jsontext.Value) error {
@@ -124,6 +152,40 @@ func (c *compiler) status(top map[string]jsontext.Value) error {
 		if err := c.rule(raw, fmt.Sprintf("%s[%d]", wordMaintenance, i)); err != nil {
 			return err
 		}
+	}
+	if raw, ok := top[wordWhenGiven]; ok {
+		acts, err := list(raw, wordWhenGiven)
+		if err != nil {
+			return err
+		}
+		for i, raw := range acts {
+			if err := c.act(raw, fmt.Sprintf("%s[%d]", wordWhenGiven, i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// act reads one when_given entry: one word, done once when the status is
+// given.
+func (c *compiler) act(raw jsontext.Value, path string) error {
+	fields, err := object(raw, path, PlaceWhenGiven)
+	if err != nil {
+		return err
+	}
+	if len(fields) != 1 {
+		return fmt.Errorf("%w: %s: one act per entry; an act is one of: %s", ErrBadStatus, path, wordsAt(PlaceWhenGiven))
+	}
+	for word, value := range fields {
+		if _, ok := lookup(PlaceWhenGiven, word); !ok {
+			return fmt.Errorf("%w: %s.%s: not something done when given; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceWhenGiven))
+		}
+		n, err := positive(value, path+"."+word)
+		if err != nil {
+			return err
+		}
+		c.whenGiven = append(c.whenGiven, WhenGivenAct{Kind: WhenGivenHeal, Amount: n})
 	}
 	return nil
 }
@@ -175,7 +237,15 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 		if err := jsonv2.Unmarshal(fields[kind], &n); err != nil || n == 0 {
 			return fmt.Errorf("%w: %s: must be a whole number other than zero, such as 2 or -1", ErrBadStatus, at)
 		}
-		part["kind"] = "damage_bonus"
+		part["kind"] = changeKind[kind]
+		part["amount"] = map[string]any{"fixed": n}
+		whenWords = changeWhen[kind]
+	case wordMaxHP, wordInitiative:
+		n, err := positive(fields[kind], at)
+		if err != nil {
+			return err
+		}
+		part["kind"] = changeKind[kind]
 		part["amount"] = map[string]any{"fixed": n}
 		whenWords = changeWhen[kind]
 	}
@@ -307,6 +377,15 @@ func list(raw jsontext.Value, path string) ([]jsontext.Value, error) {
 		return nil, fmt.Errorf("%w: %s: must be a list", ErrBadStatus, path)
 	}
 	return items, nil
+}
+
+// positive decodes a whole number of one or more.
+func positive(raw jsontext.Value, path string) (int, error) {
+	var n int
+	if err := jsonv2.Unmarshal(raw, &n); err != nil || n < 1 {
+		return 0, fmt.Errorf("%w: %s: must be a whole number of one or more, such as 1 or 2", ErrBadStatus, path)
+	}
+	return n, nil
 }
 
 func oneOf(e entry, raw jsontext.Value, path string) (value, error) {
