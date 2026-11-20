@@ -114,16 +114,19 @@ func (s *initiativeRulesSuite) TestEndingTheHeldEffectLeavesOnlyTheRule() {
 	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}}, s.initiative(w, "B").Contributions)
 }
 
-// Catches the rule leaking onto the sheet: it is not in the saved data, not
+// Catches the rule leaking onto the sheet: it is not in the saved data of a
+// member holding an initiative status beside it (so a rule saved with the
+// held effect would show here), not
 // a condition the sheet holds, not a status-view row, and survives a reload
 // because it is read, not loaded.
 func (s *initiativeRulesSuite) TestTheRuleIsNeverOnTheSheet() {
 	w, defs := s.setup()
 	s.give(w, defs, "well-fed", "B")
-	data, err := w.holder("A").ToData()
+	data, err := w.holder("B").ToData()
 	s.Require().NoError(err)
 	raw, err := json.Marshal(data)
 	s.Require().NoError(err)
+	s.Require().Contains(string(raw), "Well fed", "the held status is saved, so the check below is beside it")
 	for _, needle := range []string{"dexterity-initiative", "every-creature", "\"rules\"", "ability_modifier"} {
 		s.NotContains(string(raw), needle)
 	}

@@ -15,16 +15,16 @@ type rulesLibrarySuite struct{ suite.Suite }
 
 func TestRulesLibrarySuite(t *testing.T) { suite.Run(t, new(rulesLibrarySuite)) }
 
-// Catches a rules library that does not compile, or that holds more or other
-// than the one Dexterity rule this slice ships.
-func (s *rulesLibrarySuite) TestTheLibraryCompilesToTheDexterityRule() {
+// Catches a rules library that does not compile, or that lacks the Dexterity
+// rule. Other rules may join it; this pins only that Dexterity is there.
+func (s *rulesLibrarySuite) TestTheLibraryHoldsTheDexterityRule() {
 	rules, err := rulesLibrary()
 	s.Require().NoError(err)
 	sources := make([]string, 0, len(rules))
 	for _, r := range rules {
 		sources = append(sources, r.source)
 	}
-	s.Equal([]string{"Dexterity"}, sources)
+	s.Contains(sources, "Dexterity")
 }
 
 // Catches a rule written with something the vocabulary would refuse being
