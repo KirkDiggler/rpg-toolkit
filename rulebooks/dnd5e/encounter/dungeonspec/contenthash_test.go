@@ -71,7 +71,7 @@ func TestTheContentHashNamesWhatTheAuthorWrote(t *testing.T) {
 	require.Equal(t, c, contentHashOf(t, hashEdited(t, castle, "when: { ability: charisma }", "when:\n          ability: charisma")),
 		"a status's layout is not content")
 
-		// WHAT THE TYPES' JSON DROPS (rpg-project#1001): a void and an
+	// WHAT THE TYPES' JSON DROPS (rpg-project#1001): a void and an
 	// orientation encode as {}, and still change the hash.
 	tomb := fileOf(t, "testdata/reference-tomb.yaml")
 	require.NotEqual(t, contentHashOf(t, tomb), contentHashOf(t, hashEdited(t, tomb, "void: opaque", "void: transparent")),
