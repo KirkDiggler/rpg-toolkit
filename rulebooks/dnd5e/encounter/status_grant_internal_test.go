@@ -14,7 +14,7 @@ import (
 // is refused only for having no id or no object; inside it nothing is read;
 // an interaction's outcome gives none; one grant is one kind.
 func TestAStatusGrantIsRefusedWhereNobodyCouldMeanIt(t *testing.T) {
-	ok := &StatusGrant{ID: "warmed-up", Status: json.RawMessage(`{"name":"Warmed up","changes":["anything"]}`)}
+	ok := &StatusGrant{ID: "warmed-up", Status: json.RawMessage(`{"name":"Warmed up","changes":["anything"]}`), To: "speaker"}
 	require.NoError(t, validateConsequence("row", Consequence{ApplyStatus: ok}, false), "the inside is the rules' to judge")
 	for name, g := range map[string]*StatusGrant{
 		"no id":         {Status: json.RawMessage(`{}`)},

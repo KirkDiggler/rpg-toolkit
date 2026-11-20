@@ -43,7 +43,7 @@ func (b *builder) statusStatements() []Statement {
 	out := make([]Statement, 0, len(ids))
 	for _, id := range ids {
 		name := b.statusName(id)
-		s := fmt.Sprintf("The status %s, named %s, is a status effect a line's row can give its speaker. What it changes "+
+		s := fmt.Sprintf("The status %s, named %s, is a status effect a line's row can give. What it changes "+
 			"and what ends it are written in its own words under %s, and the rules judge them when it is given.",
 			quote(id), said(name), quote("statuses."+id))
 		out = append(out, b.fstmt(KindStatus, Subject{Kind: ConnStatus, ID: id}, "statuses."+id, s,
@@ -52,16 +52,39 @@ func (b *builder) statusStatements() []Statement {
 	return out
 }
 
-// statusGrantStatement says a row's `apply_status`: the speaker is given the
-// status, by name, with a connection to it.
+// RoleReceives is the role of a status grant's connection to who receives
+// it: {who, <word>, receives, at: <status id>} (rpg-project#990).
+const RoleReceives = "receives"
+
+// statusGrantStatement says a row's `apply_status`: who receives the status,
+// in plain words, and the status by name, with a connection to the status
+// and one to the who-word that receives it.
 func (b *builder) statusGrantStatement(g encounter.StatusGrant, lead, path string, t lineTarget, f foldInfo) Statement {
 	name := b.statusName(g.ID)
-	who := "the speaker"
-	if t.done {
-		who = "the one who did it"
-	}
+	who, short := receiverWords(g.To, t)
 	s := fmt.Sprintf("%s, %s is given the status %s (%s). The rules apply it to them; a second giving does what the status's "+
 		"`again` says.", lead, who, said(name), quote(g.ID))
-	f.text = "gives the speaker the status " + said(name)
-	return b.fstmt(KindLineGrant, t.about, path+".apply_status", s, f, Connection{Kind: ConnStatus, ID: g.ID, Role: RoleGives})
+	f.text = "gives " + short + " the status " + said(name)
+	return b.fstmt(KindLineGrant, t.about, path+".apply_status", s, f,
+		Connection{Kind: ConnStatus, ID: g.ID, Role: RoleGives},
+		Connection{Kind: ConnWho, ID: g.To, Role: RoleReceives, At: g.ID})
+}
+
+// receiverWords is who receives a status, in full and folded: the speaker
+// (the one who did it, for a thing done) whether or not anyone sees them;
+// the speaker's party the creature spoken to sees; or that creature.
+func receiverWords(to string, t lineTarget) (full, short string) {
+	switch to {
+	case string(encounter.RecognitionSpeaker):
+		if t.done {
+			return "the one who did it, whether or not anyone sees them,", "the one who did it"
+		}
+		return "the speaker, whether or not anyone sees them,", "the speaker"
+	case string(encounter.RecognitionPartyInSight):
+		return fmt.Sprintf("each member of the speaker's party that %s sees at that moment (the speaker too, if seen)", t.name),
+			"the speaker's side in its sight"
+	case string(encounter.RecognitionSpokenTo):
+		return fmt.Sprintf("the one the line is said to, %s,", t.name), "the one spoken to"
+	}
+	return fmt.Sprintf("%q (a word this build cannot say)", to), fmt.Sprintf("%q", to)
 }

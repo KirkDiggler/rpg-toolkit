@@ -87,7 +87,7 @@ conversations:
           - noted: admitted
         success:
           - say: Eat, then.
-            apply_status: welcomed
+            apply_status: { status: welcomed, to: speaker }
           - say: Here is the invitation.
             tells: invitation
       - id: the-hall

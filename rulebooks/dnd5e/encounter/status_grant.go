@@ -54,10 +54,10 @@ type StatusGrant struct {
 	// as canonical JSON. The encounter never reads inside it.
 	Status json.RawMessage `json:"status"`
 
-	// To is who receives it: a word of [WhoInApplyStatusTo]. EMPTY IS THE
-	// SPEAKER for now — the short form `apply_status: <id>` the dungeonspec
-	// grammar still compiles, and a grant saved before this field — until the
-	// grammar requires the word (rpg-project#990).
+	// To is who receives it: a word of [WhoInApplyStatusTo]. REQUIRED, and
+	// never defaulted (rpg-project#990): a grant with none — a run saved by
+	// an engine from before this field — is refused when it is set up or
+	// loaded, saying the run must be started again.
 	To string `json:"to,omitzero"`
 }
 
@@ -82,7 +82,11 @@ func validateStatusGrant(what string, g StatusGrant) error {
 	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
 		return fmt.Errorf("%s gives status %q, whose authored block is not a JSON object", what, g.ID)
 	}
-	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); g.To != "" && !ok {
+	if g.To == "" {
+		return fmt.Errorf("%s gives status %q and does not say who receives it: this game was saved by an older "+
+			"version, and a status effect's receiver is now always stated; start a new game", what, g.ID)
+	}
+	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); !ok {
 		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",
 			what, g.ID, g.To, WhoWordsIn(WhoInApplyStatusTo))
 	}

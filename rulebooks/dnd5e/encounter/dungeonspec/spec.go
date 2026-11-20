@@ -1374,6 +1374,67 @@ type OutcomeSpec struct {
 	Jail *JailSpec `yaml:"jail,omitempty" json:"jail,omitempty"`
 }
 
+// ApplyStatusSpec is a row's `apply_status:` ([encounter.StatusGrant],
+// rpg-project#990): the status given and who receives it, both REQUIRED.
+//
+//	apply_status: { status: held, to: party_in_sight }
+//
+// To is a word of [encounter.WhoInApplyStatusTo]: `speaker` (the one who
+// said the line, seen or not), `party_in_sight` (the speaker's party the one
+// spoken to sees) or `spoken_to` (the creature the line was said to). A
+// thing's line has nobody spoken to, so only `speaker` is written there.
+//
+// THE SHORT FORM IS REFUSED, NOT DEFAULTED: `apply_status: <id>` says
+// nothing about who receives it, so it decodes (into short) only for the
+// grammar to refuse at the author's path, saying what to write. Any key but
+// `status` and `to` decodes into others, refused the same way.
+type ApplyStatusSpec struct {
+	// Status is a status of this site's `statuses:`.
+	Status string `yaml:"status"`
+
+	// To is who receives it: a who-word of `apply_status.to`.
+	To string `yaml:"to"`
+
+	// short is the bare id the refused short form wrote; empty otherwise.
+	short string
+	// others is every key written beside `status` and `to`, refused.
+	others []string
+}
+
+// UnmarshalYAML reads `apply_status:` as a mapping of `status` and `to`,
+// keeping a bare scalar and any other key for the grammar to refuse at the
+// author's path (a custom unmarshaler bypasses the decoder's KnownFields).
+//
+// Errors: a value that is neither a scalar nor a mapping, or a mapping
+// value that is not a scalar.
+func (a *ApplyStatusSpec) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		a.short = value.Value
+		return nil
+	case yaml.MappingNode:
+	default:
+		return fmt.Errorf("line %d: apply_status is a mapping: write apply_status: { status: <id>, to: speaker }", value.Line)
+	}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		key, v := value.Content[i].Value, value.Content[i+1]
+		switch key {
+		case "status", "to":
+			if v.Kind != yaml.ScalarNode {
+				return fmt.Errorf("line %d: apply_status.%s is a single word", v.Line, key)
+			}
+			if key == "status" {
+				a.Status = v.Value
+			} else {
+				a.To = v.Value
+			}
+		default:
+			a.others = append(a.others, key)
+		}
+	}
+	return nil
+}
+
 // RelocateSpec is a row's `relocate:` ([encounter.RelocateGrant]): the
 // region its speaker is set down in, the words they are told, and the world
 // rounds it takes.
@@ -1700,15 +1761,16 @@ type AnswerSpec struct {
 	//	  - relocate: { to: region-chapel, words: You come out behind the altar. }
 	Relocate *RelocateSpec `yaml:"relocate,omitempty"`
 
-	// ApplyStatus is the status this row gives its speaker when it is a
-	// line's row and is the row answered (rpg-project#1024): the id of a
-	// status under the site's `statuses:` (statuses.go). On a creature's line
-	// or a prop's, success or failure row; a table row is refused.
+	// ApplyStatus is the status this row gives, and who receives it, when it
+	// is a line's row and is the row answered (rpg-project#1024, #990): the
+	// id of a status under the site's `statuses:` (statuses.go) and a
+	// who-word ([ApplyStatusSpec]). On a creature's line or a prop's, success
+	// or failure row; a table row is refused.
 	//
 	//	success:
 	//	  - say: Bless you. Here, eat.
-	//	    apply_status: warmed-up
-	ApplyStatus string `yaml:"apply_status,omitempty"`
+	//	    apply_status: { status: warmed-up, to: speaker }
+	ApplyStatus *ApplyStatusSpec `yaml:"apply_status,omitempty"`
 
 	// When is the condition this entry is on the table under
 	// (rpg-project#465, design §2). `time` ONLY: a social key IS the

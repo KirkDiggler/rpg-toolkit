@@ -63,7 +63,7 @@
                 "kind": "status",
                 "id": "welcomed"
               },
-              "sentence": "The status `welcomed`, named “Welcomed”, is a status effect a line's row can give its speaker. What it changes and what ends it are written in its own words under `statuses.welcomed`, and the rules judge them when it is given.",
+              "sentence": "The status `welcomed`, named “Welcomed”, is a status effect a line's row can give. What it changes and what ends it are written in its own words under `statuses.welcomed`, and the rules judge them when it is given.",
               "path": "statuses.welcomed"
             }
           ]
@@ -234,13 +234,19 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "When the line “We're expected.” (`guest`) is said, the speaker is given the status “Welcomed” (`welcomed`). The rules apply it to them; a second giving does what the status's `again` says.",
+              "sentence": "When the line “We're expected.” (`guest`) is said, the speaker, whether or not anyone sees them, is given the status “Welcomed” (`welcomed`). The rules apply it to them; a second giving does what the status's `again` says.",
               "path": "room.room.monsterBindings.porter.options[0].success[0].apply_status",
               "connects": [
                 {
                   "kind": "status",
                   "id": "welcomed",
                   "role": "gives"
+                },
+                {
+                  "kind": "who",
+                  "id": "speaker",
+                  "role": "receives",
+                  "at": "welcomed"
                 }
               ]
             }

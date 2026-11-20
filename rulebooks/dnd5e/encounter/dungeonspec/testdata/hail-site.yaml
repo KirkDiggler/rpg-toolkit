@@ -110,7 +110,7 @@ room:
               success: admitted
             success:
               - say: In you go.
-                apply_status: welcomed
+                apply_status: { status: welcomed, to: speaker }
         behaviors:
           - id: policy
             use: porter-policy
