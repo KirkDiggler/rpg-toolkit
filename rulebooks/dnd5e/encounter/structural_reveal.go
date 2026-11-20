@@ -157,6 +157,9 @@ func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
 	if len(w.FaceFinishes) > 0 {
 		row["face_finishes"] = wallFaceFinishesData(w.FaceFinishes)
 	}
+	if len(w.Sections) > 0 {
+		row["sections"] = wallSectionsData(w.Sections)
+	}
 	return row
 }
 
