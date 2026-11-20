@@ -10,14 +10,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestProve_RefusesUnreachable: a plan whose doors leave the hidden stash
-// with none is refused, naming the room, and no bytes come back.
+// TestProve_RefusesUnreachable: a site whose closet is walled off from the
+// party start, with no door, is refused, naming the region. It is cut from
+// [seatsSite] with the party seated in the hall, so the refusal is the
+// prover's reachability rule on a seven-cell site rather than a generated
+// 10,000-hex keep (a full compile of which is ~6s under -race).
 func TestProve_RefusesUnreachable(t *testing.T) {
-	p, err := LoadPlan(strings.NewReader(planWith(t, "  - [treasury, hidden-stash]\n", "")))
-	require.NoError(t, err)
-	doc, _, err := Generate(p, DefaultOptions())
-	require.ErrorContains(t, err, `region "hidden-stash" is unreachable from the party start through the doors`)
-	require.Nil(t, doc)
+	site := strings.Replace(seatsSite, "partyStart: { q: 0, r: 0 }", "partyStart: { q: 3, r: 0 }", 1)
+	require.NotEqual(t, seatsSite, site, "precondition: the party is moved into the hall")
+	compiled, err := Prove([]byte(site))
+	require.ErrorContains(t, err, `region "closet" is unreachable from the party start through the doors`)
+	require.Empty(t, compiled.Field.Regions, "a refused site comes back with nothing compiled")
 }
 
 // seatsSite is a loadable site whose start region is one cell, walled off
