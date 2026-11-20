@@ -648,6 +648,11 @@ type DirectOutput struct {
 // Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause],
 // [ErrBadMoveKind] for a kind that is not compelled or displaced, and
 // [ErrTurnPaused] while any walk is held.
+//
+// A COMPELLED directive on a member whose sheet says it cannot move under its
+// own power ([SheetFacts.CannotMove]) is not refused and moves nobody: it
+// returns Moved 0 with StoppedBy "cannot move: <what holds it>", and a
+// [BeatStayed] tells it (rpg-project#990). A displaced one moves them.
 func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, error) {
 	if in.Mover == "" {
 		return DirectOutput{}, fmt.Errorf("direct: %w", ErrNoMember)
@@ -684,6 +689,21 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	}
 	if len(in.Route) == 0 {
 		return DirectOutput{}, nil
+	}
+	// HELD BY AN EFFECT (rpg-project#990): a COMPELLED directive is the member
+	// moving under its own power on somebody else's order, and a held member
+	// does not walk. It stays; the story says why; whatever compelled it is
+	// untouched and NOT refused — no error, so the compeller's action stands.
+	// A displaced directive (a push or pull) is another's act and moves the
+	// held member as it moves anybody.
+	if in.Kind == MoveCompelled {
+		stayed, held, herr := e.stayHeldDirected(in.Mover, in.Cause)
+		if herr != nil {
+			return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, herr)
+		}
+		if held {
+			return DirectOutput{StoppedBy: stayed}, nil
+		}
 	}
 
 	// subjectBeat, subject is the mover — v1 still sends everyone

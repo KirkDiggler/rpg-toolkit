@@ -134,27 +134,56 @@ func (s *CannotMoveSuite) TestAHeldPlayerCannotStepOnTheirOwnTurn() {
 	s.Equal(cellAt(2, 2), whereIs(s.T(), enc, alice))
 }
 
-// Catches a hold copied onto the moves custody refuses: [encounter.Direct],
-// whatever kind its caller names, and a relocation are done TO the held
-// member, and move them.
+// Catches a hold copied onto the moves custody refuses: a push or pull (a
+// displaced [encounter.Direct]) and a relocation are done TO the held member,
+// and move them.
 func (s *CannotMoveSuite) TestMovesMadeOnTheHeldStillMoveThem() {
 	enc := s.twoPlayers(true)
-	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
-		from := whereIs(s.T(), enc, alice)
-		to := spatial.Position{X: from.X + 1, Y: from.Y}
-		out, err := enc.Direct(context.Background(), encounter.DirectInput{
-			Mover: alice, Cause: cmCause, Route: []spatial.Position{to}, Kind: kind,
-		})
-		s.Require().NoError(err, kind)
-		s.Equal(1, out.Moved, kind)
-		s.Equal(to, whereIs(s.T(), enc, alice), kind)
-	}
+	from := whereIs(s.T(), enc, alice)
+	to := spatial.Position{X: from.X + 1, Y: from.Y}
+	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: alice, Cause: cmCause, Route: []spatial.Position{to}, Kind: encounter.MoveDisplaced,
+	})
+	s.Require().NoError(err)
+	s.Equal(1, out.Moved)
+	s.Equal(to, whereIs(s.T(), enc, alice), "pushed, the held player moves")
 
-	_, err := enc.Relocate(&encounter.RelocateInput{
+	_, err = enc.Relocate(&encounter.RelocateInput{
 		Moves: []encounter.Relocation{{Member: alice, To: cellAt(8, 2)}}, Cause: relCause,
 	})
 	s.Require().NoError(err)
 	s.Equal(cellAt(8, 2), whereIs(s.T(), enc, alice), "set down somewhere else")
+}
+
+// Catches a compelled flee let through a hold, or one that errors the
+// compeller's action: commanded to flee, a held player moves under their own
+// power, so they stay, the story says why, and the directive answers with no
+// error — the command still landed. A member nothing holds flees.
+func (s *CannotMoveSuite) TestAHeldPlayerCommandedToFleeStaysPut() {
+	enc := s.twoPlayers(true)
+	from := whereIs(s.T(), enc, alice)
+	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: alice, Cause: cmCause, Route: []spatial.Position{{X: from.X + 1, Y: from.Y}}, Kind: encounter.MoveCompelled,
+	})
+	s.Require().NoError(err, "the compeller's action stands")
+	s.Zero(out.Moved)
+	s.Equal("cannot move: Held", out.StoppedBy)
+	s.Equal(from, whereIs(s.T(), enc, alice), "the held player stays")
+	var stayed []map[string]any
+	for _, b := range stayedBeats(storyBeats(s.T(), enc, alice)) {
+		if b["member"] == string(alice) {
+			stayed = append(stayed, b)
+		}
+	}
+	s.Require().NotEmpty(stayed)
+	s.Equal("cannot move: Held", stayed[len(stayed)-1]["why"])
+
+	bobFrom := whereIs(s.T(), enc, bob)
+	fled, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: bob, Cause: cmCause, Route: []spatial.Position{{X: bobFrom.X + 1, Y: bobFrom.Y}}, Kind: encounter.MoveCompelled,
+	})
+	s.Require().NoError(err)
+	s.Equal(1, fled.Moved, "a member nothing holds flees")
 }
 
 // Catches a cast whose landing carries a held caster off, and a hold that

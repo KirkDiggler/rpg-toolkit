@@ -17,10 +17,10 @@ import (
 // caster (rpg-project#990). It arrives as a [CannotMoveError], whose text is
 // the sentence the player is shown and whose HeldBy names what holds them.
 //
-// A move made ON the member — a push, a pull, [Encounter.Direct],
-// [Encounter.Relocate] — is never refused by it. A driven member's walk is
-// not refused with it either: that walk simply does not happen
-// ([MonsterView.CannotMove]).
+// A move made ON the member — a push or a pull (a displaced
+// [Encounter.Direct]), [Encounter.Relocate] — is never refused by it. Neither is a driven member's
+// walk nor a compelled [Encounter.Direct]: those simply do not happen
+// ([MonsterView.CannotMove], [DirectOutput.StoppedBy]).
 var ErrCannotMove = errors.New("encounter: cannot move under its own power")
 
 // CannotMoveError is the refusal of a held member's own move. It is
@@ -97,9 +97,32 @@ var intentCauseMove = core.Ref{Module: "encounter", Type: "intent", ID: "move"}
 // and the member's turn (or its share of the world's round) ends. It is not
 // an error: the round goes on for everybody else.
 func (e *Encounter) stayHeld(member MemberID, cause core.Ref, heldBy []string) (bool, map[MemberID]*IntelDelta, error) {
-	why := "cannot move: " + listNames(heldBy)
+	why := cannotMoveWhy(heldBy)
 	if err := e.appendStayedBeat(member, cause, why, uint64(e.clock.ToData().HighWater)); err != nil {
 		return false, nil, err
 	}
 	return true, nil, nil
 }
+
+// stayHeldDirected answers a compelled directive on a held member
+// (rpg-project#990): when the member's sheet names a hold, a [BeatStayed]
+// with the directive's cause and "cannot move: <what holds it>" is told and
+// that sentence returned with held true; nothing moves and nothing is
+// refused. A member nothing holds answers held false and nothing is told.
+func (e *Encounter) stayHeldDirected(member MemberID, cause core.Ref) (string, bool, error) {
+	facts, err := e.sheetOf(member)
+	if err != nil {
+		return "", false, err
+	}
+	if len(facts.CannotMove) == 0 {
+		return "", false, nil
+	}
+	why := cannotMoveWhy(facts.CannotMove)
+	if err := e.appendStayedBeat(member, cause, why, uint64(e.clock.ToData().HighWater)); err != nil {
+		return "", false, err
+	}
+	return why, true, nil
+}
+
+// cannotMoveWhy is a stayed beat's sentence for a held member.
+func cannotMoveWhy(heldBy []string) string { return "cannot move: " + listNames(heldBy) }

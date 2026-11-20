@@ -140,9 +140,10 @@ type SheetFacts struct {
 	// (a dash included), a cast whose landing moves its own caster, and a
 	// driven member's [Move] or [Routed] walk of any kind — its own choice or
 	// a compulsion's order (that walk does not happen; the member stays, told
-	// by a stayed beat, and its turn ends). It refuses NOTHING done to the
-	// member: a push or a pull, [Encounter.Direct], [Encounter.Relocate],
-	// being set down somewhere. Attacking, being attacked, speaking, sneaking and
+	// by a stayed beat, and its turn ends), and a compelled [Encounter.Direct]
+	// (the same: it stays, told, and the compeller's action stands). It
+	// refuses NOTHING done to the member: a push or a pull (a displaced
+	// [Encounter.Direct]), [Encounter.Relocate], being set down somewhere. Attacking, being attacked, speaking, sneaking and
 	// a fight forming are untouched.
 	//
 	// The names are carried verbatim into the refusal's sentence
