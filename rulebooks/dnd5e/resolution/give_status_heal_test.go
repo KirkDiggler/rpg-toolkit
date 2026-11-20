@@ -4,9 +4,13 @@
 package resolution
 
 import (
+	"context"
 	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/events"
+
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/status"
@@ -194,18 +198,66 @@ func (s *GiveStatusTestSuite) TestABadActIsRefusedBeforeAnythingIsGiven() {
 	}
 }
 
-// A HEAL THAT FAILS FAILS THE WHOLE GIVE: the sheet refuses ordinary healing
-// for a dead character, so the give errors and hands back no sheet to save —
-// the status is not recorded without its heal, and a retry is a fresh give.
-// Catches: swallowing the act's error and returning the status half-applied.
-func (s *GiveStatusTestSuite) TestAFailedHealLeavesNothingToSave() {
+// giveWatched gives a compiled status on a bus the test holds, and counts
+// every condition and heal published on it — what reached the in-memory
+// sheets, whether or not anything came back to be saved.
+func (s *GiveStatusTestSuite) giveWatched(interaction *Input, compiled *status.CompileOutput, member string) (given, heals int, out *Output, err error) {
+	machine, err := newGiveStatus(&GiveStatusInput{
+		Interaction: interaction, Member: member,
+		Library: compiled.Library, StatusID: compiled.DefinitionID,
+		SourceID: "cook", Source: cookRef(), ApplicationID: compiled.DefinitionID + ":" + member,
+		WhenGiven: compiled.WhenGiven,
+	})
+	s.Require().NoError(err)
+	bus := events.NewEventBus()
+	_, subErr := dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx, func(context.Context, dnd5eEvents.ConditionAppliedEvent) error {
+		given++
+		return nil
+	})
+	s.Require().NoError(subErr)
+	_, subErr = dnd5eEvents.HealingReceivedTopic.On(bus).Subscribe(s.ctx, func(context.Context, dnd5eEvents.HealingReceivedEvent) error {
+		heals++
+		return nil
+	})
+	s.Require().NoError(subErr)
+	interaction.Machine = machine
+	out, err = resolveOn(s.ctx, interaction, newSurface(bus))
+
+	return given, heals, out, err
+}
+
+// A DEFEATED MONSTER IS NOT REVIVED: ordinary healing refuses a monster at 0,
+// so a status that heals is refused whole before anything is given — no
+// condition and no heal reach its sheet. Catches: a status heal that skips the
+// rule ordinary healing applies (the monster's own handler would heal it).
+func (s *GiveStatusTestSuite) TestADefeatedMonsterIsRefusedAndStaysDown() {
+	compiled := s.compileStatus("fed", fedWords)
+	fixtures := s.fixtures()
+	down := fixtures.wolfData()
+	down.HitPoints = 0
+	given, heals, out, err := s.giveWatched(s.interaction(fixtures,
+		Participant{Character: fixtures.saver(14)}, Participant{Monster: down}), compiled, wolfID)
+	s.Require().ErrorIs(err, ErrBadAction)
+	s.Nil(out)
+	s.Zero(given, "no part of the status reached the in-memory sheet")
+	s.Zero(heals, "no heal was published")
+	s.Equal(0, down.HitPoints)
+	s.Empty(down.Conditions)
+}
+
+// A DEAD CHARACTER IS REFUSED THE SAME WAY, up front: nothing reaches the
+// in-memory sheet and nothing comes back to save. Catches: refusing only when
+// the heal lands, after the status is already on the sheet.
+func (s *GiveStatusTestSuite) TestADeadCharacterIsRefusedBeforeAnythingIsGiven() {
 	compiled := s.compileStatus("fed", fedWords)
 	fixtures := s.fixtures()
 	dead := fixtures.saver(0)
 	dead.DeathSaveState = &saves.DeathSaveState{Failures: 3, Dead: true}
-	out, err := s.giveCompiled(s.interaction(fixtures,
+	given, heals, out, err := s.giveWatched(s.interaction(fixtures,
 		Participant{Character: dead}, Participant{Character: fixtures.bard(1)}), compiled, heroID)
-	s.Require().ErrorContains(err, "when_given[0]", "the give failed at its heal, not before it")
+	s.Require().ErrorIs(err, ErrBadAction)
 	s.Nil(out, "no output, so no dirty sheet for the caller to save")
+	s.Zero(given, "no part of the status reached the in-memory sheet")
+	s.Zero(heals)
 	s.Empty(dead.Conditions, "the record handed in is untouched")
 }

@@ -28,24 +28,36 @@ type preparedHealing struct {
 }
 
 func (h *preparedHealing) prepare(cast *Participants) (string, error) {
-	var state combat.LifeState
-	creatureType := "humanoid"
-	if ch, ok := cast.Character(h.targetID); ok {
-		state = ch.ParticipationView().LifeState
-	} else if monster, ok := cast.Monster(h.targetID); ok {
-		state = combat.ClassifyLifeState(combat.LifeStateInput{Kind: combat.CombatantKindMonster, Down: combat.IsDown(monster)})
-		creatureType = monster.CreatureType()
-	} else {
-		return "", fmt.Errorf("%w: no healing recipient %q", ErrBadAction, h.targetID)
-	}
-	if !combat.CanReceiveHealing(state) {
-		return "", fmt.Errorf("%w: target cannot receive healing", ErrBadAction)
+	creatureType, err := healable(cast, h.targetID)
+	if err != nil {
+		return "", err
 	}
 	// Missing classification is not an exclusion match.
 	if creatureType != "" && slices.Contains(h.excludes, creatureType) {
 		return "No effect on " + creatureType, nil
 	}
 	return "", nil
+}
+
+// healable is the one rule for who may receive healing: a member of the run
+// whose life state allows it. It answers the member's creature type for
+// exclusions, and [ErrBadAction] for someone not in the run or who cannot be
+// healed (a defeated monster, a dead character).
+func healable(cast *Participants, targetID string) (string, error) {
+	var state combat.LifeState
+	creatureType := "humanoid"
+	if ch, ok := cast.Character(targetID); ok {
+		state = ch.ParticipationView().LifeState
+	} else if monster, ok := cast.Monster(targetID); ok {
+		state = combat.ClassifyLifeState(combat.LifeStateInput{Kind: combat.CombatantKindMonster, Down: combat.IsDown(monster)})
+		creatureType = monster.CreatureType()
+	} else {
+		return "", fmt.Errorf("%w: no healing recipient %q", ErrBadAction, targetID)
+	}
+	if !combat.CanReceiveHealing(state) {
+		return "", fmt.Errorf("%w: target cannot receive healing", ErrBadAction)
+	}
+	return creatureType, nil
 }
 
 func (h *preparedHealing) deliver(ctx context.Context, bus events.EventBus, noEffect string) error {

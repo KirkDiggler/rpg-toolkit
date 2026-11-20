@@ -241,6 +241,17 @@ func (m *giveStatusMachine) Start(_ context.Context, cast *Participants) (Step, 
 	if cast.applications == nil {
 		return nil, fmt.Errorf("%w: giving a status requires an interaction binding", ErrBadStep)
 	}
+	// A status that heals is refused WHOLE, before anything is given, to anyone
+	// ordinary healing refuses — the same rule, so a status cannot revive a
+	// defeated monster nor land on a dead character without its heal.
+	for _, act := range m.in.WhenGiven {
+		if act.Kind == status.WhenGivenHeal {
+			if _, err := healable(cast, member); err != nil {
+				return nil, fmt.Errorf("give status %q to %q: %w", m.in.StatusID, member, err)
+			}
+			break
+		}
+	}
 
 	origin := dnd5eEvents.ConditionOrigin{Ref: m.in.Source, EntityID: m.in.SourceID}
 	bound, err := conditions.BindDefinition(&conditions.BindDefinitionInput{
