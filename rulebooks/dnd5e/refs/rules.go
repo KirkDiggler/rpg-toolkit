@@ -50,3 +50,12 @@ func (n rulesNS) Untrained() *core.Ref { return ruleUntrained }
 // points. It appears in a short rest's roll as the line that lifts a floored
 // die back to zero, so the log says why that die healed nothing.
 func (n rulesNS) HitDieFloor() *core.Ref { return ruleHitDieFloor }
+
+// ruleInitiative is the rule that a creature entering a fight rolls for its
+// place in the order.
+var ruleInitiative = &core.Ref{Module: Module, Type: TypeRules, ID: "initiative"}
+
+// Initiative is the rule that a creature entering a fight rolls a d20 for its
+// place in the order. It is here because that d20 appears in a roll's record
+// and the record has to say what rule threw it.
+func (n rulesNS) Initiative() *core.Ref { return ruleInitiative }
