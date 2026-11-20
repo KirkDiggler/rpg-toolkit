@@ -139,11 +139,11 @@ func validateFrameGuard(g *machine.Guard, allowed []machine.FactName) error {
 	}
 	switch spec.Kind {
 	case machine.KindBool:
-		if _, ok := fact.Value.(bool); !ok {
+		if _, ok := fact.Value.Bool(); !ok {
 			return fmt.Errorf("fact %q requires a bool", fact.Name)
 		}
 	case machine.KindString:
-		value, ok := fact.Value.(string)
+		value, ok := fact.Value.Text()
 		if !ok {
 			return fmt.Errorf("fact %q requires a string", fact.Name)
 		}

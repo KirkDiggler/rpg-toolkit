@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -137,7 +138,7 @@ func (s *authoredApplicationSuite) TestFrozenGuardsAmountsAndConfigAreOwned() {
 	p, spec, err := w.prepare(defs, "ring", "A", "B", "owned")
 	s.Require().NoError(err)
 	*spec.Recipients[0].Parts[0].Amount.Fixed = 99
-	spec.Recipients[0].Parts[0].When.Fact.Value = "dex"
+	spec.Recipients[0].Parts[0].When.Fact.Value = machine.StringScalar("dex")
 	spec.Recipients[0].Parts[1].Params[0] = '!'
 	s.Require().NoError(w.apply(p))
 	s.Require().NoError(w.reload())
@@ -146,7 +147,7 @@ func (s *authoredApplicationSuite) TestFrozenGuardsAmountsAndConfigAreOwned() {
 	var data conditions.LinkedConditionData
 	s.Require().NoError(json.Unmarshal(raw, &data))
 	s.Equal(2, *data.Bindings.Parts[0].Amount.Fixed)
-	s.Equal("str", data.Bindings.Parts[0].When.Fact.Value)
+	s.Equal(machine.StringScalar("str"), data.Bindings.Parts[0].When.Fact.Value)
 	s.JSONEq(`{"types":["slashing"]}`, string(data.Bindings.Parts[1].Params))
 }
 func (s *authoredApplicationSuite) TestEndingCannotResurrectAfterReload() {

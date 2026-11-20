@@ -76,7 +76,7 @@ func (s *configuredEffectFactsSuite) TestCloneOwnsNestedOutputData() {
 	amount := 2
 	f.HeldEffects[0].Outputs = []contributions.ConfiguredOutput{{ID: "out", Definition: generic.Output{
 		Kind: "damage_bonus", Params: []byte(`{"label":"original"}`),
-		When:   &machine.Guard{All: []machine.Guard{{Not: &machine.Guard{Fact: &machine.FactLeaf{Name: "action.ability", Op: machine.OpEq, Value: "dex"}}}}},
+		When:   &machine.Guard{All: []machine.Guard{{Not: &machine.Guard{Fact: &machine.FactLeaf{Name: "action.ability", Op: machine.OpEq, Value: machine.StringScalar("dex")}}}}},
 		Amount: &generic.Amount{Fixed: &amount, ByClassLevel: &generic.ClassSteps{Class: "barbarian", Steps: map[int]int{1: 2, 9: 3}}},
 	}}}
 	// Structural copying does not choose a kind's legal amount strategy.
@@ -84,14 +84,14 @@ func (s *configuredEffectFactsSuite) TestCloneOwnsNestedOutputData() {
 	clone := f.Clone()
 	out := &clone.HeldEffects[0].Outputs[0]
 	out.Definition.Params[0] = '['
-	out.Definition.When.All[0].Not.Fact.Value = "str"
+	out.Definition.When.All[0].Not.Fact.Value = machine.StringScalar("str")
 	*out.Definition.Amount.Fixed = 99
 	out.Definition.Amount.ByClassLevel.Steps[1] = 99
 	clone.HeldEffects[0].OriginRef.ID = "changed"
 	clone.Held[0].Conditions[0].SourceID = "changed"
 	original := f.HeldEffects[0].Outputs[0].Definition
 	s.Equal(`{"label":"original"}`, string(original.Params))
-	s.Equal("dex", original.When.All[0].Not.Fact.Value)
+	s.Equal(machine.StringScalar("dex"), original.When.All[0].Not.Fact.Value)
 	s.Equal(2, *original.Amount.Fixed)
 	s.Equal(2, original.Amount.ByClassLevel.Steps[1])
 	s.Equal("sausage", f.HeldEffects[0].OriginRef.ID)

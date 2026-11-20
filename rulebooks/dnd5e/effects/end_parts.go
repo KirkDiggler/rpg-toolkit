@@ -79,11 +79,11 @@ func bindUntilEmptyPart(in *BindPartInput) (boundPart, error) {
 	return boundPart{recipe: endPartRecipe(in.Ref, machine.Transition{
 		On: beatMembersChanged, About: Holder, To: partStateEnded, Reason: "members_empty",
 		When: &machine.Guard{All: []machine.Guard{
-			{Fact: &machine.FactLeaf{Name: factApplication, Op: machine.OpEq, Value: in.ApplicationID}},
-			{Fact: &machine.FactLeaf{Name: factOwnerRef, Op: machine.OpEq, Value: in.Owner.ConditionRef}},
-			{Fact: &machine.FactLeaf{Name: factOwnerSource, Op: machine.OpEq, Value: in.Owner.SourceID}},
-			{Fact: &machine.FactLeaf{Name: factMembersBefore, Op: machine.OpGte, Value: 1}},
-			{Fact: &machine.FactLeaf{Name: factMembersAfter, Op: machine.OpEq, Value: 0}},
+			{Fact: &machine.FactLeaf{Name: factApplication, Op: machine.OpEq, Value: machine.StringScalar(in.ApplicationID)}},
+			{Fact: &machine.FactLeaf{Name: factOwnerRef, Op: machine.OpEq, Value: machine.StringScalar(in.Owner.ConditionRef)}},
+			{Fact: &machine.FactLeaf{Name: factOwnerSource, Op: machine.OpEq, Value: machine.StringScalar(in.Owner.SourceID)}},
+			{Fact: &machine.FactLeaf{Name: factMembersBefore, Op: machine.OpGte, Value: machine.IntScalar(1)}},
+			{Fact: &machine.FactLeaf{Name: factMembersAfter, Op: machine.OpEq, Value: machine.IntScalar(0)}},
 		}},
 	})}, nil
 }
