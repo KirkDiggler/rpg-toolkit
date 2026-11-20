@@ -4,6 +4,7 @@
 package dungeonspec
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -558,12 +559,12 @@ func sortedPropBindingIDs(bindings map[string]RoomPropBinding) []string {
 //
 // Mutates in place, because there is one list of placements and a second
 // copy of it would be a second answer about what is on the floor.
-func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings map[string]RoomPropBinding) {
+func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings map[string]RoomPropBinding, statuses map[string]json.RawMessage) {
 	for i := range props {
 		b := bindings[props[i].ID]
 		props[i].Holdable = b.Holdable
 		props[i].Holds = intelHoldingsOf(key, b.Holds)
 		props[i].Arrives = predicateOf(b.Arrives)
-		props[i].Options = optionsOf(key, b.Options, encounter.HexesArePointyTop())
+		props[i].Options = optionsOf(key, b.Options, encounter.HexesArePointyTop(), statuses)
 	}
 }

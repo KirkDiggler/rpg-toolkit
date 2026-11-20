@@ -1648,6 +1648,16 @@ type AnswerSpec struct {
 	//	  - relocate: { to: region-chapel, words: You come out behind the altar. }
 	Relocate *RelocateSpec `yaml:"relocate,omitempty"`
 
+	// ApplyStatus is the status this row gives its speaker when it is a
+	// line's row and is the row answered (rpg-project#1024): the id of a
+	// status under the site's `statuses:` (statuses.go). On a creature's line
+	// or a prop's, success or failure row; a table row is refused.
+	//
+	//	success:
+	//	  - say: Bless you. Here, eat.
+	//	    apply_status: well-fed
+	ApplyStatus string `yaml:"apply_status,omitempty"`
+
 	// When is the condition this entry is on the table under
 	// (rpg-project#465, design §2). `time` ONLY: a social key IS the
 	// condition — `intimidated` already means "the threat landed" — and a
@@ -2821,7 +2831,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		}
 		switch key {
 		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
-			"search", "use", "with", "as", "give", "tells", "relocate":
+			"search", "use", "with", "as", "give", "tells", "relocate", "apply_status":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

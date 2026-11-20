@@ -716,3 +716,24 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
 	s.Contains(pass.Sentence, "when Guard Captain (captain) has noted `admitted` about the walker")
 }
+
+// THE COOK'S STATUS IS SAID (rpg-project#1024): the declared status once, by
+// id and name, and under the `help` line's win the grant, connected to it.
+func (s *CastleSuite) TestTheCooksStatusIsSaid() {
+	var declared, given *readback.Statement
+	for _, st := range s.rb.Statements() {
+		switch {
+		case st.Kind == readback.KindStatus && st.About.ID == "well-fed":
+			declared = &st
+		case st.Kind == readback.KindLineGrant && strings.HasSuffix(st.Path, ".apply_status"):
+			given = &st
+		}
+	}
+	s.Require().NotNil(declared, "the declared status is said")
+	s.Equal("statuses.well-fed", declared.Path)
+	s.Contains(declared.Sentence, "named “Well fed”")
+	s.Require().NotNil(given, "the row that gives it is said")
+	s.Equal("room.room.monsterBindings.cook.options[4].success[0].apply_status", given.Path)
+	s.Contains(given.Sentence, "the speaker is given the status “Well fed” (`well-fed`)")
+	s.Contains(given.Connects, readback.Connection{Kind: readback.ConnStatus, ID: "well-fed", Role: readback.RoleGives})
+}

@@ -77,7 +77,7 @@ var acknowledged = map[string][]string{
 	"behaviorDefinition": {"ref", "parameters", "end", "body"},
 	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "away", "search", "use", "with", "as"},
 	"recipe":             {"bag"},
-	"tableRow":           {"give", "tells", "relocate"},
+	"tableRow":           {"give", "tells", "relocate", "apply_status"},
 	"template":           {"addActions", "dropActions", "experience"},
 }
 

@@ -193,6 +193,10 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".give", t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
+				if g.Failure == verdict.failure && g.Row == k && g.Consequence.ApplyStatus != nil {
+					out = append(out, b.statusGrantStatement(*g.Consequence.ApplyStatus, lead, path, t,
+						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
+				}
 				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
 					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID, loud: tellsLoudness(g.Consequence, row, t)}))

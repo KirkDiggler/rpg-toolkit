@@ -95,7 +95,17 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// AND WHAT EACH PLACED ITEM DOES (rpg-project#488 R1, rpg-toolkit#1854).
 	// The declaration gave the footprint; the binding gives the orders, laid
 	// onto the same placement rather than onto a second list of props.
-	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings)
+	// THE STATUSES ONCE, failing closed (statuses.go): one that cannot be
+	// written refuses the site rather than leaving its rows without a grant.
+	statuses, err := statusesOf(spec.Statuses)
+	if err != nil {
+		var se *statusError
+		if errors.As(err, &se) {
+			return Compiled{}, singleRoomCompileError("statuses."+se.id, se.message)
+		}
+		return Compiled{}, err
+	}
+	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings, statuses)
 	// AND THE STRUCTURAL WALLS (rpg-project#169, single_room_walls.go). One
 	// authored wall lowers to its IDENTITY-ONLY presence entry (raw wall id,
 	// complete blocker, both flags false) plus one blocking contributor per
@@ -249,7 +259,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// that brings it in by [predicateOf]. Absent is nil in every one of them, which is
 		// why a document with no orders pictures exactly as it did before.
 		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
-		mp.Options = optionsOf(spec.Key, from.optionsFor(b.Options, b.Faction), encounter.HexesArePointyTop())
+		mp.Options = optionsOf(spec.Key, from.optionsFor(b.Options, b.Faction), encounter.HexesArePointyTop(), statuses)
 		mp.Arrives = predicateOf(b.Arrives)
 		monsters = append(monsters, mp)
 	}

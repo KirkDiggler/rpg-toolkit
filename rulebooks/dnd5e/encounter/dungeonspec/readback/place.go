@@ -133,6 +133,9 @@ func (b *builder) place() []Group {
 		add(b.fstmt(KindIntel, Subject{Kind: "record", ID: id}, fmt.Sprintf("intel[%d]", i), s,
 			foldInfo{site: "holding the record " + quote(id)}, conns...))
 	}
+	for _, st := range b.statusStatements() {
+		add(st)
+	}
 	for _, id := range sortedKeys(b.spec.Templates) {
 		t := b.spec.Templates[id]
 		parts := []string{fmt.Sprintf("The stat block %s (%s) is built on %s", quote(id), t.Name, t.Base)}

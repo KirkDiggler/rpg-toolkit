@@ -96,6 +96,10 @@ type InteractOutput struct {
 	Witnesses []MemberID
 	Answered  *Pick
 	Formed    *FormedBubble
+
+	// Statuses are [SpeakOutput.Statuses], for a thing done: the status
+	// effects this option's landed row gave the actor. Nil when none.
+	Statuses []GrantedStatus
 }
 
 // Interact confirms a player can reach a placed world NPC: both exist, the

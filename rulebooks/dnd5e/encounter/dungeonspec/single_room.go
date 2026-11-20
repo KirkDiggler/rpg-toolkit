@@ -96,6 +96,11 @@ type SingleRoomSpec struct {
 	// [ConcealmentSpec].
 	Concealments map[string]ConcealmentSpec `yaml:"concealments,omitempty" json:"concealments,omitempty"`
 
+	// Statuses are the status effects this site's lines may give, keyed by
+	// id (rpg-project#1024, statuses.go): each in the author's words, judged
+	// here only for its four top-level words. Optional; absent means none.
+	Statuses map[string]StatusSpec `yaml:"statuses,omitempty" json:"statuses,omitempty"`
+
 	// Exits are the ways out of this room, in authored order — the v2 root's
 	// own key ([Spec.Exits]) reaching this dialect with its cell in this
 	// dialect's frame (rpg-project#488 R2). Optional; absent means none.

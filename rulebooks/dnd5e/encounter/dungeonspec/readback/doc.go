@@ -128,6 +128,16 @@
 // {flag, <flag>, clears} beside its act. A reader traces one flag by kind
 // `flag` and its id within one routine (the statement's path names it).
 //
+// # Status effects (rpg-project#1024)
+//
+// Each status under the root's `statuses:` is one statement of kind
+// `place.status` ([KindStatus]) about {status, <id>}, at `statuses.<id>`,
+// naming it by id and name. A line's row that gives one is a `line.grant`
+// statement at the row's `.apply_status`, connected {status, <id>, gives}
+// ([ConnStatus], [RoleGives]). What a status changes and what ends it are
+// the rules' words, judged when it is given; the read-back does not restate
+// them.
+//
 // # Nothing skipped silently
 //
 // Whatever the file authors and this package cannot yet say is listed in

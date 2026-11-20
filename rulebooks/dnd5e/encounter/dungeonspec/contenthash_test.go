@@ -16,7 +16,7 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-const castleContentHash = "c4d837080bb54f401bc44f3e11edff4055e371d5c1bf8b5db7fe9fcc2af92a39"
+const castleContentHash = "b4ca54709f661366890d7094e6a3fcf4f0f25985b226c22ed5706508d98c5959"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()
@@ -61,6 +61,15 @@ func TestTheContentHashNamesWhatTheAuthorWrote(t *testing.T) {
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "reason: stood aside", "reason: stood back")), "a machine's step")
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "against: entering", "against: leaving")), "a post")
 	require.NotEqual(t, s, contentHashOf(t, hashEdited(t, site, "dc: ", "dc: 2")), "a check's DC")
+
+	// A STATUS AN AUTHOR WROTE (rpg-project#1024) is content: its name and
+	// its rules change the hash; how its YAML is laid out does not.
+	castle := fileOf(t, "testdata/world-builder-v4-castle.yaml")
+	c := contentHashOf(t, castle)
+	require.NotEqual(t, c, contentHashOf(t, hashEdited(t, castle, "name: Well fed", "name: Well Fed")), "a status's name")
+	require.NotEqual(t, c, contentHashOf(t, hashEdited(t, castle, "- ends_on: run", "- ends_on: rest")), "a status's maintenance")
+	require.Equal(t, c, contentHashOf(t, hashEdited(t, castle, "when: { ability: charisma }", "when:\n          ability: charisma")),
+		"a status's layout is not content")
 
 	// WHAT THE TYPES' JSON DROPS (rpg-project#1001): a void and an
 	// orientation encode as {}, and still change the hash.

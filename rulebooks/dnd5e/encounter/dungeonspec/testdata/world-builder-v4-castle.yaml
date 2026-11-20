@@ -406,6 +406,17 @@ intel:
   - id: cell-weak-place
     reveals:
       concealment: cell-drain
+# Hand edit (rpg-project#1024): a status a line can give. Helping the cook
+# leaves the speaker well fed until their run ends.
+statuses:
+  well-fed:
+    name: Well fed
+    changes:
+      - advantage: checks
+        when: { ability: charisma }
+    maintenance:
+      - ends_on: run
+    again: ignored
 exits:
   - id: postern
     cell:
@@ -2209,6 +2220,21 @@ room:
                 fact: feast-tonight
             failure:
               - say: Keep your coin.
+          # Hand edit (rpg-project#1024): lend the cook a hand. Done well, she
+          # feeds the speaker, who is well fed until their run ends.
+          - id: help
+            say: (lend a hand with the pies)
+            check:
+              - ability: athletics
+                dc: 10
+            requires:
+              not:
+                fact: caught-in-kitchen
+            success:
+              - say: Bless you. Here, eat.
+                apply_status: well-fed
+            failure:
+              - say: Mind the pastry! Out from under my feet.
       keep-1:
         faction: loyalists
         behaviors:

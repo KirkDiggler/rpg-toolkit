@@ -419,6 +419,11 @@ type grammar struct {
 	// name it does not have.
 	regionIDs map[string]bool
 	intelIDs  map[string]bool
+	// statusIDs is what a row's `apply_status:` may name (rpg-project#1024):
+	// the site's declared statuses. Nil is none declared, and every
+	// `apply_status:` is refused — a status the site does not carry cannot
+	// be given.
+	statusIDs map[string]bool
 
 	factionIDs     map[string]int
 	factionMembers map[string][]int
@@ -852,14 +857,17 @@ func (g *grammar) rowGive(at, key string, o OptionSpec, row AnswerSpec, isProp b
 // its regions and intel records ([grammar.regionIDs], [grammar.intelIDs]).
 func (g *grammar) rowPassage(at string, row AnswerSpec) {
 	grants := 0
-	for _, set := range []bool{row.Give != nil, row.Tells != "", row.Relocate != nil} {
+	for _, set := range []bool{row.Give != nil, row.Tells != "", row.Relocate != nil, row.ApplyStatus != ""} {
 		if set {
 			grants++
 		}
 	}
 	if grants > 1 {
-		g.fail(at, "a row grants one thing: `give`, `tells` or `relocate`, not two")
+		g.fail(at, "a row grants one thing: `give`, `tells`, `relocate` or `apply_status`, not two")
 		return
+	}
+	if row.ApplyStatus != "" && !g.statusIDs[row.ApplyStatus] {
+		g.fail(at+".apply_status", "%q is not a status of this site: %s", row.ApplyStatus, declaredStatusList(g.statusIDs))
 	}
 	if row.Tells != "" && g.intelIDs != nil && !g.intelIDs[row.Tells] {
 		g.fail(at+".tells", "%q is not an intel record of this site", row.Tells)
@@ -917,6 +925,9 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		if entry.Relocate != nil {
 			g.fail(at+".relocate", "relocate is only on a line's success or failure row: a table row grants nothing")
 		}
+		if entry.ApplyStatus != "" {
+			g.fail(at+".apply_status", "apply_status is only on a line's success or failure row: a table row grants nothing")
+		}
 	}
 	g.loudness(at, entry.Loudness)
 	if entry.Weight != nil && *entry.Weight < 1 {
@@ -970,7 +981,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		return
 	// A line's row that reveals or relocates does something
 	// (rpg-project#958), with or without words.
-	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil:
+	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil && entry.ApplyStatus == "":
 		g.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
 
 		return

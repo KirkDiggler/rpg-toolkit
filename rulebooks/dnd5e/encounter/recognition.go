@@ -145,6 +145,11 @@ type Consequence struct {
 	// Relocate is: the speaker is set down in a region (passage.go,
 	// rpg-project#958). Only on a line's row.
 	Relocate *RelocateGrant `json:"relocate,omitzero"`
+
+	// ApplyStatus is: the speaker is given a status effect an author wrote
+	// (status_grant.go, rpg-project#1024). The encounter does not apply it;
+	// the landed row returns it on the verb's output. Only on a line's row.
+	ApplyStatus *StatusGrant `json:"applyStatus,omitzero"`
 }
 
 // RecognitionHolder names who comes to hold the topic.
@@ -227,7 +232,7 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
 			if c.SceneMove != nil {
-				if c.Relocate != nil || c.Tells != "" || c.Arrest != nil || c.Jail != nil || c.Recognize != nil {
+				if c.Relocate != nil || c.Tells != "" || c.Arrest != nil || c.Jail != nil || c.Recognize != nil || c.ApplyStatus != nil {
 					return fmt.Errorf("%s mixes scene movement with another consequence", what)
 				}
 				if err := c.SceneMove.validate(); err != nil {
@@ -240,6 +245,9 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 			}
 			if c.Tells != "" {
 				return fmt.Errorf("%s tells a record: a line's row tells whoever caught its answer; an outcome tells nobody", what)
+			}
+			if c.ApplyStatus != nil {
+				return fmt.Errorf("%s gives a status: a line's row gives its speaker a status; an outcome gives nobody one", what)
 			}
 			if c.Jail != nil {
 				if c.Recognize != nil || c.Arrest != nil {
@@ -277,7 +285,7 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 // there would be nobody to hear.
 func validateConsequence(what string, c Consequence, carriers bool) error {
 	r := c.Recognize
-	if c.Tells != "" || c.Relocate != nil {
+	if c.Tells != "" || c.Relocate != nil || c.ApplyStatus != nil {
 		return validatePassageGrant(what, c)
 	}
 	switch {
@@ -445,8 +453,9 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 // (rpg-project#929, #932): the same write an outcome makes, by the same live
 // sight, inside the same Speak. It returns the fight a relocation formed on
 // arrival, if one did (rpg-project#958).
-func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) (*FormedBubble, error) {
+func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) (*FormedBubble, []GrantedStatus, error) {
 	var formed *FormedBubble
+	var statuses []GrantedStatus
 	for _, g := range o.Grants {
 		if g.Failure == beaten || g.Row != row {
 			continue
@@ -459,12 +468,17 @@ func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognition
 			err = e.grantTells(c.Tells, line)
 		case c.Relocate != nil:
 			formed, err = e.grantRelocate(*c.Relocate, line)
+		case c.ApplyStatus != nil:
+			// Returned, not applied (status_grant.go): the rules give it.
+			grant := *c.ApplyStatus
+			grant.Status = append(json.RawMessage(nil), grant.Status...)
+			statuses = append(statuses, GrantedStatus{Member: line.speaker, Grant: grant})
 		}
 		if err != nil {
-			return nil, fmt.Errorf("option %q grant: %w", o.ID, err)
+			return nil, nil, fmt.Errorf("option %q grant: %w", o.ID, err)
 		}
 	}
-	return formed, nil
+	return formed, statuses, nil
 }
 
 // recognizes reports whether holder holds topic about subject: the one

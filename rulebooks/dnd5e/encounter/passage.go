@@ -64,13 +64,16 @@ type RelocateGrant struct {
 // field's question ([Encounter.checkGrantTargets]).
 func validatePassageGrant(what string, c Consequence) error {
 	kinds := 0
-	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil, c.Tells != "", c.Relocate != nil} {
+	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil, c.Tells != "", c.Relocate != nil, c.ApplyStatus != nil} {
 		if set {
 			kinds++
 		}
 	}
 	if kinds > 1 {
 		return fmt.Errorf("%s is of two kinds: one grant is one kind", what)
+	}
+	if g := c.ApplyStatus; g != nil {
+		return validateStatusGrant(what, *g)
 	}
 	if r := c.Relocate; r != nil {
 		switch {
