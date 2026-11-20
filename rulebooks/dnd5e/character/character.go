@@ -670,8 +670,12 @@ func (c *Character) LongRest(ctx context.Context) (*LongRestOutput, error) {
 		return nil, err
 	}
 
-	// Restore HP to maximum
-	c.hitPoints = c.maxHitPoints
+	// Restore HP to the effective maximum: a held raise is part of full.
+	maximum, err := c.effectiveMaxHitPoints()
+	if err != nil {
+		return nil, err
+	}
+	c.hitPoints = maximum
 
 	// Clear death save state (use empty struct for consistency with ResetDeathSaveState)
 	c.deathSaveState = &saves.DeathSaveState{}
@@ -901,9 +905,51 @@ func (c *Character) GetHitPoints() int {
 	return c.hitPoints
 }
 
-// GetMaxHitPoints returns the character's maximum hit points
+// GetMaxHitPoints returns the character's effective hit point maximum: the
+// stored base (what creation and levelling set and ToData persists) plus what
+// every held condition raises it by, summed at each read with no cache.
+//
+// A held raise whose amount cannot be read falls back to the base. That is
+// unreachable through the rulebook: the kind refuses any amount but a fixed
+// positive whole number when the condition is bound, and the readers that can
+// return an error (healing, long rest, the status view, a condition's
+// removal) do, through [Character.effectiveMaxHitPoints].
 func (c *Character) GetMaxHitPoints() int {
-	return c.maxHitPoints
+	maximum, err := c.effectiveMaxHitPoints()
+	if err != nil {
+		return c.maxHitPoints
+	}
+	return maximum
+}
+
+// effectiveMaxHitPoints is the stored base plus every held condition's raise.
+// Every READ of the maximum goes through here; every WRITE (creation,
+// levelling, load, save) touches only the base field.
+func (c *Character) effectiveMaxHitPoints() (int, error) {
+	maximum := c.maxHitPoints
+	for _, held := range c.conditions {
+		raise, err := conditions.HitPointMaximumBonus(&conditions.HeldBonusInput{Condition: held})
+		if err != nil {
+			return 0, rpgerr.Wrapf(err, "character %s hit point maximum", c.id)
+		}
+		maximum += raise.Amount
+	}
+	return maximum, nil
+}
+
+// capHitPointsAtMaximum lowers current hit points to the effective maximum
+// when a raise has ended, marking the sheet changed. Gaining a raise never
+// moves current hit points.
+func (c *Character) capHitPointsAtMaximum() error {
+	maximum, err := c.effectiveMaxHitPoints()
+	if err != nil {
+		return err
+	}
+	if c.hitPoints > maximum {
+		c.hitPoints = maximum
+		c.dirty = true
+	}
+	return nil
 }
 
 // ApplyDamage reduces the character's HP by the damage amount(s).
@@ -1617,13 +1663,18 @@ func (c *Character) onConditionRemoved(
 	}
 	c.conditions = filtered
 
+	// A raise that ended lowers the maximum; current hit points above it are
+	// capped there. Read after filtering, so the removed condition is not
+	// counted.
+	capErr := c.capHitPointsAtMaximum()
+
 	if len(detachErrs) > 0 {
-		return rpgerr.Wrapf(errors.Join(detachErrs...),
+		return rpgerr.Wrapf(errors.Join(append(detachErrs, capErr)...),
 			"failed to detach %d removed condition(s) %s from character %s",
 			len(detachErrs), event.ConditionRef, c.id)
 	}
 
-	return nil
+	return capErr
 }
 
 // ConcentrationView is a detached view of the composed maintenance claim.
@@ -1728,12 +1779,18 @@ func (c *Character) onHealingReceived(
 		}
 	}
 
+	// Healing caps at the effective maximum: a held raise is room to heal into.
+	maximum, err := c.effectiveMaxHitPoints()
+	if err != nil {
+		return err
+	}
+
 	hpBefore := c.hitPoints
 
-	// Apply healing: add Amount to hitPoints, cap at maxHitPoints
+	// Apply healing: add Amount to hitPoints, cap at the effective maximum
 	c.hitPoints += event.Amount
-	if c.hitPoints > c.maxHitPoints {
-		c.hitPoints = c.maxHitPoints
+	if c.hitPoints > maximum {
+		c.hitPoints = maximum
 	}
 
 	// Any healing that raises a Dying or Stabilized character above zero also

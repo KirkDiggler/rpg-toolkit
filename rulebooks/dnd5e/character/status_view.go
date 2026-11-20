@@ -164,9 +164,14 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 
 	participation := c.ParticipationView()
 
+	maximum, err := c.effectiveMaxHitPoints()
+	if err != nil {
+		return nil, err
+	}
+
 	view := &StatusView{
 		Level:         c.GetLevel(),
-		HitPoints:     HitPointView{Current: c.hitPoints, Maximum: c.maxHitPoints},
+		HitPoints:     HitPointView{Current: c.hitPoints, Maximum: maximum},
 		LifeState:     participation.LifeState,
 		DeathSaves:    participation.DeathSaves,
 		BaseSpeedFeet: c.GetSpeed(),
