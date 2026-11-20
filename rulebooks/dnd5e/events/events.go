@@ -752,6 +752,25 @@ type CombatEndEvent struct {
 	SubjectID string // whoever the fight just ended for
 }
 
+// CombatStartEvent is published when a fight a member is in has started: the
+// fight formed with the member in it, or the member was brought into one
+// already under way.
+//
+// ONE PER MEMBER, for the same reason as [CombatEndEvent]: every attached
+// effect hears every publish on the interaction's single bus, and answers
+// "is this about me?" by comparing the subject against its own holder.
+//
+// SubjectID is whoever the fight started for — a player's character or a
+// monster.
+//
+// A status meant to last "until a fight its holder is in starts" opts in with
+// the effects vocabulary's combat_start beat (an end_on maintenance part); a
+// status that should outlive the start of a fight simply does not. Nothing in
+// this module publishes it: the party that forms fights does.
+type CombatStartEvent struct {
+	SubjectID string // whoever the fight just started for
+}
+
 // RunEndEvent is published when a member's run has ended: the member left
 // the run, or the run was ended for everyone it held.
 //
@@ -1045,6 +1064,9 @@ var (
 
 	// CombatEndTopic provides typed pub/sub for combat-end events
 	CombatEndTopic = events.DefineTypedTopic[CombatEndEvent]("dnd5e.combat.end")
+
+	// CombatStartTopic provides typed pub/sub for a fight a member is in starting
+	CombatStartTopic = events.DefineTypedTopic[CombatStartEvent]("dnd5e.combat.start")
 
 	// RunEndTopic provides typed pub/sub for a member's run ending
 	RunEndTopic = events.DefineTypedTopic[RunEndEvent]("dnd5e.run.end")

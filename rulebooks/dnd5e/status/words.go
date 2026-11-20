@@ -175,6 +175,7 @@ var table = []entry{
 	{place: PlaceMaintenance, word: wordEndsOn, shape: ShapeOneOf, label: "ends when {value}", values: []value{
 		{word: "run", label: "ends when the run ends", to: "run_end", reason: "run_ended"},
 		{word: "rest", label: "ends at the next rest", to: "rest", reason: "rested"},
+		{word: "fight starts", label: "ends when a fight the holder is in starts", to: "combat_start", reason: "fight_started"},
 		{word: "fight ends", label: "ends when the fight ends", to: "combat_end", reason: "fight_ended"},
 		{word: "next turn", label: "ends when the holder's next turn starts", to: "turn_start", reason: "next_turn"},
 		{word: "dropped to zero", label: "ends when the holder drops to zero hit points", to: "dropped_to_zero", reason: "dropped_to_zero"},

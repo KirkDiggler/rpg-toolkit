@@ -40,6 +40,8 @@ const (
 	BeatRest machine.Beat = "rest"
 	// BeatCombatEnd observes a recipient's combat ending.
 	BeatCombatEnd machine.Beat = "combat_end"
+	// BeatCombatStart observes a fight the recipient is in starting.
+	BeatCombatStart machine.Beat = "combat_start"
 	// BeatRunEnd observes a recipient's run ending.
 	BeatRunEnd machine.Beat = "run_end"
 )
@@ -175,9 +177,10 @@ func machineVocabulary() machine.Vocabulary {
 			}
 			return e.MemberID, e.MemberID != ""
 		}, nil),
-		BeatRest:      typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
-		BeatCombatEnd: typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
-		BeatRunEnd:    typedBeat(dndevents.RunEndTopic, func(e dndevents.RunEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatRest:        typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
+		BeatCombatEnd:   typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatCombatStart: typedBeat(dndevents.CombatStartTopic, func(e dndevents.CombatStartEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatRunEnd:      typedBeat(dndevents.RunEndTopic, func(e dndevents.RunEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
 		BeatDroppedToZero: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || !e.DroppedToZero {
 				return "", false
