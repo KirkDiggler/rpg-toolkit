@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rolls"
@@ -39,8 +40,15 @@ type AbilityCheckInput struct {
 	// Required — chain subscribers key off this id.
 	CheckerID string
 
-	// Skill is the skill being checked (Stealth, Perception, etc).
+	// Skill is the skill being checked (Stealth, Perception, etc). Empty for a
+	// bare-ability check, which names Ability instead.
 	Skill skills.Skill
+
+	// Ability is the ability the check is made with. A skill check may leave it
+	// empty: the skill's own ability is used. A bare-ability check (a lock's
+	// Strength check) names it here, so an effect guarded on an ability can
+	// answer for it. A skill and an ability that disagree are refused.
+	Ability abilities.Ability
 
 	// DC is the Difficulty Class that must be met or exceeded (e.g. the
 	// highest observer passive Perception for a Hide check).
@@ -147,9 +155,15 @@ func MakeAbilityCheck(ctx context.Context, input *AbilityCheckInput) (*AbilityCh
 
 	var bonusSources []dnd5eEvents.CheckBonusSource
 
+	ability, err := checkAbility(input.Skill, input.Ability)
+	if err != nil {
+		return nil, err
+	}
+
 	chainEvent := &dnd5eEvents.AbilityCheckChainEvent{
 		CheckerID: input.CheckerID,
 		Skill:     input.Skill,
+		Ability:   ability,
 		DC:        input.DC,
 	}
 
@@ -250,4 +264,25 @@ func validateCalculationSource(kind string, source dnd5eEvents.RollSource) error
 		return rpgerr.Wrapf(err, "%s source is invalid", kind)
 	}
 	return nil
+}
+
+// checkAbility is the ability a check is made with: the stated one, else the
+// skill's. A stated ability that is not the skill's is refused rather than
+// silently preferring either, since the two would answer an ability guard
+// differently.
+func checkAbility(skill skills.Skill, ability abilities.Ability) (abilities.Ability, error) {
+	if ability != "" {
+		if _, err := abilities.GetByID(string(ability)); err != nil {
+			return "", err
+		}
+	}
+	if skill == "" {
+		return ability, nil
+	}
+	of := skills.Ability(skill)
+	if ability != "" && ability != of {
+		return "", rpgerr.New(rpgerr.CodeInvalidArgument, "a check's ability is not its skill's ability",
+			rpgerr.WithMeta("skill", string(skill)), rpgerr.WithMeta("ability", string(ability)))
+	}
+	return of, nil
 }

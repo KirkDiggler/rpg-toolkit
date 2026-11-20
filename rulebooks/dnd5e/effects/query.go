@@ -91,8 +91,17 @@ func (q Query) Validate() error {
 		if q.Check.CheckerID == "" {
 			return fmt.Errorf("check query requires checker")
 		}
-		if _, err := skills.GetByID(string(q.Check.Skill)); err != nil {
-			return err
+		// A bare-ability check names no skill; a stated skill or ability
+		// must still be one the rulebook has.
+		if q.Check.Skill != "" {
+			if _, err := skills.GetByID(string(q.Check.Skill)); err != nil {
+				return err
+			}
+		}
+		if q.Check.Ability != "" {
+			if _, err := abilities.GetByID(string(q.Check.Ability)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -141,7 +150,15 @@ func (q Query) ability() (abilities.Ability, bool) {
 	case q.Save != nil:
 		return q.Save.Ability, true
 	case q.Check != nil:
-		return skills.Ability(q.Check.Skill), true
+		if q.Check.Ability != "" {
+			return q.Check.Ability, true
+		}
+		if q.Check.Skill != "" {
+			return skills.Ability(q.Check.Skill), true
+		}
+		// Neither stated: the ability is unknown, so a guard on it depends
+		// rather than the whole check failing.
+		return "", false
 	default:
 		return "", false
 	}

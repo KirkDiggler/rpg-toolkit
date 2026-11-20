@@ -242,9 +242,24 @@ func (c *Character) projectFeatures() ([]FeatureView, []resourceReport, error) {
 // projectConditions builds the sorted ConditionView slice from each active
 // condition's ref, looked up in the conditions registry. An unknown
 // ref fails the whole projection with no partial output.
+//
+// One application, one row: a sheet holding both the coordinator and a
+// benefit of the same application shows only the coordinator's row, unless the
+// coordinator concentrates — "Concentrating on X" and the benefit of X are two
+// different things to read. See [heldWholeApplications].
 func (c *Character) projectConditions() ([]ConditionView, error) {
+	whole, err := heldWholeApplications(c.conditions)
+	if err != nil {
+		return nil, err
+	}
 	views := make([]ConditionView, 0, len(c.conditions))
 	for _, cond := range c.conditions {
+		if linked, ok := cond.(*conditions.LinkedCondition); ok {
+			info := linked.LinkedApplicationInfo()
+			if info.Role != conditions.LinkedCoordinator && whole[info.ID] {
+				continue
+			}
+		}
 		ref := cond.Ref()
 		if ref == nil {
 			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition reported a nil ref")
@@ -495,6 +510,33 @@ func featureID(f features.Feature) string {
 // conditionSourceMember returns a detached source identity for source-qualified
 // conditions. Unqualified conditions have no source. Hosts must apply their
 // observability policy before exposing member identities to players.
+// heldWholeApplications names the applications whose coordinator this sheet
+// holds without concentrating. A benefit of one of them on the same sheet is
+// the same status the coordinator's row already shows, so it gets no row of
+// its own. A benefit whose coordinator is on another sheet, or concentrates,
+// keeps its row.
+func heldWholeApplications(held []dnd5eEvents.ConditionBehavior) (map[string]bool, error) {
+	whole := map[string]bool{}
+	for _, cond := range held {
+		linked, ok := cond.(*conditions.LinkedCondition)
+		if !ok {
+			continue
+		}
+		info := linked.LinkedApplicationInfo()
+		if info.Role != conditions.LinkedCoordinator {
+			continue
+		}
+		maintenance, err := linked.MaintenanceInfo()
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "condition status maintenance")
+		}
+		if maintenance.Concentration == nil {
+			whole[info.ID] = true
+		}
+	}
+	return whole, nil
+}
+
 func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
 	// Linked addresses carry invocation/replacement identity, not provenance.
 	// Ask the linked metadata protocol for its immutable source instead. Other
