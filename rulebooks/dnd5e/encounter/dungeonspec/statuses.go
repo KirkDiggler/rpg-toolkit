@@ -19,11 +19,12 @@ import (
 // gives one to the row's speaker.
 //
 //	statuses:
-//	  well-fed:
-//	    name: Well fed
+//	  feasted:
+//	    name: Feasted
 //	    changes:
-//	      - advantage: checks
-//	        when: { ability: charisma }
+//	      - max_hit_points: 2
+//	    when_given:
+//	      - heal: 2
 //	    maintenance:
 //	      - ends_on: run
 //	    again: ignored

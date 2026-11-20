@@ -10,7 +10,7 @@ import (
 )
 
 // status_grant.go is A LINE THAT GIVES A STATUS (rpg-project#1024): a line's
-// row may give its speaker a status effect an author wrote — "Well fed" after
+// row may give its speaker a status effect an author wrote — "Warmed up" after
 // helping the cook.
 //
 // THE ENCOUNTER DOES NOT APPLY IT, AND CANNOT (C1): a status is a rules

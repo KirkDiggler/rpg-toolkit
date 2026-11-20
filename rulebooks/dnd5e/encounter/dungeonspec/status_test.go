@@ -110,14 +110,22 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 	}
 }
 
-// A STATUS IS NOT A TABLE ROW'S: a routine's row gives nothing.
+// A STATUS IS NOT A TABLE ROW'S: a routine's row gives nothing, even a status
+// the site DECLARES — so the one refusal is "not on a table row", never "no
+// such status".
 func TestDungeonspec_AStatusIsNotATableRow(t *testing.T) {
 	errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
-		"        - say: Not one step further without my say.\n          apply_status: well-fed\n"))
+		"        - say: Not one step further without my say.\n          apply_status: warmed-up\n"))
 	require.NotEmpty(t, errs)
+	for _, e := range errs {
+		require.NotContains(t, e.Message, "is not a status of this site", "warmed-up is declared: %s", e.Message)
+	}
 	require.Equal(t, "apply_status is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
 	require.True(t, strings.HasSuffix(errs[0].Path, ".apply_status"), "refused at the row's own key: %s", errs[0].Path)
 	require.True(t, strings.HasPrefix(errs[0].Path, "behaviorDefinitions."), "on the routine's table row: %s", errs[0].Path)
+	for _, e := range errs {
+		require.Equal(t, errs[0], e, "the table row is the one thing refused")
+	}
 }
 
 // A SITE THAT DECLARES NO STATUS GIVES NONE: the refusal says there are none.

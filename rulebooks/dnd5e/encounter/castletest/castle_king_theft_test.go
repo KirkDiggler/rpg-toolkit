@@ -26,6 +26,8 @@ func TestMadKingACaughtThiefLosesTheCooksLinesAndNotThePedlars(t *testing.T) {
 	s := openTheCastle(t, besideTheCook)
 	require.True(t, s.offers(kingCook, "pilfer"), "precondition: nobody has been caught")
 	require.True(t, s.offers(kingCook, "gossip"), "precondition: the cook talks to strangers")
+	require.True(t, s.offers(kingCook, "help"), "precondition: the cook takes a hand")
+	require.True(t, s.offers(kingCook, "taste"), "precondition: the cook offers a taste")
 
 	s.said(kingCook, "pilfer", "sleight-of-hand", false)
 
@@ -37,6 +39,8 @@ func TestMadKingACaughtThiefLosesTheCooksLinesAndNotThePedlars(t *testing.T) {
 	require.Contains(t, s.saidBy(hero, kingCook), "Thief!", "in the cook's words, which reached the hero")
 	require.False(t, s.offers(kingCook, "pilfer"), "no second try at the sill")
 	require.False(t, s.offers(kingCook, "gossip"), "the cook's gossip is closed to the thief")
+	require.False(t, s.offers(kingCook, "help"), "no helping with the pies once caught (rpg-project#1024)")
+	require.False(t, s.offers(kingCook, "taste"), "no taste of the feast once caught (rpg-project#1024)")
 
 	require.True(t, s.offers(kingPedlar, "tonight"), "the pedlar outside saw nothing, and still talks to the thief")
 }
