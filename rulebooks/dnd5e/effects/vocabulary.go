@@ -40,6 +40,8 @@ const (
 	BeatRest machine.Beat = "rest"
 	// BeatCombatEnd observes a recipient's combat ending.
 	BeatCombatEnd machine.Beat = "combat_end"
+	// BeatRunEnd observes a recipient's run ending.
+	BeatRunEnd machine.Beat = "run_end"
 )
 
 // Bind supplies a fresh closed vocabulary bound to immutable display/origin
@@ -174,6 +176,7 @@ func machineVocabulary() machine.Vocabulary {
 		}, nil),
 		BeatRest:      typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
 		BeatCombatEnd: typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatRunEnd:    typedBeat(dndevents.RunEndTopic, func(e dndevents.RunEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
 		BeatDroppedToZero: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || !e.DroppedToZero {
 				return "", false

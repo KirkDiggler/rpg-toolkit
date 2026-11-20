@@ -34,7 +34,8 @@
 // duration owns its counter/grace separately. End-on and until-empty policies are
 // independent lifecycle parts. Combat-activity upkeep owns attack/applied-damage
 // flags and optional first-end grace, not a clock or concentration. End-on selects
-// rest, combat-end, next received turn-start or dropped-to-zero for its holder.
+// rest, combat-end, run-end, next received turn-start or dropped-to-zero for its
+// holder.
 // Actual last-member loss reports the source-neutral members_empty cause.
 // Resistance reuses its existing incoming fold.
 // Roll modifiers are query-only, describe signed dice with selection metadata, and
