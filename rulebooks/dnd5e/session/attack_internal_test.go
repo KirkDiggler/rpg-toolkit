@@ -38,8 +38,8 @@ type aggregateRecordOrderAsGiven struct{}
 
 func (aggregateRecordOrderAsGiven) RollInitiative(
 	members []encounter.MemberID,
-) ([]encounter.MemberID, error) {
-	return members, nil
+) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 type aggregateRecordEveryoneStanding struct{}

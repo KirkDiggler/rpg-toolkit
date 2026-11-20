@@ -297,7 +297,7 @@ you have put a rule in the seam.** `standingSeam` finds records and hands them
 to `resolution.Participation`. `checkSeam` stages a stored record and hands it to
 `resolution.MakeCheck`, which loads the character, attaches conditions, picks the
 approach and rolls on its own lawful bus. `initiativeSeam` hands the host's
-entropy to the rulebook's `RollForOrder`. In every case: records in, answers out.
+entropy to the rulebook's `initiative.RollOne`, one member at a time in sorted order. In every case: records in, answers out.
 
 What it ASKS for, and never computes:
 

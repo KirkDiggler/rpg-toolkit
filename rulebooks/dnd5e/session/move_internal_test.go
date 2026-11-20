@@ -25,8 +25,8 @@ import (
 // own; these tests are internal and cannot see them.
 type walkOrderAsGiven struct{}
 
-func (walkOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (walkOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 type walkEveryoneStanding struct{}

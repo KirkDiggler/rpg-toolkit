@@ -53,7 +53,7 @@ func (s *AffordSuite) twoSkeletonFight() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
-		Dice: &sequenceDice{rolls: []int{0, 0, 0}}, TurnDriver: session.Pass{},
+		Dice: &sequenceDice{rolls: []int{1, 1, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
