@@ -1707,7 +1707,7 @@ type AnswerSpec struct {
 	//
 	//	success:
 	//	  - say: Bless you. Here, eat.
-	//	    apply_status: well-fed
+	//	    apply_status: warmed-up
 	ApplyStatus string `yaml:"apply_status,omitempty"`
 
 	// When is the condition this entry is on the table under
