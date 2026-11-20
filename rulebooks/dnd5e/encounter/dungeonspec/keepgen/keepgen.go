@@ -37,6 +37,8 @@ package keepgen
 import (
 	"fmt"
 	"strings"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // Options are every knob (design Defaults). Zero density means none.
@@ -121,11 +123,18 @@ func (r Report) String() string {
 // line break; [ErrBadOptions] for a garrison that cannot be met), a plan that does not lay out, or a site [Prove] refuses.
 // Equal (p, o) give equal bytes.
 func Generate(p *Plan, o Options) ([]byte, Report, error) {
+	return generate(p, o, Prove)
+}
+
+// generate is [Generate] with its prover handed in, so a test can show that a
+// refused proof returns the prover's error and no bytes without compiling a
+// whole keep.
+func generate(p *Plan, o Options, prove func([]byte) (dungeonspec.Compiled, error)) ([]byte, Report, error) {
 	doc, r, err := write(p, o)
 	if err != nil {
 		return nil, Report{}, err
 	}
-	if _, err := Prove(doc); err != nil {
+	if _, err := prove(doc); err != nil {
 		return nil, Report{}, err
 	}
 	return doc, r, nil

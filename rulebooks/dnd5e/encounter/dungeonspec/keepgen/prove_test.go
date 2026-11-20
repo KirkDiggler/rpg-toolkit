@@ -4,10 +4,13 @@
 package keepgen
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // TestProve_RefusesUnreachable: a site whose closet is walled off from the
@@ -21,6 +24,23 @@ func TestProve_RefusesUnreachable(t *testing.T) {
 	compiled, err := Prove([]byte(site))
 	require.ErrorContains(t, err, `region "closet" is unreachable from the party start through the doors`)
 	require.Empty(t, compiled.Field.Regions, "a refused site comes back with nothing compiled")
+}
+
+// TestGenerate_RefusedProofReturnsNoBytes: when the proof refuses the site,
+// Generate's own write-then-prove path returns the prover's error and no
+// bytes or report. The prover is a stand-in that refuses whatever it is
+// shown, so no keep is compiled.
+func TestGenerate_RefusedProofReturnsNoBytes(t *testing.T) {
+	refused := errors.New("keepgen: refused: stand-in prover")
+	var shown []byte
+	doc, report, err := generate(DefaultPlan(), DefaultOptions(), func(d []byte) (dungeonspec.Compiled, error) {
+		shown = d
+		return dungeonspec.Compiled{}, refused
+	})
+	require.ErrorIs(t, err, refused, "the prover's own error")
+	require.NotEmpty(t, shown, "the written site was handed to the prover")
+	require.Nil(t, doc, "no bytes come back")
+	require.Equal(t, Report{}, report, "and no report")
 }
 
 // seatsSite is a loadable site whose start region is one cell, walled off
