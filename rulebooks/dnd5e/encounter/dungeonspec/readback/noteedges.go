@@ -10,7 +10,8 @@ import "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 const (
 	// ConnWho is a connection to a who-word ([encounter.WhoWords]): role
 	// "about" names whom a note is about (given or asked), role "takes" a
-	// taker word with its way in is. Its at is the topic it belongs to.
+	// taker word with its way in is — at the topic it belongs to — and role
+	// [RoleReceives] who receives a status effect, at the status's id.
 	ConnWho = "who"
 	// RoleMayNote is a creature that MAY come to note a topic: the takers'
 	// rule resolved against the file's creatures, not who will. Who does

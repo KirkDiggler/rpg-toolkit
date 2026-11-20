@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 func TestDungeonspec_AStatusCompilesInTheAuthorsWords(t *testing.T) {
@@ -90,6 +91,10 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 			asked + ".apply_status.to", `"the_taken" is not who can receive a status: write ` + "`to:` as " + receiverWords},
 		"another key": {vaultApply, "                apply_status: { status: rested, to: speaker, for: ever }\n",
 			asked + ".apply_status.for", "apply_status takes `status` and `to`, not `for`"},
+		"a list of receivers": {vaultApply, "                apply_status: { status: rested, to: [speaker, spoken_to] }\n",
+			asked + ".apply_status.to", "apply_status's `to` is one word, not a list or a mapping"},
+		"a null receiver": {vaultApply, "                apply_status: { status: rested, to: ~ }\n",
+			asked + ".apply_status.to", "apply_status names who receives it: write `to:` as " + receiverWords},
 		"a status with no name": {"    name: Rested\n", "",
 			"statuses.rested.name", "a status needs a name: the words a player sees"},
 		"a status with an empty name": {"    name: Rested\n", "    name: \"\"\n",
@@ -199,4 +204,14 @@ func TestDungeonspec_TheShortFormTellsTheAuthorWhatToWrite(t *testing.T) {
 	for _, e := range errs {
 		require.NotContains(t, e.Message, "saved by an older version", "an author is never told the player's sentence")
 	}
+}
+
+// A KEY WRITTEN TWICE IN apply_status IS REFUSED, at its line in yaml.v3's
+// own sentence, as every hand-read mapping in this package refuses one
+// ([repeatedKey]): the second `to` never quietly wins.
+func TestDungeonspec_ApplyStatusRefusesAKeyWrittenTwice(t *testing.T) {
+	_, err := dungeonspec.Load([]byte(vaultWithAStatus(t, vaultApply,
+		"                apply_status: { status: rested, to: speaker, to: party_in_sight }\n")))
+	require.Error(t, err)
+	require.Regexp(t, `line \d+: mapping key "to" already defined at line \d+`, err.Error())
 }

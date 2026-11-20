@@ -28,6 +28,7 @@ func TestSentinelsAreDistinct(t *testing.T) {
 		encounter.ErrEdgeOffFloor,
 		encounter.ErrDoorEdgeOffFloor,
 		encounter.ErrInvalidData,
+		encounter.ErrSavedByOlderVersion,
 	}
 
 	// Each sentinel must be non-nil

@@ -264,7 +264,7 @@ func TestAnAbandonedStagedStatusGoesToWhomTheGuardSawWhenSaid(t *testing.T) {
 // receiver was stated — the old shape, a grant with no `to` — with words a
 // player can act on.
 func TestAStatusGrantWithNoReceiverIsRefused(t *testing.T) {
-	require.ErrorContains(t, validateConsequence("row", statusGrantTo(""), false), "start a new game")
+	require.ErrorIs(t, validateConsequence("row", statusGrantTo(""), false), ErrSavedByOlderVersion)
 
 	enc := receiverHall(t, 2, []Option{holdLine("hold-speaker", string(RecognitionSpeaker))})
 	raw, err := json.Marshal(enc.ToData())
@@ -275,5 +275,12 @@ func TestAStatusGrantWithNoReceiverIsRefused(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(old), &data))
 	_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
 	require.ErrorIs(t, err, ErrInvalidData)
-	require.ErrorContains(t, err, "this game was saved by an older version of the game and can no longer be loaded; start a new game")
+	require.ErrorIs(t, err, ErrSavedByOlderVersion, "the refusal is named, through every wrapper")
+
+	// The same run in the new shape loads, and nothing names it too old.
+	var current EncounterData
+	require.NoError(t, json.Unmarshal(raw, &current))
+	_, err = LoadEncounter(&LoadEncounterInput{Data: current, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, ErrSavedByOlderVersion)
 }

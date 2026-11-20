@@ -871,6 +871,12 @@ func (g *grammar) applyStatus(at string, a ApplyStatusSpec, isProp bool) {
 	for _, key := range a.others {
 		g.fail(at+"."+key, "apply_status takes `status` and `to`, not `%s`", key)
 	}
+	for _, key := range a.notWords {
+		g.fail(at+"."+key, "apply_status's `%s` is one word, not a list or a mapping", key)
+	}
+	if len(a.notWords) > 0 {
+		return
+	}
 	switch {
 	case a.Status == "":
 		g.fail(at+".status", "apply_status names the status given: write `status: <id>` (%s)", declaredStatusList(g.statusIDs))

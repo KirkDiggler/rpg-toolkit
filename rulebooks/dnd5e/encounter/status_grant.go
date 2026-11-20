@@ -6,7 +6,6 @@ package encounter
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -89,10 +88,10 @@ func validateStatusGrant(what string, g StatusGrant) error {
 		return fmt.Errorf("%s gives status %q, whose authored block is not a JSON object", what, g.ID)
 	}
 	if g.To == "" {
-		// SAID TO A PLAYER, VERBATIM: the one way to get here is a game saved
-		// before the receiver was always stated — an author's site is refused
-		// first by the compiler, at their path, with what to write.
-		return errors.New("this game was saved by an older version of the game and can no longer be loaded; start a new game")
+		// A PLAYER'S REFUSAL, BY NAME: the one way to get here is a game
+		// saved before the receiver was always stated — an author's site is
+		// refused first by the compiler, at their path, with what to write.
+		return fmt.Errorf("%s gives status %q with no receiver: %w", what, g.ID, ErrSavedByOlderVersion)
 	}
 	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); !ok {
 		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",

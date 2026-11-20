@@ -1399,14 +1399,20 @@ type ApplyStatusSpec struct {
 	short string
 	// others is every key written beside `status` and `to`, refused.
 	others []string
+	// notWords is every one of `status` and `to` written as something other
+	// than one word (a list, a mapping), refused.
+	notWords []string
 }
 
 // UnmarshalYAML reads `apply_status:` as a mapping of `status` and `to`,
-// keeping a bare scalar and any other key for the grammar to refuse at the
-// author's path (a custom unmarshaler bypasses the decoder's KnownFields).
+// keeping a bare scalar, any other key and a `status` or `to` that is not one
+// word for the grammar to refuse at the author's path (a custom unmarshaler
+// bypasses the decoder's KnownFields). A null `status` or `to` (`to: ~`) is
+// one not written.
 //
-// Errors: a value that is neither a scalar nor a mapping, or a mapping
-// value that is not a scalar.
+// Errors: a value that is neither a scalar nor a mapping, and a key written
+// twice in the mapping, at its line in yaml.v3's own sentence ([repeatedKey]),
+// as every hand-read mapping in this package refuses one.
 func (a *ApplyStatusSpec) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {
 	case yaml.ScalarNode:
@@ -1416,20 +1422,28 @@ func (a *ApplyStatusSpec) UnmarshalYAML(value *yaml.Node) error {
 	default:
 		return fmt.Errorf("line %d: apply_status is a mapping: write apply_status: { status: <id>, to: speaker }", value.Line)
 	}
+	seen := map[string]int{}
 	for i := 0; i+1 < len(value.Content); i += 2 {
-		key, v := value.Content[i].Value, value.Content[i+1]
-		switch key {
+		k, v := value.Content[i], value.Content[i+1]
+		if err := repeatedKey(seen, k); err != nil {
+			return err
+		}
+		switch k.Value {
 		case "status", "to":
-			if v.Kind != yaml.ScalarNode {
-				return fmt.Errorf("line %d: apply_status.%s is a single word", v.Line, key)
+			word := ""
+			switch {
+			case v.Kind != yaml.ScalarNode:
+				a.notWords = append(a.notWords, k.Value)
+			case v.Tag != "!!null":
+				word = v.Value
 			}
-			if key == "status" {
-				a.Status = v.Value
+			if k.Value == "status" {
+				a.Status = word
 			} else {
-				a.To = v.Value
+				a.To = word
 			}
 		default:
-			a.others = append(a.others, key)
+			a.others = append(a.others, k.Value)
 		}
 	}
 	return nil
