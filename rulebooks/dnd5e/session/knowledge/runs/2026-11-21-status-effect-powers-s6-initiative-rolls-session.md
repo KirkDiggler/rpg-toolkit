@@ -12,8 +12,8 @@ One line per entry. Every line ends with a link.
 
 - The rolls reach the story log through the record entry and `clockPieces`, the path every other clock entry takes, and not through the verb's `Formed` return — [rpg-project#1050](https://github.com/KirkDiggler/rpg-project/issues/1050).
 - `Formed` (the verb's own report) is left with order and surprise only — [rpg-project#1050](https://github.com/KirkDiggler/rpg-project/issues/1050).
-- Existing fixtures' illegal initiative faces become 1, per Amendment 1 (every member moves up by the same 1, so no order changes) — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/comments/7051755528).
-- The session reads `InitiativeContribution` (classified in `conditionReaders`) and names no other rules type for initiative — [Amendment 2](https://github.com/KirkDiggler/rpg-project/issues/comments/7051887957).
+- Existing fixtures' illegal initiative faces become 1, per Amendment 1 (every member moves up by the same 1, so no order changes) — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051755528).
+- The session reads `InitiativeContribution` (classified in `conditionReaders`) and names no other rules type for initiative — [Amendment 2](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051887957).
 
 ## Found
 

@@ -112,6 +112,7 @@ func (s *KitchenStatusSuite) TestAHeldInitiativeStatusShowsInTheRoll() {
 	}
 	s.Equal([]string{"Dexterity", "Warmed up"}, names)
 	warm := modifierNamed(alice, "Warmed up")
+	s.Require().NotNil(warm, "alice's roll shows Warmed up")
 	s.Equal(1, warm.Value)
 	sum := alice.Dice[0]
 	for _, m := range alice.Modifiers {
