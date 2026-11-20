@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -36,7 +37,7 @@ import (
 // session and the wire never see a conversation's name.
 //
 // A FAULT INSIDE A LINE IS SAID ONCE, AT THE CONVERSATION. The grammar judges
-// each carrier's expanded list at the carrier's paths; [conversationPaths]
+// each carrier's expanded list at the carrier's paths; [lineRewrite.say]
 // rewrites a path under an expanded line to the line's own path,
 // `conversations.<id>.lines[k]…`, and the sink says each (path, message)
 // once, however many carry it.
@@ -128,22 +129,34 @@ func lineCarriers(s *SingleRoomSpec) []lineCarrier {
 	return out
 }
 
+// withOwnLines is a copy of s whose carriers' lists may be rewritten
+// without touching s: the factions, the creature bindings and the prop
+// bindings are copied one level down, everything else is shared. The
+// validation and the compile expand the copy, so a caller's spec keeps its
+// `use:` entries and a second compile after an edit reads the edit.
+func withOwnLines(s *SingleRoomSpec) *SingleRoomSpec {
+	c := *s
+	c.Factions = slices.Clone(s.Factions)
+	c.Room.Gameplay.MonsterBindings = maps.Clone(s.Room.Gameplay.MonsterBindings)
+	c.Room.Gameplay.PropBindings = maps.Clone(s.Room.Gameplay.PropBindings)
+	return &c
+}
+
+// lineRewrite is how a refusal said at a carrier's expanded line is said at
+// the author's: each expanded `<carrier>.options[i]` to where that line was
+// written, and how many carriers use each conversation.
+type lineRewrite struct {
+	sources map[string]LineSource
+	uses    map[string]int
+}
+
 // resolveConversations expands every `use:` entry in a single-room document
-// into its conversation's lines, judges each conversation once at its own
-// path, and returns the rewrite of an expanded line's path to the line's
-// own ([conversationPaths]).
-//
-// IDEMPOTENT. Validation and compile both run it: the first run keeps each
-// carrier's authored list, and every run expands that, never an expanded
-// one.
-func resolveConversations(s *SingleRoomSpec, add errSink) func(string) string {
-	carriers := lineCarriers(s)
-	if s.authoredLines == nil {
-		s.authoredLines = map[string][]OptionSpec{}
-		for _, c := range carriers {
-			s.authoredLines[c.at] = slices.Clone(c.get())
-		}
-	}
+// into its conversation's lines, IN PLACE: validation and compile hand it a
+// copy ([withOwnLines]), never the caller's spec. It judges each
+// conversation once at its own path, and returns the rewrite every later
+// refusal is said through ([lineRewrite.say]).
+func resolveConversations(s *SingleRoomSpec, add errSink) *lineRewrite {
+	rw := &lineRewrite{sources: map[string]LineSource{}, uses: map[string]int{}}
 	for _, id := range sortedKeys(s.Conversations) {
 		at := "conversations." + id
 		lines := s.Conversations[id].Lines
@@ -151,22 +164,30 @@ func resolveConversations(s *SingleRoomSpec, add errSink) func(string) string {
 			add(at+".lines", errConversationNoLines)
 			continue
 		}
+		written := map[string]int{}
 		for k, line := range lines {
 			if line.useWritten {
 				add(fmt.Sprintf("%s.lines[%d].use", at, k), errConversationNests)
+				continue
 			}
+			// AN ID WRITTEN TWICE IN ONE CONVERSATION is the conversation's
+			// fault, said once here, whoever uses it.
+			if prev, dup := written[line.ID]; dup && line.ID != "" {
+				add(fmt.Sprintf("%s.lines[%d].id", at, k), fmt.Sprintf(
+					"line %q is already written at %s.lines[%d]; a line's id is unique within its conversation", line.ID, at, prev))
+				continue
+			}
+			written[line.ID] = k
 		}
 	}
-	paths := map[string]string{}
-	used := map[string]bool{}
-	for _, c := range carriers {
-		authored := s.authoredLines[c.at]
+	for _, c := range lineCarriers(s) {
+		authored := c.get()
 		lines, sources, users := expandLines(s.Conversations, c.at, authored, add)
 		for i, src := range sources {
-			paths[fmt.Sprintf("%s.options[%d]", c.at, i)] = src.Path
+			rw.sources[fmt.Sprintf("%s.options[%d]", c.at, i)] = src
 		}
 		for _, id := range users {
-			used[id] = true
+			rw.uses[id]++
 		}
 		// A LIST WHOSE EVERY ENTRY WAS REFUSED is left absent, so the one
 		// refusal is the entry's and not a second "lists nothing" beside it.
@@ -180,26 +201,13 @@ func resolveConversations(s *SingleRoomSpec, add errSink) func(string) string {
 		c.set(lines)
 	}
 	for _, id := range sortedKeys(s.Conversations) {
-		if !used[id] && len(s.Conversations[id].Lines) > 0 {
+		if rw.uses[id] == 0 && len(s.Conversations[id].Lines) > 0 {
 			add("conversations."+id, fmt.Sprintf(
 				"conversation %q is used by nobody: write `- use: %s` in a creature's, a prop's or a faction's options, or remove it",
 				id, id))
 		}
 	}
-	return conversationPaths(paths)
-}
-
-// restoreAuthoredLines puts back each carrier's `options:` as it was
-// written, undoing [resolveConversations]' expansion, so a decoded spec
-// preserves exactly what was authored.
-func restoreAuthoredLines(s *SingleRoomSpec) {
-	if s.authoredLines == nil {
-		return
-	}
-	for _, c := range lineCarriers(s) {
-		c.set(s.authoredLines[c.at])
-	}
-	s.authoredLines = nil
+	return rw
 }
 
 // expandLines is one carrier's authored list with every `use:` entry
@@ -220,24 +228,26 @@ func expandLines(
 		sources []LineSource
 		users   []string
 	)
+	// A LIST THAT USES A CONVERSATION has its ids judged here, every one at
+	// an authored path: past a `use:` the grammar's indices are expanded
+	// ones and would send the author to the wrong line. A list that uses
+	// none is the grammar's, in its own words, as it always was.
+	uses := slices.ContainsFunc(authored, func(o OptionSpec) bool { return o.useWritten })
 	usedAt := map[string]int{}
 	// seen is each line id already said on this carrier, to where it was
-	// written and whether a conversation wrote it.
-	type origin struct {
-		path string
-		conv bool
-	}
+	// written and the conversation that wrote it (empty for its own).
+	type origin struct{ path, conv string }
 	seen := map[string]origin{}
-	// twice refuses a line id met a second time when a conversation wrote
-	// either one (two own lines with one id are the grammar's to refuse, at
-	// its own path and in its own words).
 	twice := func(id string, now origin, at string) bool {
 		prev, dup := seen[id]
-		if id == "" || !dup || (!prev.conv && !now.conv) {
-			if id != "" && !dup {
-				seen[id] = now
-			}
+		switch {
+		case id == "" || !uses:
 			return false
+		case !dup:
+			seen[id] = now
+			return false
+		case now.conv != "" && prev.conv == now.conv:
+			return true // refused once, inside the conversation
 		}
 		refuse(at, fmt.Sprintf("line %q is said twice on this carrier: at %s and at %s; a line's id is unique among "+
 			"what one carrier says, so rename one or drop it", id, prev.path, now.path))
@@ -277,10 +287,9 @@ func expandLines(
 				continue // refused once, at the conversation's own path
 			}
 			src := fmt.Sprintf("conversations.%s.lines[%d]", name, k)
-			if twice(line.ID, origin{path: src, conv: true}, p+".use") {
+			if twice(line.ID, origin{path: src, conv: name}, p+".use") {
 				continue
 			}
-			line.Conversation = name
 			out = append(out, line)
 			sources = append(sources, LineSource{Path: src, Conversation: name, Use: p})
 		}
@@ -288,38 +297,56 @@ func expandLines(
 	return out, sources, users
 }
 
-// conversationPaths is the rewrite of a path under a carrier's expanded
-// line, `<carrier>.options[i]…`, to the line's authored path: the
-// conversation's line, or the carrier's own line at its authored index. A
-// path under no expanded line is returned as it is.
-func conversationPaths(paths map[string]string) func(string) string {
-	return func(path string) string {
-		i := strings.Index(path, ".options[")
-		if i < 0 {
-			return path
-		}
-		j := strings.IndexByte(path[i:], ']')
-		if j < 0 {
-			return path
-		}
-		if to, ok := paths[path[:i+j+1]]; ok {
-			return to + path[i+j+1:]
-		}
-		return path
+// sourceOf is the line a path is under, when it is under a carrier's
+// expanded line, and the rest of the path below it.
+func (rw *lineRewrite) sourceOf(path string) (LineSource, string, bool) {
+	i := strings.Index(path, ".options[")
+	if i < 0 {
+		return LineSource{}, "", false
 	}
+	j := strings.IndexByte(path[i:], ']')
+	if j < 0 {
+		return LineSource{}, "", false
+	}
+	src, ok := rw.sources[path[:i+j+1]]
+	return src, path[i+j+1:], ok
 }
 
-// saidOnceAt is a sink that rewrites each path with at and says each
-// (path, message) once: a conversation's fault, met on every carrier, is
-// one refusal at the conversation.
-func saidOnceAt(sink errSink, at func(string) string) errSink {
-	seen := map[[2]string]bool{}
-	return func(path, message string) {
-		key := [2]string{at(path), message}
-		if !seen[key] {
-			seen[key] = true
-			sink(key[0], message)
+// say tells sink every refusal, each at the author's path and once: a
+// carrier's own line at its authored index, a conversation's line at
+// `conversations.<id>.lines[k]` however many carriers met the fault. A
+// fault met on SOME of a conversation's carriers and not all is the
+// carrier's as much as the line's: the refusal names the `use:` entries
+// it was met through.
+func (rw *lineRewrite) say(sink errSink, refusals []FieldError) {
+	type said struct {
+		path, message, conv string
+		uses                []string
+	}
+	var order []*said
+	byKey := map[[2]string]*said{}
+	for _, e := range refusals {
+		path, conv, use := e.Path, "", ""
+		if src, rest, ok := rw.sourceOf(e.Path); ok {
+			path, conv, use = src.Path+rest, src.Conversation, src.Use
 		}
+		key := [2]string{path, e.Message}
+		at, ok := byKey[key]
+		if !ok {
+			at = &said{path: path, message: e.Message, conv: conv}
+			byKey[key] = at
+			order = append(order, at)
+		}
+		if use != "" && !slices.Contains(at.uses, use) {
+			at.uses = append(at.uses, use)
+		}
+	}
+	for _, at := range order {
+		message := at.message
+		if at.conv != "" && len(at.uses) < rw.uses[at.conv] {
+			message += fmt.Sprintf(" (said through the conversation %q at %s)", at.conv, strings.Join(at.uses, ", "))
+		}
+		sink(at.path, message)
 	}
 }
 

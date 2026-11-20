@@ -80,7 +80,7 @@ func (r *ReadBack) fold(share bool) []FoldedSection {
 			items = foldCreatures(s.Groups, share)
 		case "Conversations":
 			for _, g := range s.Groups {
-				if g.About.Kind == "lines" {
+				if g.About.Kind == ConnSharedLines {
 					items = append(items, foldSharedLines(g))
 					continue
 				}

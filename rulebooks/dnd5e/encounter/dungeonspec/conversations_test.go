@@ -19,7 +19,15 @@ import (
 // `options:` list, expanded at load into exactly what the copied lines
 // compile to, and every refusal in a sentence at the author's path.
 
-type ConversationsSuite struct{ suite.Suite }
+type ConversationsSuite struct {
+	suite.Suite
+	// copied and shared are the castle both ways, built once
+	// ([ConversationsSuite.castleBothWays]): the castle is the costliest
+	// fixture, and two tests read it.
+	copied, shared []byte
+}
+
+func (s *ConversationsSuite) SetupSuite() { s.copied, s.shared = s.castleBothWays() }
 
 func TestConversationsSuite(t *testing.T) { suite.Run(t, new(ConversationsSuite)) }
 
@@ -101,7 +109,7 @@ func (s *ConversationsSuite) castleBothWays() (copied, shared []byte) {
 // castle with the gate's lines written once compiles to exactly the castle
 // with them copied onto gate-1, gate-2 and the captain, content hash and all.
 func (s *ConversationsSuite) TestTheGateWrittenOnceCompilesAsTheCopies() {
-	copied, shared := s.castleBothWays()
+	copied, shared := s.copied, s.shared
 	s.Require().Contains(string(shared), "- use: gate-claims")
 	s.Require().NotContains(string(shared), "id: never-alive\n          say", "no gate speaker writes the line itself")
 
@@ -116,23 +124,14 @@ func (s *ConversationsSuite) TestTheGateWrittenOnceCompilesAsTheCopies() {
 	s.Require().NoError(err)
 	s.Equal(wantHash, gotHash)
 
-	// AND THE COMPARISON CAN FAIL: one line renamed in the shared form
-	// compiles to something else.
-	renamed := strings.Replace(string(shared), "id: never-alive", "id: never-taken", 1)
-	s.Require().NotEqual(string(shared), renamed)
-	other, err := dungeonspec.Load([]byte(renamed))
-	s.Require().NoError(err)
-	s.NotEqual(want, other)
 }
 
 // TestEachLineSaysWhereItWasWritten: LineSources names each carrier line's
 // authored path, in the order the carrier says them.
 func (s *ConversationsSuite) TestEachLineSaysWhereItWasWritten() {
-	_, shared := s.castleBothWays()
-	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: shared})
+	fresh, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: s.shared})
 	s.Require().NoError(err)
-	fresh, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: shared})
-	s.Require().NoError(err)
+	decoded := fresh
 	at := "room.room.monsterBindings.captain"
 	sources := dungeonspec.LineSources(fresh.Spec, at, fresh.Spec.Room.Gameplay.MonsterBindings["captain"].Options)
 	s.Require().GreaterOrEqual(len(sources), 4)
@@ -198,6 +197,13 @@ func (s *ConversationsSuite) TestALineGivingAStatusCompilesAsItsCopy() {
 		}
 	}
 	s.True(given, "the used line still gives its status")
+
+	// AND THE COMPARISON CAN FAIL: the used line with other words compiles
+	// to something else.
+	other, err := dungeonspec.Load([]byte(s.hailWith(strings.Replace(welcome, "say: In you go.", "say: Off you go.", 1),
+		"          - use: welcome\n")))
+	s.Require().NoError(err)
+	s.NotEqual(want, other)
 }
 
 // refusals is the defects of a hail-site variant.
@@ -282,4 +288,78 @@ func (s *ConversationsSuite) TestAFaultInALineIsSaidOnceAtTheConversation() {
 func (s *ConversationsSuite) TestAnOwnLineKeepsItsAuthoredPath() {
 	own := "          - use: welcome\n          - id: hello\n            say: Hello.\n            loudness: bellow\n"
 	s.Contains(strings.Join(s.refusals(welcome, own), "\n"), "room.room.monsterBindings.porter.options[1].loudness: ")
+}
+
+// TestADuplicatePastAUseNamesAuthoredPaths: two own lines with one id after
+// a `use:` are refused naming the indices the author wrote, never the
+// expanded ones.
+func (s *ConversationsSuite) TestADuplicatePastAUseNamesAuthoredPaths() {
+	own := "          - use: welcome\n          - id: hello\n            say: Hello.\n          - id: hello\n            say: Hello.\n"
+	got := s.refusals(welcome, own)
+	s.Contains(got, "room.room.monsterBindings.porter.options[2].id: line \"hello\" is said twice on this carrier: at "+
+		"room.room.monsterBindings.porter.options[1] and at room.room.monsterBindings.porter.options[2]; a line's id is "+
+		"unique among what one carrier says, so rename one or drop it")
+	for _, d := range got {
+		s.NotContains(d, "already declared at options[", "no refusal cites an expanded index: %s", d)
+	}
+}
+
+// TestAnIDTwiceInOneConversationIsRefusedOnceThere: an id written twice
+// inside a conversation is the conversation's fault, said once at its line
+// however many carriers use it.
+func (s *ConversationsSuite) TestAnIDTwiceInOneConversationIsRefusedOnceThere() {
+	dup := welcome + "  dup:\n    lines:\n      - id: a\n        say: A.\n      - id: a\n        say: A again.\n"
+	src := s.hailWith(dup, "          - use: welcome\n          - use: dup\n")
+	src = strings.Replace(src, "factions:\n  - id: watch\n", "factions:\n  - id: watch\n    options:\n      - use: dup\n", 1)
+	got := roomDefects(s.T(), src)
+	s.Contains(got, "conversations.dup.lines[1].id: line \"a\" is already written at conversations.dup.lines[0]; "+
+		"a line's id is unique within its conversation")
+	for _, d := range got {
+		s.NotContains(d, "said twice on this carrier", "not again at each carrier: %s", d)
+	}
+}
+
+// TestAFaultOnOneCarrierNamesIt: a line that is right for a prop and wrong
+// for a creature is refused at the conversation's line, naming the `use:`
+// it was met through.
+func (s *ConversationsSuite) TestAFaultOnOneCarrierNamesIt() {
+	raw, err := os.ReadFile("testdata/world-builder-v4-raider-letter.yaml")
+	s.Require().NoError(err)
+	src := string(raw)
+	for old, new := range map[string]string{
+		"chief: {faction: raiders}": "chief: {faction: raiders, options: [{use: deed}]}",
+		"        holdable: true\n":  "        holdable: true\n        options: [{use: deed}]\n",
+		"\nroom:\n  version: 3":     "\nconversations:\n  deed:\n    lines:\n      - { id: pull, do: You pull it. }\nroom:\n  version: 3",
+	} {
+		s.Require().Contains(src, old)
+		src = strings.Replace(src, old, new, 1)
+	}
+	var at []string
+	for _, d := range roomDefects(s.T(), src) {
+		if strings.HasPrefix(d, "conversations.deed.lines[0].do: ") {
+			at = append(at, d)
+		}
+	}
+	s.Require().Len(at, 1, "one refusal, at the line")
+	s.True(strings.HasSuffix(at[0], ` (said through the conversation "deed" at room.room.monsterBindings.chief.options[0])`), at[0])
+}
+
+// TestCompilingLeavesTheSpecAsWritten: a compile expands a copy, so the
+// caller's spec keeps its `use:` entry, and a second compile after an edit
+// to the conversation reads the edit.
+func (s *ConversationsSuite) TestCompilingLeavesTheSpecAsWritten() {
+	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{
+		Source: []byte(s.hailWith(welcome, "          - use: welcome\n"))})
+	s.Require().NoError(err)
+	spec := decoded.Spec
+	first, err := dungeonspec.CompileSingleRoom(dungeonspec.CompileSingleRoomInput{Spec: spec})
+	s.Require().NoError(err)
+	s.Equal("welcome", spec.Room.Gameplay.MonsterBindings["porter"].Options[0].Use, "the use entry is still there")
+	s.Require().NotEmpty(first.Monsters)
+	s.Equal("We're expected.", first.Monsters[0].Options[0].Say)
+
+	spec.Conversations["welcome"].Lines[0].Say = "We are expected."
+	second, err := dungeonspec.CompileSingleRoom(dungeonspec.CompileSingleRoomInput{Spec: spec})
+	s.Require().NoError(err)
+	s.Equal("We are expected.", second.Monsters[0].Options[0].Say, "the second compile reads the edit")
 }

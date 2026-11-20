@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/readback"
@@ -28,7 +29,7 @@ type SharedLinesSuite struct {
 
 func TestSharedLinesSuite(t *testing.T) { suite.Run(t, new(SharedLinesSuite)) }
 
-func (s *SharedLinesSuite) SetupTest() {
+func (s *SharedLinesSuite) SetupSuite() {
 	raw, err := os.ReadFile(conversationsPath)
 	s.Require().NoError(err)
 	s.rb, err = readback.Of(raw)
@@ -73,14 +74,14 @@ func (s *SharedLinesSuite) statement(kind readback.Kind, path string) readback.S
 // its own path, connected to each creature that carries it.
 func (s *SharedLinesSuite) TestTheConversationNamesItsCarriers() {
 	head := s.statement(readback.KindSharedLines, "conversations.gate-claims")
-	s.Equal(readback.Subject{Kind: "lines", ID: "gate-claims"}, head.About)
+	s.Equal(readback.Subject{Kind: readback.ConnSharedLines, ID: "gate-claims"}, head.About)
 	for _, id := range []string{"gate-1", "gate-2", "captain"} {
 		s.Contains(head.Connects, readback.Connection{Kind: "creature", ID: id, Role: "carries"})
 	}
 	s.Contains(head.Sentence, "It is carried by 3 carriers")
 	s.Contains(head.Sentence, "`troupe`, `come-quietly` and `never-alive`")
 	line := s.statement(readback.KindLine, "conversations.gate-claims.lines[0]")
-	s.Equal(readback.Subject{Kind: "lines", ID: "gate-claims"}, line.About)
+	s.Equal(readback.Subject{Kind: readback.ConnSharedLines, ID: "gate-claims"}, line.About)
 }
 
 // TestACarrierSaysWhichConversationItsLinesCameFrom: each carrier's use is
@@ -93,7 +94,7 @@ func (s *SharedLinesSuite) TestACarrierSaysWhichConversationItsLinesCameFrom() {
 		"room.room.monsterBindings.captain.options[1]",
 	} {
 		use := s.statement(readback.KindUsesLines, at)
-		s.Contains(use.Connects, readback.Connection{Kind: "lines", ID: "gate-claims", Role: "speaks-lines-of"})
+		s.Contains(use.Connects, readback.Connection{Kind: readback.ConnSharedLines, ID: "gate-claims", Role: "speaks-lines-of"})
 		s.Contains(use.Sentence, "carries the conversation `gate-claims`")
 	}
 	guest := s.statement(readback.KindLine, "room.room.monsterBindings.captain.options[0]")
@@ -122,10 +123,8 @@ func (s *SharedLinesSuite) TestTheGatesAskedLinesPointAtTheConversation() {
 	s.Equal([]string{"captain", "gate-1", "gate-2"}, who)
 }
 
-// passages is every passage and passage-way sentence of a castle variant.
-func passages(s *suite.Suite, raw string) []string {
-	rb, err := readback.Of([]byte(raw))
-	s.Require().NoError(err)
+// passages is every passage and passage-way sentence of a read-back.
+func passages(rb *readback.ReadBack) []string {
 	var out []string
 	for _, st := range rb.Statements() {
 		if st.Kind == readback.KindJoinPassage || st.Kind == readback.KindWayPassage {
@@ -138,20 +137,21 @@ func passages(s *suite.Suite, raw string) []string {
 
 // TestAPassageThroughAConversationIsSaidAsItsCopy: the castle's grate with
 // its two ways written as a conversation says the same passages as the
-// grate with them written on it.
-func (s *SharedLinesSuite) TestAPassageThroughAConversationIsSaidAsItsCopy() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
+// grate with them written on it (the shared castle read-back).
+func TestAPassageThroughAConversationIsSaidAsItsCopy(t *testing.T) {
+	raw, copied := theCastle(t)
 	src := string(raw)
 	start := strings.Index(src, "      grate:\n        options:\n")
 	end := strings.Index(src, "      # Hand edit (rpg-project#1023): the cell's weak place.")
-	s.Require().True(start > 0 && end > start, "the castle still gives the grate its two ways")
+	require.True(t, start > 0 && end > start, "the castle still gives the grate its two ways")
 	block := src[start+len("      grate:\n        options:\n") : end]
 	shared := src[:start] + "      grate:\n        options:\n          - use: tunnels\n" + src[end:]
 	lines := strings.ReplaceAll(block, "\n          ", "\n      ")
 	lines = strings.Replace(lines, "          - id", "      - id", 1)
 	shared = strings.Replace(shared, "\nroom:\n  version: 3", "\nconversations:\n  tunnels:\n    lines:\n"+lines+"room:\n  version: 3", 1)
-	want := passages(&s.Suite, src)
-	s.Require().NotEmpty(want)
-	s.Equal(want, passages(&s.Suite, shared))
+	rb, err := readback.Of([]byte(shared))
+	require.NoError(t, err)
+	want := passages(copied)
+	require.NotEmpty(t, want)
+	require.Equal(t, want, passages(rb))
 }

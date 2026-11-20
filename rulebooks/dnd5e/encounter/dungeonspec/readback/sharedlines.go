@@ -11,10 +11,10 @@ import (
 )
 
 // sharedlines.go says A CONVERSATION'S LINES WRITTEN ONCE (rpg-project#1025):
-// each root `conversations:` entry is one group about {lines, <id>}, its
+// each root `conversations:` entry is one group about {shared-lines, <id>}, its
 // lines said once at their own paths and its carriers connected
 // {creature|prop|faction, <id>, carries}; a carrier says each conversation it
-// uses as one statement at its `use:` entry, connected {lines, <id>,
+// uses as one statement at its `use:` entry, connected {shared-lines, <id>,
 // speaks-lines-of}, the way a creature with no lines of its own points at
 // its faction's.
 
@@ -112,7 +112,7 @@ func (b *builder) carrierName(c Connection) string {
 func (b *builder) sharedLineGroups() []Group {
 	var groups []Group
 	for _, id := range sortedKeys(b.spec.Conversations) {
-		about := Subject{Kind: "lines", ID: id}
+		about := Subject{Kind: ConnSharedLines, ID: id}
 		at := "conversations." + id
 		g := Group{Title: "The lines of " + quote(id), About: about}
 		carriers := b.convCarriers[id]
@@ -174,7 +174,7 @@ func (b *builder) carrierLineStatements(opts []encounter.Option, at string, auth
 			"the conversation.", capitalize(t.name), quote(src.Conversation), joinAnd(ids))
 		out = append(out, b.fstmt(KindUsesLines, t.about, src.Use, s, foldInfo{text: fmt.Sprintf(
 			"Carries the conversation %s: its lines %s (said under that conversation).", quote(src.Conversation), joinAnd(ids))},
-			Connection{Kind: "lines", ID: src.Conversation, Role: "speaks-lines-of"}))
+			Connection{Kind: ConnSharedLines, ID: src.Conversation, Role: "speaks-lines-of"}))
 	}
 	return out
 }
@@ -196,3 +196,9 @@ func (b *builder) lineSourcesOf(member string) []dungeonspec.LineSource {
 	}
 	return dungeonspec.LineSources(b.spec, fmt.Sprintf("factions[%d]", fi), b.spec.Factions[fi].Options)
 }
+
+// ConnSharedLines is the kind of a conversation's lines written once
+// (rpg-project#1025), as a subject and as a connection: `shared-lines`, so a
+// client that reads the `line` family by prefix never takes it for a line,
+// and `conversation` stays the interactions'.
+const ConnSharedLines = "shared-lines"

@@ -355,7 +355,7 @@ func (b *builder) relocatePassages(lines []Statement, topo encounter.FloorTopolo
 		// A CONVERSATION'S ROW (rpg-project#1025) is carried by each of the
 		// conversation's carriers: one passage for each.
 		carriers := []Subject{st.About}
-		if st.About.Kind == "lines" {
+		if st.About.Kind == ConnSharedLines {
 			carriers = nil
 			for _, c := range b.convCarriers[st.About.ID] {
 				carriers = append(carriers, Subject{Kind: c.Kind, ID: c.ID})

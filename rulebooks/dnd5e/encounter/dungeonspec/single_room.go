@@ -218,12 +218,6 @@ type SingleRoomSpec struct {
 	Conversations map[string]ConversationSpec `yaml:"conversations,omitempty" json:"conversations,omitempty"`
 
 	Room RoomSource `yaml:"room" json:"room"`
-
-	// authoredLines is each carrier's `options:` as it was decoded, by the
-	// carrier's path, kept by the first [resolveConversations] so every later
-	// run expands the authored list and never an expanded one (validation
-	// and compile both run it).
-	authoredLines map[string][]OptionSpec
 }
 
 // TemplateSpec is one authored stat block at the root: a rulebook base plus

@@ -1221,11 +1221,6 @@ type OptionSpec struct {
 	// single-room site declares conversations.
 	Use string `yaml:"use,omitempty" json:"use,omitempty"`
 
-	// Conversation is, on a line a `use:` entry expanded, the conversation
-	// it was written in; empty on a carrier's own line. Set by
-	// [resolveConversations], never authored.
-	Conversation string `yaml:"-" json:"-"`
-
 	// useWritten is whether `use` was written at all (an empty one is
 	// refused, not read as absent), and beside the other keys written with
 	// it, in the order written, for the refusal of an entry that uses a

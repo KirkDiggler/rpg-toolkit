@@ -168,16 +168,15 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 	if err := yaml.Unmarshal(in.Source, &root); err != nil {
 		return nil, singleRoomErrors(err.Error())
 	}
-	_, errs := validateSingleRoom(&spec)
+	// THE LINES AS AUTHORED (rpg-project#1025): validation expands every
+	// `use:` entry in a copy of the carriers' lists, so the decoded spec
+	// hands back each list as written.
+	_, errs := validateSingleRoom(withOwnLines(&spec))
 	errs = append(errs, sourceShapeErrors(&root)...)
 	if len(errs) > 0 {
 		sortFieldErrors(errs)
 		return nil, &ValidationError{Errors: errs}
 	}
-	// THE LINES AS AUTHORED (rpg-project#1025): validation expanded every
-	// `use:` entry; the decoded spec hands back each list as written, and
-	// the compile expands it again.
-	restoreAuthoredLines(&spec)
 	return &SingleRoomDecodeResult{Spec: &spec}, nil
 }
 
@@ -753,10 +752,15 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	// rows a creature will roll, and the compile that follows reads them.
 	// THE CONVERSATIONS BEFORE THE BUNDLES (rpg-project#1025): every `use:`
 	// entry in an `options:` list is replaced by its conversation's lines,
-	// and every refusal after it is said at the line's own path, once.
-	add = saidOnceAt(add, resolveConversations(s, add))
-	resolveBundles(s, add)
-	siteGrammar(s, add)
+	// and every refusal after it is said at the line's own path, once
+	// ([lineRewrite.say]).
+	// Every refusal from here on is held and said through the rewrite.
+	rw := resolveConversations(s, add)
+	var held []FieldError
+	hold := func(p, m string) { held = append(held, FieldError{Path: p, Message: m}) }
+	resolveBundles(s, hold)
+	siteGrammar(s, hold)
+	rw.say(add, held)
 
 	return read, e
 }

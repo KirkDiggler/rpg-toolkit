@@ -91,9 +91,10 @@ const (
 	KindLineGrant   Kind = "line.grant"
 
 	// A conversation's lines written once (rpg-project#1025): the lines
-	// group's head, about Subject{Kind: "lines"}, and a carrier's use of it.
-	KindSharedLines Kind = "lines"
-	KindUsesLines   Kind = "lines.use"
+	// group's head, about Subject{Kind: ConnSharedLines}, and a carrier's
+	// use of it.
+	KindSharedLines Kind = "shared-lines"
+	KindUsesLines   Kind = "shared-lines.use"
 
 	KindConversation Kind = "conversation"
 	KindApproach     Kind = "conversation.approach"
