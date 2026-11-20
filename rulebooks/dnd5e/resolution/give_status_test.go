@@ -177,6 +177,13 @@ func (s *GiveStatusTestSuite) TestABareAbilityLockCheckCarriesTheAdvantage() {
 	s.Require().NoError(err)
 	s.True(grantedBy(keepOf(s.T(), strength.Calculation), wellFedName), "a bare Strength route carries the status's advantage")
 
+	longName, err := MakeCheck(s.ctx, &CheckInput{
+		Character: saved, Approaches: []encounter.CheckApproach{route("strength", 10)},
+		Roller: dice.NewRoller(),
+	})
+	s.Require().NoError(err)
+	s.True(grantedBy(keepOf(s.T(), longName.Calculation), wellFedName), "a route spelling the ability long carries it too")
+
 	dexterity, err := MakeCheck(s.ctx, &CheckInput{
 		Character: saved, Approaches: []encounter.CheckApproach{route(string(abilities.DEX), 10)},
 		Roller: dice.NewRoller(),

@@ -234,10 +234,19 @@ func makeCheckOn(ctx context.Context, in *CheckInput, surf *surface) (*CheckOutp
 	route := dnd5eEvents.RollSource{Ref: ref, Name: name}
 	// A bare-ability route (a lock's Strength check) names its ability, so an
 	// effect guarded on an ability answers for it; a skill route's ability is
-	// the skill's, which the rules package fills in.
+	// the skill's, which the rules package fills in. The route may spell the
+	// ability long ("strength"); the check carries the canonical id ("str")
+	// that an ability guard compares against.
 	var ability abilities.Ability
 	if skill == "" {
-		ability = abilities.Ability(applied.Ability)
+		canonical, err := abilities.GetByID(applied.Ability)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("resolution: check for %q: %w: %w", one.ID(), ErrBadCheck, err),
+				surf.teardown(ctx),
+			)
+		}
+		ability = canonical
 	}
 	result, checkErr := checks.MakeAbilityCheck(ctx, &checks.AbilityCheckInput{
 		Roller:    in.Roller,
