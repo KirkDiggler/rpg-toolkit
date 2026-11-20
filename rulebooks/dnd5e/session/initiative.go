@@ -64,20 +64,20 @@ func (m *Manager) initiativeFor(sheets sheetSeam) initiativeSeam {
 	return initiativeSeam{dice: m.dice, sheets: sheets}
 }
 
-// initiativeAnswer is what a member's own sheet answers to
-// [character.Character.Initiative] or [monster.Monster.Initiative]: the whole
-// answer, the total and each contribution behind it. The session names no
-// source and sums nothing itself; what adds to initiative (Dexterity by rule,
-// a held status's bonus) is the rulebook's, read off the sheet at the moment
-// the fight forms.
+// initiativeModifiers is what a member's own sheet answers to
+// [character.Character.Initiative] or [monster.Monster.Initiative], as the
+// rulebook's roll takes it: one modifier per contribution, in the sheet's
+// order. The session names no source and sums nothing itself; what adds to
+// initiative (Dexterity by rule, a held status's bonus) is the rulebook's,
+// read off the sheet at the moment the fight forms.
 //
 // A monster is loaded with its carried conditions prepared, so a status it
 // holds is counted. A world NPC's recorded content has no sheet to ask, so it
 // adds nothing — the true answer from that content, as [sheetSeam.Sheets]
 // answers zero speed. A member the verb holds no sheet for is refused by
-// [sheetSeam.sheetOf], never answered with an empty answer: zero is a real
+// [sheetSeam.sheetOf], never answered with no modifiers: zero is a real
 // modifier.
-func (s initiativeSeam) initiativeAnswer(id encounter.MemberID) (*conditions.InitiativeOutput, error) {
+func (s initiativeSeam) initiativeModifiers(id encounter.MemberID) ([]initiative.Modifier, error) {
 	held, err := s.sheets.sheetOf(id)
 	if err != nil {
 		return nil, err
@@ -88,16 +88,37 @@ func (s initiativeSeam) initiativeAnswer(id encounter.MemberID) (*conditions.Ini
 		if err != nil {
 			return nil, err
 		}
-		return sheet.Initiative()
+		answer, err := sheet.Initiative()
+		if err != nil {
+			return nil, err
+		}
+		return modifiersFor(answer.Contributions), nil
 	case held.monster != nil:
 		sheet, err := monstertraits.LoadMonster(s.sheets.ctx, held.monster)
 		if err != nil {
 			return nil, err
 		}
-		return sheet.Initiative()
+		answer, err := sheet.Initiative()
+		if err != nil {
+			return nil, err
+		}
+		return modifiersFor(answer.Contributions), nil
 	default:
-		return &conditions.InitiativeOutput{}, nil
+		return nil, nil
 	}
+}
+
+// modifiersFor turns a sheet's initiative contributions into the modifiers the
+// rulebook's roll takes, one each, in order.
+func modifiersFor(contributions []conditions.InitiativeContribution) []initiative.Modifier {
+	modifiers := make([]initiative.Modifier, 0, len(contributions))
+	for _, c := range contributions {
+		modifiers = append(modifiers, initiative.Modifier{
+			Source: dnd5eEvents.RollSource{Ref: c.Ref, Name: c.Source},
+			Amount: c.Amount,
+		})
+	}
+	return modifiers
 }
 
 // RollInitiative rolls each member's initiative with the host's dice and
@@ -113,7 +134,7 @@ func (s initiativeSeam) initiativeAnswer(id encounter.MemberID) (*conditions.Ini
 // [initiative.RollOne], its one d20 entry) and puts the only non-reproducible
 // part, the ORDER OF THE ASKING, under this package's control.
 //
-// EACH MEMBER ADDS WHAT ITS OWN SHEET ANSWERS ([initiativeSeam.initiativeAnswer],
+// EACH MEMBER ADDS WHAT ITS OWN SHEET ANSWERS ([initiativeSeam.initiativeModifiers],
 // rpg-project#990): every initiative effect it has, by rule (Dexterity) and
 // held (a status's bonus), one modifier per contribution, in the sheet's
 // order. The rulebook builds the calculation from them and the session carries
@@ -132,16 +153,9 @@ func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounte
 
 	rolls := make([]encounter.InitiativeRoll, 0, len(asking))
 	for _, id := range asking {
-		answer, err := s.initiativeAnswer(id)
+		modifiers, err := s.initiativeModifiers(id)
 		if err != nil {
 			return nil, fmt.Errorf("initiative modifier for %q: %w", id, err)
-		}
-		modifiers := make([]initiative.Modifier, 0, len(answer.Contributions))
-		for _, c := range answer.Contributions {
-			modifiers = append(modifiers, initiative.Modifier{
-				Source: dnd5eEvents.RollSource{Ref: c.Ref, Name: c.Source},
-				Amount: c.Amount,
-			})
 		}
 		out, err := initiative.RollOne(s.sheets.ctx, &initiative.RollOneInput{
 			MemberID:  string(id),

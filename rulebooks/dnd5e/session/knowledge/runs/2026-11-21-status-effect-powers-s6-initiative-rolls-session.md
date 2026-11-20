@@ -13,13 +13,15 @@ One line per entry. Every line ends with a link.
 - The rolls reach the story log through the record entry and `clockPieces`, the path every other clock entry takes, and not through the verb's `Formed` return — [rpg-project#1050](https://github.com/KirkDiggler/rpg-project/issues/1050).
 - `Formed` (the verb's own report) is left with order and surprise only — [rpg-project#1050](https://github.com/KirkDiggler/rpg-project/issues/1050).
 - Existing fixtures' illegal initiative faces become 1, per Amendment 1 (every member moves up by the same 1, so no order changes) — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/comments/7051755528).
+- The session reads `InitiativeContribution` (classified in `conditionReaders`) and names no other rules type for initiative — [Amendment 2](https://github.com/KirkDiggler/rpg-project/issues/comments/7051887957).
 
 ## Found
 
 - The session's fixtures scripted an initiative d20 face of 0, which the old order-only roll accepted and the rulebook's recorded roll refuses — [gap](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051742133).
-- The module's `conditionReaders` pin refuses `conditions.InitiativeOutput`, the type the issue's `initiativeAnswer` returns, so `TestSessionConstructsNoCheck` fails — [gap](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051862600).
+- The module's `conditionReaders` pin refuses the rules answer type the issue had the session return, so `TestSessionConstructsNoCheck` fails — [gap](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051862600).
 - The three suites of step 9 run in about 0.15 s together; the whole module's package run takes about 58 s — [rpg-toolkit#2502](https://github.com/KirkDiggler/rpg-toolkit/pull/2502).
 
 ## Mistaken
 
 - The slice issue assumed the swap to `RollOne` changed nothing for existing fixtures; the builder's gap report caught it — [gap](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051742133).
+- The slice issue named a rules type the module's own pin refuses; the builder's gap report caught it — [gap](https://github.com/KirkDiggler/rpg-project/issues/1050#issuecomment-7051862600).
