@@ -43,7 +43,7 @@ import (
 //     landed (rpg-project#254).
 func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) encounter.Capabilities {
 	return encounter.Capabilities{
-		Initiative:    m.initiative,
+		Initiative:    m.initiativeFor(sheetsBeside(scope.standing)),
 		Participation: scope.standing,
 		Sight:         sheetsBeside(scope.standing),
 		Equipment:     equipmentBeside(scope.standing),
@@ -77,7 +77,7 @@ func (m *Manager) writeCapabilities(ctx context.Context, scope *writeScope) enco
 // encounter.RefusingActors).
 func (m *Manager) readCapabilities(standing standingSeam, driver encounter.Driver) encounter.Capabilities {
 	return encounter.Capabilities{
-		Initiative:    m.initiative,
+		Initiative:    m.initiativeFor(sheetsBeside(standing)),
 		Participation: standing,
 		Sight:         sheetsBeside(standing),
 		Equipment:     equipmentBeside(standing),

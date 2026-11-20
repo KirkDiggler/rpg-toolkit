@@ -235,7 +235,6 @@ type Manager struct {
 	seats           SeatRepository
 	record          RecordStream
 	acts            ActStream
-	initiative      encounter.InitiativeRoller
 	presentationIDs PresentationIDGenerator
 
 	// turnDrivers is where a verb's driver comes from, and the Manager holds
@@ -253,7 +252,8 @@ type Manager struct {
 	targetPreflight targetPreflightFunc
 
 	// dice is the host's randomness, kept as well as wrapped: the initiative
-	// seam needs it wrapped for the composition, and a resolution machine
+	// seam needs it wrapped for the composition (built per verb beside that
+	// verb's sheets, see [Manager.initiativeFor]), and a resolution machine
 	// needs it wrapped for the rulebook. One source, two adapters.
 	dice Roller
 }
@@ -373,7 +373,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		seats:             cfg.Seats,
 		record:            cfg.Record,
 		acts:              cfg.Acts,
-		initiative:        initiativeSeam{dice: cfg.Dice},
 		dice:              cfg.Dice,
 		turnDrivers:       drivers,
 		presentationIDs:   cfg.PresentationIDs,

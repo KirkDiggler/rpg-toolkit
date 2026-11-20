@@ -465,11 +465,13 @@ dropping it. But `verbRank` ([`offers.go`](./offers.go):909) has a silent
 `default: return 7`. The selector check is what actually catches you; the sort
 will not.
 
-**Initiative is flat.** `RollInitiative` ([`initiative.go`](./initiative.go):82)
-passes every member a Dexterity modifier of zero, because a member ID is all the
-composition hands over at formation. Ties are broken by ID for reproducibility
-(C8). Both are documented decisions, not bugs — but a test that expects a
-high-Dex character to act first will fail, and it will look like the dice.
+**Initiative is the sheet's own answer.** `RollInitiative`
+([`initiative.go`](./initiative.go)) adds each member's modifier, which is the
+total its sheet answers to `Initiative()` (rpg-project#990): every initiative
+effect it has, by rule (Dexterity, from the rulebook's rules library) and held
+(a status's bonus). This package names no source and sums nothing itself. Ties
+are still broken by ID, not by Dexterity, for reproducibility (C8). A sheet with
+no ability scores adds nothing for Dexterity: a missing score is not a 0.
 
 **`../CLAUDE.md` says `initiative/` is dead. It is not.**
 [`initiative.go`](./initiative.go):14 imports it, and is its only non-test

@@ -118,7 +118,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 				Cost:         &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}},
 				Capabilities: encounter.Capabilities{
 					Roller:        &diceSeam{roller: dice},
-					Initiative:    mgr.initiative,
+					Initiative:    mgr.initiativeFor(sheetsBeside(scope.standing)),
 					Driver:        scope.driver,
 					Participation: scope.standing,
 					Sight:         aggregateRecordEveryoneSees{},

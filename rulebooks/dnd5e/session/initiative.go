@@ -10,8 +10,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
 )
 
 // Roller is the host's source of randomness. Required.
@@ -45,8 +47,62 @@ type Roller interface {
 // Unexported for the reason the boundary test exists: if the host had to
 // satisfy encounter.InitiativeRoller directly, replacing the composition would
 // break every host that implemented it.
+//
+// It is built PER VERB, beside that verb's sheets, because the modifier is
+// read off the rolling member's sheet at the moment the fight forms — the
+// same "sheet facts asked at use time" rule [sheetSeam] follows, and the same
+// sheets it reads.
 type initiativeSeam struct {
-	dice Roller
+	dice   Roller
+	sheets sheetSeam
+}
+
+// initiativeFor is the initiative capability for one verb, reading the given
+// verb's sheets.
+func (m *Manager) initiativeFor(sheets sheetSeam) initiativeSeam {
+	return initiativeSeam{dice: m.dice, sheets: sheets}
+}
+
+// initiativeModifier is what a member adds to its initiative roll: the
+// total its own sheet answers to [character.Character.Initiative] or
+// [monster.Monster.Initiative]. The session names no source and sums nothing
+// itself; what adds to initiative (Dexterity by rule, a held status's bonus)
+// is the rulebook's, read off the sheet at the moment the fight forms.
+//
+// A monster is loaded with its carried conditions prepared, so a status it
+// holds is counted. A world NPC's recorded content has no sheet to ask, so it
+// adds nothing — the true answer from that content, as [sheetSeam.Sheets]
+// answers zero speed. A member the verb holds no sheet for is refused by
+// [sheetSeam.sheetOf], never answered with zero: zero is a real modifier.
+func (s initiativeSeam) initiativeModifier(id encounter.MemberID) (int, error) {
+	held, err := s.sheets.sheetOf(id)
+	if err != nil {
+		return 0, err
+	}
+	switch {
+	case held.character != nil:
+		sheet, err := character.Load(s.sheets.ctx, held.character)
+		if err != nil {
+			return 0, err
+		}
+		answer, err := sheet.Initiative()
+		if err != nil {
+			return 0, err
+		}
+		return answer.Total, nil
+	case held.monster != nil:
+		sheet, err := monstertraits.LoadMonster(s.sheets.ctx, held.monster)
+		if err != nil {
+			return 0, err
+		}
+		answer, err := sheet.Initiative()
+		if err != nil {
+			return 0, err
+		}
+		return answer.Total, nil
+	default:
+		return 0, nil
+	}
 }
 
 // RollInitiative asks the rulebook to order the members a fight is starting
@@ -68,12 +124,13 @@ type initiativeSeam struct {
 // made in the open rather than left to map iteration. Flat rolls make ties
 // common rather than rare, which is what makes it load-bearing today.
 //
-// FLAT ROLLS, NO MODIFIERS is the one gap left, and it is about production
-// rather than shape. Every member is passed a Dexterity modifier of zero,
-// because a member ID is all the composition hands over at formation and
-// resolving each one to a sheet mid-verb is its own piece of work. When the
-// modifier arrives it is looked up HERE, and neither the host's interface nor
-// the composition's changes.
+// EACH MEMBER ADDS ITS MODIFIER, the total its own sheet answers
+// ([initiativeSeam.initiativeModifier], rpg-project#990): every initiative
+// effect it has, by rule (Dexterity) and held (a status's bonus). Neither
+// the host's interface nor the composition's changed to carry it; the
+// composition still hands over IDs only, and the
+// order is still all it gets back. Ties are NOT broken by Dexterity: equal
+// totals order by ID, as before.
 //
 // A dice failure ABORTS, and has to be caught rather than returned: RollForOrder
 // discards the roller's error (`roll, _ := roller.Roll(...)`) and would hand
@@ -86,7 +143,11 @@ func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounte
 	dice := &diceSeam{roller: s.dice}
 	rolls := make([]initiative.Roll, 0, len(asking))
 	for _, id := range asking {
-		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): 0}, dice)
+		modifier, err := s.initiativeModifier(id)
+		if err != nil {
+			return nil, fmt.Errorf("initiative modifier for %q: %w", id, err)
+		}
+		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): modifier}, dice)
 		if dice.err != nil {
 			return nil, fmt.Errorf("rolling initiative for %q: %w", id, dice.err)
 		}

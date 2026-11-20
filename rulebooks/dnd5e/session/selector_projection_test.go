@@ -155,6 +155,9 @@ var selectorMechanicalFields = []string{
 	// and its typed scalar values) and its amount. They decide what the
 	// spell's effect does and when — fact names are identifiers such as
 	// `action.ability`, never words a player reads — so they are mechanical.
+	// The ability-modifier amount names its ability since effects v0.8.0
+	// (rpg-project#990): an identifier the rulebook reads ("dex"), mechanical.
+	"effects.AbilityRef.Ability",
 	"effects.Amount.AbilityModifier",
 	"effects.Amount.ByClassLevel",
 	"effects.Amount.Dice",
