@@ -87,6 +87,10 @@ func (m *Manager) giveStatuses(
 			SourceID:      source,
 			Source:        statusSourceRef(g.Grant.ID),
 			ApplicationID: statusApplicationID(scope.session, g.Grant.ID, g.Member),
+			// What the status does once, on a first giving (a heal): resolution
+			// runs it only on a fresh give, and the sheet it changed lands
+			// below with the rest of the give.
+			WhenGiven: compiled.WhenGiven,
 		})
 		if err != nil {
 			return fmt.Errorf("status %q for %q: %w", g.Grant.ID, g.Member, translateResolution(err))
