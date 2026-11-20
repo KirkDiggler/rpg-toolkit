@@ -45,7 +45,7 @@ func (m *Machine) run(acts []Act, spec BeatSpec, ev any) (bool, error) {
 				set(flag, false)
 			}
 		case a.Set != nil:
-			set(a.Set.Key, a.Set.Value)
+			set(a.Set.Key, a.Set.Value.Value())
 		case a.Add != nil:
 			value, ok := next[a.Add.Key].(int)
 			if !ok {

@@ -424,7 +424,7 @@ func output(o effects.Output) jsontext.Value {
 }
 
 func strGuard() *machine.Guard {
-	return &machine.Guard{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: abilitySTR}}
+	return &machine.Guard{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: machine.StringScalar(abilitySTR)}}
 }
 
 // rageOutputs are the design's four Rage outputs as composer data.
@@ -433,9 +433,9 @@ func rageOutputs() []jsontext.Value {
 		output(effects.Output{
 			Kind: kindDamageBonus,
 			When: &machine.Guard{All: []machine.Guard{
-				{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: true}},
-				{Fact: &machine.FactLeaf{Name: factWeaponPool, Op: machine.OpEq, Value: true}},
-				{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: abilitySTR}},
+				{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: machine.BoolScalar(true)}},
+				{Fact: &machine.FactLeaf{Name: factWeaponPool, Op: machine.OpEq, Value: machine.BoolScalar(true)}},
+				{Fact: &machine.FactLeaf{Name: factAbility, Op: machine.OpEq, Value: machine.StringScalar(abilitySTR)}},
 			}},
 			Amount: &effects.Amount{ByClassLevel: &effects.ClassSteps{Class: barbarian, Steps: map[int]int{1: 2, 9: 3, 16: 4}}},
 			Params: jsontext.Value(`{"stage":"features"}`),

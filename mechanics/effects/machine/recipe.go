@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 
@@ -79,7 +80,7 @@ type Guard struct {
 type FactLeaf struct {
 	Name  FactName `json:"name"`
 	Op    Op       `json:"op"`
-	Value any      `json:"value"`
+	Value Scalar   `json:"value"`
 }
 
 // BagLeaf compares a declared scalar bag key using the same typed operations as
@@ -87,7 +88,7 @@ type FactLeaf struct {
 type BagLeaf struct {
 	Key   string `json:"key"`
 	Op    Op     `json:"op"`
-	Value any    `json:"value"`
+	Value Scalar `json:"value"`
 }
 
 // RoundsLeaf compares the beat's round against the bag's anchor
@@ -141,7 +142,7 @@ type AddAct struct {
 // SetAct writes Value to the declared bag key Key.
 type SetAct struct {
 	Key   string `json:"key"`
-	Value any    `json:"value"`
+	Value Scalar `json:"value"`
 }
 
 // Beat names a topic a transition or tracker may listen to. The vocabulary
@@ -204,35 +205,47 @@ func (b Bag) Clone() Bag {
 	return out
 }
 
-// UnmarshalJSONFrom decodes a recipe, landing whole JSON numbers in the bag
-// and in leaf values as int so a decoded recipe equals its Go literal.
+// UnmarshalJSONFrom decodes a recipe, landing whole JSON numbers in the bag as
+// int so a decoded recipe equals its Go literal. Leaf and set values are
+// [Scalar]s and decode themselves.
 func (r *Recipe) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type plain Recipe
 	return json.UnmarshalDecode(dec, (*plain)(r), wholeNumbers)
 }
 
-// UnmarshalJSONFrom decodes a fact leaf, landing a whole JSON number Value
-// as int so it compares with an int fact.
+// UnmarshalJSONFrom decodes a fact leaf. A Value that is not a bool, a whole
+// number or a string is refused, naming the leaf.
 func (f *FactLeaf) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type plain FactLeaf
-	return json.UnmarshalDecode(dec, (*plain)(f), wholeNumbers)
+	if err := json.UnmarshalDecode(dec, (*plain)(f)); err != nil {
+		return fmt.Errorf("fact leaf: %w", err)
+	}
+	return nil
 }
 
-// UnmarshalJSONFrom decodes a bag comparison with whole numbers as integers.
+// UnmarshalJSONFrom decodes a bag leaf. A Value that is not a bool, a whole
+// number or a string is refused, naming the leaf.
 func (b *BagLeaf) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type plain BagLeaf
-	return json.UnmarshalDecode(dec, (*plain)(b), wholeNumbers)
+	if err := json.UnmarshalDecode(dec, (*plain)(b)); err != nil {
+		return fmt.Errorf("bag leaf: %w", err)
+	}
+	return nil
 }
 
-// UnmarshalJSONFrom decodes a set act, landing a whole JSON number Value as
-// int so it matches an int bag key.
+// UnmarshalJSONFrom decodes a set act. A Value that is not a bool, a whole
+// number or a string is refused, naming the act.
 func (a *SetAct) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type plain SetAct
-	return json.UnmarshalDecode(dec, (*plain)(a), wholeNumbers)
+	if err := json.UnmarshalDecode(dec, (*plain)(a)); err != nil {
+		return fmt.Errorf("set act: %w", err)
+	}
+	return nil
 }
 
-// wholeNumbers decodes a JSON number held in an `any` as int when it is a
-// whole number in range, and as float64 otherwise, which Validate refuses.
+// wholeNumbers decodes a JSON number held in an `any` (a bag value) as int
+// when it is a whole number in range, and as float64 otherwise, which Validate
+// refuses.
 var wholeNumbers = json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *any) error {
 	if dec.PeekKind() != '0' {
 		return errors.ErrUnsupported // not a number: the default decoding applies

@@ -40,11 +40,11 @@ func (s *roundTripSuite) TestRefIsTheStringForm() {
 func (s *roundTripSuite) TestGuardLeavesDecodeWholeNumbersAsInt() {
 	var g machine.Guard
 	s.Require().NoError(json.Unmarshal([]byte(`{"fact":{"name":"level","op":"gte","value":9}}`), &g))
-	s.Equal(9, g.Fact.Value)
+	s.Equal(machine.IntScalar(9), g.Fact.Value)
 
 	var a machine.Act
 	s.Require().NoError(json.Unmarshal([]byte(`{"set":{"key":"turns_active","value":2}}`), &a))
-	s.Equal(2, a.Set.Value)
+	s.Equal(machine.IntScalar(2), a.Set.Value)
 }
 
 func TestRecipeRoundTrip(t *testing.T) {

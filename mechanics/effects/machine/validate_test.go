@@ -30,7 +30,7 @@ func (s *validateSuite) TestRefusals() {
 	}{
 		{"a fact not in the vocabulary", func(r *machine.Recipe) {
 			edit(r, stRaging, func(st *machine.State) {
-				finesse := &machine.FactLeaf{Name: "action.finesse", Op: machine.OpEq, Value: true}
+				finesse := &machine.FactLeaf{Name: "action.finesse", Op: machine.OpEq, Value: machine.BoolScalar(true)}
 				st.Transitions[3].When = &machine.Guard{Fact: finesse}
 			})
 		}, `fact "action.finesse" is not in the vocabulary`},
@@ -80,12 +80,12 @@ func (s *validateSuite) TestRefusals() {
 			`flag "did_swing" is not declared in the bag`},
 		{"a fact value of the wrong kind", func(r *machine.Recipe) {
 			edit(r, stRaging, func(st *machine.State) {
-				st.Transitions[3].When = &machine.Guard{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: "yes"}}
+				st.Transitions[3].When = &machine.Guard{Fact: &machine.FactLeaf{Name: factMelee, Op: machine.OpEq, Value: machine.StringScalar("yes")}}
 			})
 		}, `fact "action.melee" wants a bool value, got string`},
 		{"an op the fact's kind does not support", func(r *machine.Recipe) {
 			edit(r, stRaging, func(st *machine.State) {
-				gte := &machine.FactLeaf{Name: factAbility, Op: machine.OpGte, Value: abilityStr}
+				gte := &machine.FactLeaf{Name: factAbility, Op: machine.OpGte, Value: machine.StringScalar(abilityStr)}
 				st.Transitions[3].When = &machine.Guard{Fact: gte}
 			})
 		}, `op "gte" does not apply to a string fact`},

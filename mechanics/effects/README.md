@@ -124,6 +124,10 @@ both. `ScalarValue` refuses dice rather than rolling. Query-only kinds declare
 `KindQuery` and have no Attach function; both query and subscribed kinds validate
 outputs and provide assessment. Rows use a nil amount for absence, not zero.
 
+A guard leaf's value and a set act's value are a `machine.Scalar`: exactly a
+bool, an int or a string, written as the bare JSON value (`true`, `3`, `"str"`).
+Anything else is refused when it is decoded, naming the leaf.
+
 Neutral `Guard.Bag` comparisons and `Act.Add` integer deltas support consumer
 countdowns. A transition stages all its acts; overflow refuses it without partial
 writes, a state transition or Changed notification. These operations know no D&D
