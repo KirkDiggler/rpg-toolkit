@@ -47,7 +47,7 @@ func cookLine(id, statusID, status string) encounter.Option {
 		ID: id, Say: "Can I help?",
 		Success: []encounter.Answer{{Weight: 1, Say: "Here, have some."}},
 		Grants: []encounter.RowGrant{{Row: 0, Consequence: encounter.Consequence{
-			ApplyStatus: &encounter.StatusGrant{ID: statusID, Status: json.RawMessage(status)},
+			ApplyStatus: &encounter.StatusGrant{ID: statusID, Status: json.RawMessage(status), To: "speaker"},
 		}}},
 	}
 }

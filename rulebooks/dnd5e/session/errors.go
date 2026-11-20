@@ -405,6 +405,18 @@ var (
 	// [ErrInCustody].
 	ErrCannotMove = errors.New("you cannot move")
 
+	// ErrSavedByOlderVersion is a saved game this build can no longer load
+	// (rpg-project#990): it was saved before a change to what a game carries
+	// — today, a line's status effect that did not say who receives it. It
+	// arrives as a [SavedByOlderVersionError], whose text is the sentence the
+	// player is shown: "This game was saved by an older version of the game
+	// and can no longer be loaded. Start a new game." It is also
+	// [ErrInvalidWorld]: the stored world is unusable. Every entry that loads
+	// a saved game returns it — each read and each write verb, through the
+	// one load ([Manager.loadOnSite]). No default and no migration:
+	// pre-release, a game saved across such a change is started again.
+	ErrSavedByOlderVersion = errors.New("this game was saved by an older version of the game")
+
 	// ErrNoRoom is a line said or a thing done refused whole because its
 	// verdict would set somebody down where there is no room for them now:
 	// a passage's far end full (rpg-project#958), or the cells a jail
@@ -1110,6 +1122,30 @@ func (e *CannotMoveError) Error() string {
 
 // Unwrap makes errors.Is(err, ErrCannotMove) true for this detail type.
 func (e *CannotMoveError) Unwrap() error { return ErrCannotMove }
+
+// SavedByOlderVersionError is [ErrSavedByOlderVersion]'s detail: the
+// sentence a player is shown, and why, for whoever reads the logs. It is
+// [ErrSavedByOlderVersion] and [ErrInvalidWorld] to errors.Is.
+//
+// A CALLER SHOWS ITS Error(), found with errors.As: the verb's own wrapping
+// (the encounter's id, the verb's name) is in front of it in the chain's
+// text, which is for logs. Why stays as TEXT ([SavedByOlderVersionError.Why]),
+// never as a chain a host could match the composition's sentinels on.
+type SavedByOlderVersionError struct {
+	// Why is the composition's account of what it could not load, for logs.
+	Why string
+}
+
+// Error is the sentence the player is shown.
+func (e *SavedByOlderVersionError) Error() string {
+	return "This game was saved by an older version of the game and can no longer be loaded. Start a new game."
+}
+
+// Unwrap makes errors.Is(err, ErrSavedByOlderVersion) and
+// errors.Is(err, ErrInvalidWorld) true for this detail type.
+func (e *SavedByOlderVersionError) Unwrap() []error {
+	return []error{ErrSavedByOlderVersion, ErrInvalidWorld}
+}
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
 // each of them is waiting on.

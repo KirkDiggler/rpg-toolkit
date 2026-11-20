@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -51,6 +52,23 @@ func statusApplicationID(session, statusID string, member encounter.MemberID) st
 // verb's scope, mid-verb: the sheets it changed are saved, and the calling
 // verb commits. source is who or what the line was said to or done to.
 //
+// SEVERAL RECEIVERS, ALL OR NOTHING (rpg-project#990): a row may give one
+// status to each member of the speaker's party in sight. Every give is asked
+// of the rules FIRST, and nothing is landed until all of them answered: a
+// receiver the rules refuse (one with no sheet in the cast, say) refuses the
+// whole line before any sheet is written, on a plain repository as on a
+// fenced one. A receiver who already holds it answers "already held", and
+// the others are still given it. Only then is each give landed. A failure
+// while landing is a save failing: on a fenced repository nothing lands,
+// because the verb never commits; on a plain one the sheets already saved
+// stay saved and the [SaveError] names them, as for every verb that saves
+// more than one sheet there.
+//
+// A member given two statuses by one row is the one exception to asking
+// every give first: the second is asked against the sheet the first changed,
+// so what was asked before it is landed first. Authored content never does
+// this (a row gives one status), but the encounter allows it.
+//
 // A status that does not compile is refused here as it is at launch
 // ([ErrUnknownContent]); launch refuses it first, so this is a site changed
 // under a running session.
@@ -64,12 +82,36 @@ func (m *Manager) giveStatuses(
 	if err != nil {
 		return translate(err)
 	}
+	type asked struct {
+		grant encounter.GrantedStatus
+		out   *resolution.GiveStatusOutput
+	}
+	var answered []asked
+	landAll := func() error {
+		for _, a := range answered {
+			if a.out.AlreadyHeld {
+				continue
+			}
+			// Landed on the verb's encounter, mid-verb: the sheets are saved,
+			// and the verb commits. Nothing is told and no concentration rides it.
+			if _, err := m.land(ctx, scope, a.out.Resolved, &landing{Live: scope.enc}); err != nil {
+				return fmt.Errorf("status %q for %q: %w", a.grant.Grant.ID, a.grant.Member, err)
+			}
+		}
+		answered = nil
+		return nil
+	}
 	for _, g := range granted {
+		if slices.ContainsFunc(answered, func(a asked) bool { return a.grant.Member == g.Member }) {
+			if err := landAll(); err != nil {
+				return err
+			}
+		}
 		compiled, err := status.Compile(&status.CompileInput{ID: g.Grant.ID, Status: g.Grant.Status})
 		if err != nil {
 			return fmt.Errorf("%w: status %q: %w", ErrUnknownContent, g.Grant.ID, err)
 		}
-		// THE CAST NOW, per status: a status given a moment ago is on the
+		// THE CAST NOW, per status: what was landed a moment ago is on the
 		// sheet the next one is admitted against.
 		cast, err := announcerSeam{m: m, scope: scope}.boundaryCast(ctx, roster)
 		if err != nil {
@@ -89,22 +131,15 @@ func (m *Manager) giveStatuses(
 			ApplicationID: statusApplicationID(scope.session, g.Grant.ID, g.Member),
 			// What the status does once, on a first giving (a heal): resolution
 			// runs it only on a fresh give, and the sheet it changed lands
-			// below with the rest of the give.
+			// with the rest of the give.
 			WhenGiven: compiled.WhenGiven,
 		})
 		if err != nil {
 			return fmt.Errorf("status %q for %q: %w", g.Grant.ID, g.Member, translateResolution(err))
 		}
-		if out.AlreadyHeld {
-			continue
-		}
-		// Landed on the verb's encounter, mid-verb: the sheets are saved, and
-		// the verb commits. Nothing is told and no concentration rides it.
-		if _, err := m.land(ctx, scope, out.Resolved, &landing{Live: scope.enc}); err != nil {
-			return fmt.Errorf("status %q for %q: %w", g.Grant.ID, g.Member, err)
-		}
+		answered = append(answered, asked{grant: g, out: out})
 	}
-	return nil
+	return landAll()
 }
 
 // StatusRefusal is one status a site's line can give that the rules refuse.

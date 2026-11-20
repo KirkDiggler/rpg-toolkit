@@ -127,6 +127,11 @@ func (m *Manager) loadOnSite(ctx context.Context, in *encounter.LoadEncounterInp
 		if hash != "" && errors.Is(err, encounter.ErrUnknownSite) {
 			return nil, fmt.Errorf("site %s: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
 		}
+		// A GAME TOO OLD TO LOAD IS SAID PLAINLY (rpg-project#990): the
+		// player's sentence, by name; the composition's account as text.
+		if errors.Is(err, encounter.ErrSavedByOlderVersion) {
+			return nil, &SavedByOlderVersionError{Why: err.Error()}
+		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	}
 	return enc, nil
