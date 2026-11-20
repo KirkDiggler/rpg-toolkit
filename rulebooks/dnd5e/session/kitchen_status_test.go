@@ -152,7 +152,6 @@ func (s *KitchenStatusSuite) TestTheFeastRaisesTheProjectedMaximum() {
 	s.Equal(30, projected.Sheet.MaxHitPoints)
 }
 
-
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(v)
