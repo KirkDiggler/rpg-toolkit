@@ -6,6 +6,7 @@ package encounter
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -38,6 +39,11 @@ import (
 // A row of a thing has nobody spoken to, so its `party_in_sight` and
 // `spoken_to` resolve to nobody. Each member the word resolves to is returned
 // once ([GrantedStatus]).
+//
+// `spoken_to` ALWAYS HAS A SHEET TODAY because only authored creatures carry
+// lines — a world NPC is placed with none — so no line is ever said to one; if
+// world NPCs ever get authored lines, that change must refuse `to: spoken_to`
+// on them.
 //
 // EVERY MEMBER THE WORD RESOLVES TO IS RETURNED, sheet or no sheet: the
 // encounter does not know which members the rules hold a sheet for, and does
@@ -83,8 +89,10 @@ func validateStatusGrant(what string, g StatusGrant) error {
 		return fmt.Errorf("%s gives status %q, whose authored block is not a JSON object", what, g.ID)
 	}
 	if g.To == "" {
-		return fmt.Errorf("%s gives status %q and does not say who receives it: this game was saved by an older "+
-			"version, and a status effect's receiver is now always stated; start a new game", what, g.ID)
+		// SAID TO A PLAYER, VERBATIM: the one way to get here is a game saved
+		// before the receiver was always stated — an author's site is refused
+		// first by the compiler, at their path, with what to write.
+		return errors.New("this game was saved by an older version of the game and can no longer be loaded; start a new game")
 	}
 	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); !ok {
 		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",

@@ -50,6 +50,7 @@ var specOf = map[string]reflect.Type{
 	"advance":            reflect.TypeOf(dungeonspec.AdvanceSpec{}),
 	"optionRow":          reflect.TypeOf(dungeonspec.AnswerSpec{}),
 	"relocate":           reflect.TypeOf(dungeonspec.RelocateSpec{}),
+	"applyStatus":        reflect.TypeOf(dungeonspec.ApplyStatusSpec{}),
 	"concealment":        reflect.TypeOf(dungeonspec.ConcealmentSpec{}),
 	"activity":           reflect.TypeOf(dungeonspec.ActivityCueSpec{}),
 	"post":               reflect.TypeOf(dungeonspec.HoldsSpec{}),

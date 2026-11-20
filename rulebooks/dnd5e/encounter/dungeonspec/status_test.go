@@ -187,3 +187,16 @@ func TestDungeonspec_OnAThingsLineOnlyTheSpeakerReceives(t *testing.T) {
 		})
 	}
 }
+
+// THE AUTHOR IS TOLD WHAT TO WRITE, NEVER THE PLAYER'S SENTENCE
+// (rpg-project#990): the short form is refused by the compiler at the
+// author's path; the engine's refusal of a grant with no receiver — written
+// for a player whose saved game is too old — never reaches an author.
+func TestDungeonspec_TheShortFormTellsTheAuthorWhatToWrite(t *testing.T) {
+	errs := refusals(t, vaultWithAStatus(t, vaultApply, "                apply_status: rested\n"))
+	requireExactDefect(t, errs, "room.room.monsterBindings.captain.options[0].success[0].apply_status",
+		"apply_status names who receives it: write apply_status: { status: rested, to: speaker }")
+	for _, e := range errs {
+		require.NotContains(t, e.Message, "saved by an older version", "an author is never told the player's sentence")
+	}
+}

@@ -275,5 +275,5 @@ func TestAStatusGrantWithNoReceiverIsRefused(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(old), &data))
 	_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
 	require.ErrorIs(t, err, ErrInvalidData)
-	require.ErrorContains(t, err, "this game was saved by an older version, and a status effect's receiver is now always stated; start a new game")
+	require.ErrorContains(t, err, "this game was saved by an older version of the game and can no longer be loaded; start a new game")
 }
