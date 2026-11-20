@@ -16,7 +16,7 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-const castleContentHash = "b4ca54709f661366890d7094e6a3fcf4f0f25985b226c22ed5706508d98c5959"
+const castleContentHash = "2a897b8cc8d2f92ae14bc01a3450f170cb230455e4e50fc4eb5aaafb0f3129b3"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()
@@ -48,6 +48,24 @@ func TestTheCastlesContentHashIsPinned(t *testing.T) {
 	require.Equal(t, encounter.ContentHash(castleContentHash), contentHashOf(t, fileOf(t, "testdata/world-builder-v4-castle.yaml")))
 }
 
+// TestTheContentHashNamesAStatus (rpg-project#1024): a status an author wrote
+// is content — its name, its rules and its when_given, written or not, change
+// the hash; how its YAML is laid out does not. Cut from the small vault so it
+// stays quick.
+func TestTheContentHashNamesAStatus(t *testing.T) {
+	t.Parallel()
+	const fed = "    again: ignored\n    when_given:\n      - heal: 2\n"
+	vault := vaultWithAStatus(t, "    again: ignored\n", fed)
+	v := contentHashOf(t, vault)
+	require.Equal(t, v, contentHashOf(t, vault), "two compiles of one file")
+	require.NotEqual(t, v, contentHashOf(t, hashEdited(t, vault, "name: Rested", "name: Rested Well")), "a status's name")
+	require.NotEqual(t, v, contentHashOf(t, hashEdited(t, vault, "- ends_on: rest", "- ends_on: run")), "a status's maintenance")
+	require.NotEqual(t, v, contentHashOf(t, hashEdited(t, vault, "- heal: 2", "- heal: 3")), "a status's when_given")
+	require.NotEqual(t, v, contentHashOf(t, hashEdited(t, vault, fed, "    again: ignored\n")), "whether a status has a when_given")
+	require.Equal(t, v, contentHashOf(t, hashEdited(t, vault, "    when_given:\n      - heal: 2\n", "    when_given: [ { heal: 2 } ]\n")),
+		"a status's layout is not content")
+}
+
 // TestTheContentHashNamesWhatTheAuthorWrote (rpg-project#1001): two compiles
 // of one file hash alike; a comment does not change it; a line's words, a
 // DC, a machine's step and a post each do.
@@ -61,15 +79,6 @@ func TestTheContentHashNamesWhatTheAuthorWrote(t *testing.T) {
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "reason: stood aside", "reason: stood back")), "a machine's step")
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "against: entering", "against: leaving")), "a post")
 	require.NotEqual(t, s, contentHashOf(t, hashEdited(t, site, "dc: ", "dc: 2")), "a check's DC")
-
-	// A STATUS AN AUTHOR WROTE (rpg-project#1024) is content: its name and
-	// its rules change the hash; how its YAML is laid out does not.
-	castle := fileOf(t, "testdata/world-builder-v4-castle.yaml")
-	c := contentHashOf(t, castle)
-	require.NotEqual(t, c, contentHashOf(t, hashEdited(t, castle, "name: Well fed", "name: Well Fed")), "a status's name")
-	require.NotEqual(t, c, contentHashOf(t, hashEdited(t, castle, "- ends_on: run", "- ends_on: rest")), "a status's maintenance")
-	require.Equal(t, c, contentHashOf(t, hashEdited(t, castle, "when: { ability: charisma }", "when:\n          ability: charisma")),
-		"a status's layout is not content")
 
 	// WHAT THE TYPES' JSON DROPS (rpg-project#1001): a void and an
 	// orientation encode as {}, and still change the hash.

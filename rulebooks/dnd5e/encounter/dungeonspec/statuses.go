@@ -28,27 +28,32 @@ import (
 //	      - ends_on: run
 //	    again: ignored
 //
-// THIS FILE JUDGES THE SHAPE, NOT THE WORDS INSIDE IT. The four top-level
-// words are settled; what may stand inside `changes` and `maintenance` is the
-// rules' own table, which this module may not import (C1). So a status is
+// A status may also write `when_given:` — what it does once, when it is first
+// given (a heal, say) — as a non-empty list.
+//
+// THIS FILE JUDGES THE SHAPE, NOT THE WORDS INSIDE IT. The top-level words
+// are settled; what may stand inside `changes`, `maintenance` and `when_given`
+// is the rules' own table, which this module may not import (C1). So a status is
 // refused here for a missing or misspelt top-level word and for an empty
 // list, and carried as canonical JSON in the author's words; the session
 // compiles it with the rules when it launches and when a row gives it.
 
 // StatusSpec is one authored status, kept in the author's words: `name`,
-// `changes`, `maintenance` and `again`. Only those four keys and their
-// presence are judged here.
+// `changes`, `maintenance`, `again` and the optional `when_given`. Only those
+// keys and their presence are judged here.
 type StatusSpec map[string]any
 
-// The four words a status is written with, in the order a refusal lists them.
+// The words a status is written with, in the order a refusal lists them.
+// when_given is the one a status may leave out.
 const (
 	statusName        = "name"
 	statusChanges     = "changes"
 	statusMaintenance = "maintenance"
 	statusAgain       = "again"
+	statusWhenGiven   = "when_given"
 )
 
-var statusWords = []string{statusName, statusChanges, statusMaintenance, statusAgain}
+var statusWords = []string{statusName, statusChanges, statusMaintenance, statusAgain, statusWhenGiven}
 
 // sortedStatusIDs is every declared status id, in order.
 func sortedStatusIDs(statuses map[string]StatusSpec) []string {
@@ -95,6 +100,11 @@ func statusesDeclared(statuses map[string]StatusSpec, add errSink) map[string]bo
 					what = "what ends the status"
 				}
 				add(at+"."+list, fmt.Sprintf("a status needs %s as a non-empty list: %s", list, what))
+			}
+		}
+		if raw, written := st[statusWhenGiven]; written {
+			if items, ok := raw.([]any); !ok || len(items) == 0 {
+				add(at+"."+statusWhenGiven, "when_given, when written, is a non-empty list: what the status does once, when it is first given")
 			}
 		}
 		if _, ok := st[statusAgain]; !ok {

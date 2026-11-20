@@ -406,14 +406,25 @@ intel:
   - id: cell-weak-place
     reveals:
       concealment: cell-drain
-# Hand edit (rpg-project#1024): a status a line can give. Helping the cook
-# leaves the speaker well fed until their run ends.
+# Hand edit (rpg-project#1024): the Keep design's two kitchen rewards, each
+# a status a line on the cook gives. Helping her leaves the speaker warmed up
+# (+1 initiative) until their run ends; tasting the feast leaves them feasted
+# (+2 maximum hit points, and 2 healed once, when first given) until their run
+# ends. Neither stacks with itself; the two can be held together.
 statuses:
-  well-fed:
-    name: Well fed
+  warmed-up:
+    name: Warmed up
     changes:
-      - advantage: checks
-        when: { ability: charisma }
+      - initiative: 1
+    maintenance:
+      - ends_on: run
+    again: ignored
+  feasted:
+    name: Feasted
+    changes:
+      - max_hit_points: 2
+    when_given:
+      - heal: 2
     maintenance:
       - ends_on: run
     again: ignored
@@ -2220,8 +2231,9 @@ room:
                 fact: feast-tonight
             failure:
               - say: Keep your coin.
-          # Hand edit (rpg-project#1024): lend the cook a hand. Done well, she
-          # feeds the speaker, who is well fed until their run ends.
+          # Hand edit (rpg-project#1024): lend the cook a hand. Done well, the
+          # speaker is warmed up until their run ends: one of the Keep design's
+          # two kitchen rewards.
           - id: help
             say: (lend a hand with the pies)
             check:
@@ -2232,9 +2244,20 @@ room:
                 fact: caught-in-kitchen
             success:
               - say: Bless you. Here, eat.
-                apply_status: well-fed
+                apply_status: warmed-up
             failure:
               - say: Mind the pastry! Out from under my feet.
+          # Hand edit (rpg-project#1024): taste the feast. No check: she lets
+          # the speaker have a plate, and they are feasted until their run
+          # ends: the other of the Keep design's two kitchen rewards.
+          - id: taste
+            say: (taste the feast)
+            requires:
+              not:
+                fact: caught-in-kitchen
+            success:
+              - say: Go on, then. One plate, mind.
+                apply_status: feasted
       keep-1:
         faction: loyalists
         behaviors:

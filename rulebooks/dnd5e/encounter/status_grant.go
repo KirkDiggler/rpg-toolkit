@@ -29,7 +29,7 @@ type StatusGrant struct {
 	// same status.
 	ID string `json:"id"`
 
-	// Status is the authored block — {name, changes, maintenance, again} —
+	// Status is the authored block — {name, changes, maintenance, again[, when_given]} —
 	// as canonical JSON. The encounter never reads inside it.
 	Status json.RawMessage `json:"status"`
 }

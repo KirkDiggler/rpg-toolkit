@@ -9,7 +9,6 @@ package dungeonspec_test
 // small tomb vault.
 
 import (
-	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -21,24 +20,29 @@ import (
 
 func TestDungeonspec_AStatusCompilesInTheAuthorsWords(t *testing.T) {
 	c := loadSource(t, castleSource(t))
-	var help *encounter.Option
+	lines := map[string]*encounter.Option{}
 	for _, o := range monsterNamed(t, c, "cook").Options {
-		if o.ID == "help" {
-			help = &o
-		}
+		lines[o.ID] = &o
 	}
-	require.NotNil(t, help, "the cook has the help line")
-	require.NotEmpty(t, help.Grants)
-	for _, g := range help.Grants {
-		require.False(t, g.Failure, "the failure row gives nothing")
-		require.NotNil(t, g.Consequence.ApplyStatus)
-		require.Equal(t, "well-fed", g.Consequence.ApplyStatus.ID)
-		require.JSONEq(t, `{"name":"Well fed","changes":[{"advantage":"checks","when":{"ability":"charisma"}}],`+
-			`"maintenance":[{"ends_on":"run"}],"again":"ignored"}`, string(g.Consequence.ApplyStatus.Status))
-		var keys map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(g.Consequence.ApplyStatus.Status, &keys))
-		require.Contains(t, string(g.Consequence.ApplyStatus.Status), `{"again":"ignored","changes":`,
-			"canonical JSON: keys in order")
+	for _, tc := range []struct{ line, status, block string }{
+		// The Keep design's two kitchen rewards (rpg-project#1024).
+		{"help", "warmed-up", `{"name":"Warmed up","changes":[{"initiative":1}],"maintenance":[{"ends_on":"run"}],"again":"ignored"}`},
+		{"taste", "feasted", `{"name":"Feasted","changes":[{"max_hit_points":2}],"when_given":[{"heal":2}],` +
+			`"maintenance":[{"ends_on":"run"}],"again":"ignored"}`},
+	} {
+		t.Run(tc.line, func(t *testing.T) {
+			line := lines[tc.line]
+			require.NotNil(t, line, "the cook has the %s line", tc.line)
+			require.NotEmpty(t, line.Grants)
+			for _, g := range line.Grants {
+				require.False(t, g.Failure, "the failure row gives nothing")
+				require.NotNil(t, g.Consequence.ApplyStatus)
+				require.Equal(t, tc.status, g.Consequence.ApplyStatus.ID)
+				require.JSONEq(t, tc.block, string(g.Consequence.ApplyStatus.Status), "carried in the author's words, when_given and all")
+				require.Contains(t, string(g.Consequence.ApplyStatus.Status), `{"again":"ignored","changes":`,
+					"canonical JSON: keys in order")
+			}
+		})
 	}
 }
 
@@ -87,8 +91,12 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 			"statuses.rested.maintenance", "a status needs maintenance as a non-empty list: what ends the status"},
 		"a status with no again": {"    again: ignored\n", "",
 			"statuses.rested.again", "a status says what a second giving does: write again"},
+		"a status whose when_given is not a list": {"    again: ignored\n", "    again: ignored\n    when_given: { heal: 2 }\n",
+			"statuses.rested.when_given", "when_given, when written, is a non-empty list: what the status does once, when it is first given"},
+		"a status with empty when_given": {"    again: ignored\n", "    again: ignored\n    when_given: []\n",
+			"statuses.rested.when_given", "when_given, when written, is a non-empty list: what the status does once, when it is first given"},
 		"a status with an unknown word": {"    again: ignored\n", "    again: ignored\n    lasts: forever\n",
-			"statuses.rested.lasts", `"lasts" is not a word of a status: a status is written with name, changes, maintenance, again`},
+			"statuses.rested.lasts", `"lasts" is not a word of a status: a status is written with name, changes, maintenance, again, when_given`},
 		"a status holding NaN": {"      - advantage: saves\n", "      - advantage: saves\n        weight: .nan\n",
 			"statuses.rested", "the value NaN at changes[0].weight cannot be written: a status holds only text, whole numbers, yes/no, and lists and maps of those"},
 		"a status holding infinity": {"      - ends_on: rest\n", "      - ends_on: rest\n        after: .inf\n",

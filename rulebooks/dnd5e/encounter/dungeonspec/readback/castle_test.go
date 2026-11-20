@@ -717,23 +717,29 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	s.Contains(pass.Sentence, "when Guard Captain (captain) has noted `admitted` about the walker")
 }
 
-// THE COOK'S STATUS IS SAID (rpg-project#1024): the declared status once, by
-// id and name, and under the `help` line's win the grant, connected to it.
-func (s *CastleSuite) TestTheCooksStatusIsSaid() {
-	var declared, given *readback.Statement
-	for _, st := range s.rb.Statements() {
-		switch {
-		case st.Kind == readback.KindStatus && st.About.ID == "well-fed":
-			declared = &st
-		case st.Kind == readback.KindLineGrant && strings.HasSuffix(st.Path, ".apply_status"):
-			given = &st
+// THE COOK'S STATUSES ARE SAID (rpg-project#1024): each declared status
+// once, by id and name, and under the `help` and `taste` lines' wins the
+// grant, connected to it. A status's statement is unchanged in shape by its
+// `when_given`.
+func (s *CastleSuite) TestTheCooksStatusesAreSaid() {
+	for _, tc := range []struct{ id, name, path string }{
+		{"warmed-up", "Warmed up", "room.room.monsterBindings.cook.options[4].success[0].apply_status"},
+		{"feasted", "Feasted", "room.room.monsterBindings.cook.options[5].success[0].apply_status"},
+	} {
+		var declared, given *readback.Statement
+		for _, st := range s.rb.Statements() {
+			switch {
+			case st.Kind == readback.KindStatus && st.About.ID == tc.id:
+				declared = &st
+			case st.Kind == readback.KindLineGrant && st.Path == tc.path:
+				given = &st
+			}
 		}
+		s.Require().NotNil(declared, "the declared status %s is said", tc.id)
+		s.Equal("statuses."+tc.id, declared.Path)
+		s.Contains(declared.Sentence, "named “"+tc.name+"”")
+		s.Require().NotNil(given, "the row that gives %s is said", tc.id)
+		s.Contains(given.Sentence, "the speaker is given the status “"+tc.name+"” (`"+tc.id+"`)")
+		s.Contains(given.Connects, readback.Connection{Kind: readback.ConnStatus, ID: tc.id, Role: readback.RoleGives})
 	}
-	s.Require().NotNil(declared, "the declared status is said")
-	s.Equal("statuses.well-fed", declared.Path)
-	s.Contains(declared.Sentence, "named “Well fed”")
-	s.Require().NotNil(given, "the row that gives it is said")
-	s.Equal("room.room.monsterBindings.cook.options[4].success[0].apply_status", given.Path)
-	s.Contains(given.Sentence, "the speaker is given the status “Well fed” (`well-fed`)")
-	s.Contains(given.Connects, readback.Connection{Kind: readback.ConnStatus, ID: "well-fed", Role: readback.RoleGives})
 }
