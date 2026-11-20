@@ -1,0 +1,341 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package status
+
+import (
+	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+)
+
+// ErrBadStatus is wrapped by every refusal to compile an authored status. The
+// message names the path in the author's shape (changes[0].when.skill) and the
+// words allowed there.
+var ErrBadStatus = errors.New("status: not a status this engine can run")
+
+// CompileInput is one authored status.
+type CompileInput struct {
+	// ID is the status's id: the definition's id inside the library, and the
+	// id resolution's GiveStatus is asked to give.
+	ID string
+
+	// Status is the status in the author's words, as JSON:
+	// {"name":…, "changes":[…], "maintenance":[…], "again":…}.
+	Status json.RawMessage
+}
+
+// CompileOutput is the authored status as the engine runs it.
+type CompileOutput struct {
+	// Name is the status's display name, as the author wrote it.
+	Name string
+
+	// Library is a conditions definition library holding the status, ready
+	// for conditions.CompileDefinitions and resolution's GiveStatus.
+	Library json.RawMessage
+
+	// DefinitionID is the status's definition inside Library.
+	DefinitionID string
+}
+
+// Compile turns a status written in an author's words into the definition
+// library the engine runs. It is strict: an unknown or missing word or value
+// anywhere is refused, wrapping [ErrBadStatus], naming the path in the
+// author's shape and the words allowed there. Every library it returns
+// compiles with conditions.CompileDefinitions; one that would not is refused.
+//
+// The status is coordinated on its holder: it holds its own maintenance and
+// its own changes. "again": "ignored" adds nothing to the library — a second
+// giving is answered by resolution's GiveStatus, which gives nothing to a
+// member already holding the status.
+func Compile(in *CompileInput) (*CompileOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("%w: no input", ErrBadStatus)
+	}
+	id := strings.TrimSpace(in.ID)
+	if id == "" || id != in.ID {
+		return nil, fmt.Errorf("%w: a status needs an id without surrounding spaces", ErrBadStatus)
+	}
+	top, err := object(in.Status, "the status", PlaceStatus)
+	if err != nil {
+		return nil, err
+	}
+	c := &compiler{id: id, parts: map[string]any{}}
+	if err := c.status(top); err != nil {
+		return nil, err
+	}
+	library, err := c.library()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := conditions.CompileDefinitions(&conditions.CompileDefinitionsInput{Data: library}); err != nil {
+		return nil, fmt.Errorf("%w: %q compiles to a definition the engine refuses: %w", ErrBadStatus, id, err)
+	}
+	return &CompileOutput{Name: c.name, Library: library, DefinitionID: id}, nil
+}
+
+// compiler gathers one status's library pieces.
+type compiler struct {
+	id          string
+	name        string
+	parts       map[string]any
+	benefits    []string
+	maintenance []string
+}
+
+func (c *compiler) status(top map[string]jsontext.Value) error {
+	for word := range top {
+		if !isTopWord(word) {
+			return fmt.Errorf("%w: the status: unknown word %s; one of: %s", ErrBadStatus, word, topWords())
+		}
+	}
+	for _, word := range []string{wordName, wordChanges, wordMaintenance, wordAgain} {
+		if _, ok := top[word]; !ok {
+			return fmt.Errorf("%w: the status has no %s", ErrBadStatus, word)
+		}
+	}
+	if err := jsonv2.Unmarshal(top[wordName], &c.name); err != nil || strings.TrimSpace(c.name) == "" {
+		return fmt.Errorf("%w: name: must be non-empty text", ErrBadStatus)
+	}
+	again, _ := lookup(PlaceAgain, wordAgain)
+	if _, err := oneOf(again, top[wordAgain], wordAgain); err != nil {
+		return err
+	}
+	changes, err := list(top[wordChanges], wordChanges)
+	if err != nil {
+		return err
+	}
+	for i, raw := range changes {
+		if err := c.change(raw, fmt.Sprintf("%s[%d]", wordChanges, i)); err != nil {
+			return err
+		}
+	}
+	rules, err := list(top[wordMaintenance], wordMaintenance)
+	if err != nil {
+		return err
+	}
+	for i, raw := range rules {
+		if err := c.rule(raw, fmt.Sprintf("%s[%d]", wordMaintenance, i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *compiler) change(raw jsontext.Value, path string) error {
+	fields, err := object(raw, path, PlaceChange)
+	if err != nil {
+		return err
+	}
+	var kind string
+	for word := range fields {
+		if word == wordWhen {
+			continue
+		}
+		if _, ok := lookup(PlaceChange, word); !ok {
+			return fmt.Errorf("%w: %s.%s: not a change; a change is one of: %s", ErrBadStatus, path, word, changeKinds())
+		}
+		if kind != "" {
+			return fmt.Errorf("%w: %s: one change per entry, got %s and %s", ErrBadStatus, path, kind, word)
+		}
+		kind = word
+	}
+	if kind == "" {
+		return fmt.Errorf("%w: %s: names no change; a change is one of: %s", ErrBadStatus, path, changeKinds())
+	}
+	e, _ := lookup(PlaceChange, kind)
+	at := path + "." + kind
+	part := map[string]any{}
+	var whenWords []string
+	switch kind {
+	case wordAdvantage:
+		v, err := oneOf(e, fields[kind], at)
+		if err != nil {
+			return err
+		}
+		part["kind"] = "advantage"
+		part["params"] = json.RawMessage(v.to)
+		whenWords = v.when
+	case wordResistance:
+		types, err := listOf(e, fields[kind], at)
+		if err != nil {
+			return err
+		}
+		part["kind"] = "resistance"
+		part["params"] = map[string]any{"types": types}
+		whenWords = changeWhen[kind]
+	case wordDamage:
+		var n int
+		if err := jsonv2.Unmarshal(fields[kind], &n); err != nil || n == 0 {
+			return fmt.Errorf("%w: %s: must be a whole number other than zero, such as 2 or -1", ErrBadStatus, at)
+		}
+		part["kind"] = "damage_bonus"
+		part["amount"] = map[string]any{"fixed": n}
+		whenWords = changeWhen[kind]
+	}
+	if raw, ok := fields[wordWhen]; ok {
+		guard, err := when(raw, path+"."+wordWhen, kind, whenWords)
+		if err != nil {
+			return err
+		}
+		part["when"] = guard
+	}
+	key := fmt.Sprintf("change-%d", len(c.benefits))
+	c.parts[key] = part
+	c.benefits = append(c.benefits, key)
+	return nil
+}
+
+func when(raw jsontext.Value, path, kind string, allowed []string) (map[string]any, error) {
+	fields, err := object(raw, path, PlaceWhen)
+	if err != nil {
+		return nil, err
+	}
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("%w: %s: is empty; leave it out, or name one of: %s", ErrBadStatus, path, wordsAt(PlaceWhen))
+	}
+	words := make([]string, 0, len(fields))
+	for word := range fields {
+		words = append(words, word)
+	}
+	slices.Sort(words)
+	var facts []map[string]any
+	for _, word := range words {
+		e, ok := lookup(PlaceWhen, word)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s.%s: not a when word; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceWhen))
+		}
+		if !slices.Contains(allowed, word) {
+			can := "nothing: it takes no when"
+			if len(allowed) > 0 {
+				can = strings.Join(allowed, ", ")
+			}
+			return nil, fmt.Errorf("%w: %s.%s: %s cannot be narrowed by %s; it can use %s", ErrBadStatus, path, word, kind, word, can)
+		}
+		v, err := oneOf(e, fields[word], path+"."+word)
+		if err != nil {
+			return nil, err
+		}
+		switch word {
+		case wordAbility:
+			facts = append(facts, map[string]any{"fact": map[string]any{"name": "action.ability", "op": "eq", "value": v.to}})
+		case wordAttack:
+			facts = append(facts, map[string]any{"fact": map[string]any{"name": v.to, "op": "eq", "value": true}})
+		}
+	}
+	if len(facts) == 1 {
+		return facts[0], nil
+	}
+	return map[string]any{"all": facts}, nil
+}
+
+func (c *compiler) rule(raw jsontext.Value, path string) error {
+	fields, err := object(raw, path, PlaceMaintenance)
+	if err != nil {
+		return err
+	}
+	if len(fields) != 1 {
+		return fmt.Errorf("%w: %s: one rule per entry; a rule is one of: %s", ErrBadStatus, path, wordsAt(PlaceMaintenance))
+	}
+	for word, value := range fields {
+		e, ok := lookup(PlaceMaintenance, word)
+		if !ok {
+			return fmt.Errorf("%w: %s.%s: not a maintenance rule; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceMaintenance))
+		}
+		v, err := oneOf(e, value, path+"."+word)
+		if err != nil {
+			return err
+		}
+		key := fmt.Sprintf("ends-%d", len(c.maintenance))
+		c.parts[key] = map[string]any{"kind": "end_on", "params": map[string]any{"beat": v.to, "reason": v.reason}}
+		c.maintenance = append(c.maintenance, key)
+	}
+	return nil
+}
+
+func (c *compiler) library() (json.RawMessage, error) {
+	if len(c.benefits) == 0 {
+		return nil, fmt.Errorf("%w: changes: needs at least one change", ErrBadStatus)
+	}
+	if len(c.maintenance) == 0 {
+		return nil, fmt.Errorf("%w: maintenance: needs at least one rule, or the status would never end", ErrBadStatus)
+	}
+	maintenance := make([]map[string]string, 0, len(c.maintenance))
+	for _, key := range c.maintenance {
+		maintenance = append(maintenance, map[string]string{"key": key, "part": key})
+	}
+	library := map[string]any{
+		"parts":        c.parts,
+		"benefit_sets": map[string][]string{wordChanges: c.benefits},
+		"definitions": map[string]any{c.id: map[string]any{
+			"name":        c.name,
+			"coordinator": "recipient",
+			"maintenance": maintenance,
+			"benefits":    []map[string]string{{"key": wordChanges, "set": wordChanges}},
+		}},
+	}
+	out, err := jsonv2.Marshal(library, jsonv2.Deterministic(true))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadStatus, err)
+	}
+	return out, nil
+}
+
+// object decodes an author's object, refusing anything else and any repeated
+// key.
+func object(raw json.RawMessage, path string, place Place) (map[string]jsontext.Value, error) {
+	var fields map[string]jsontext.Value
+	if err := jsonv2.Unmarshal(raw, &fields); err != nil || fields == nil {
+		words := wordsAt(place)
+		if place == PlaceStatus {
+			words = topWords()
+		}
+		return nil, fmt.Errorf("%w: %s: must be an object of: %s", ErrBadStatus, path, words)
+	}
+	return fields, nil
+}
+
+func list(raw jsontext.Value, path string) ([]jsontext.Value, error) {
+	var items []jsontext.Value
+	if err := jsonv2.Unmarshal(raw, &items); err != nil || items == nil {
+		return nil, fmt.Errorf("%w: %s: must be a list", ErrBadStatus, path)
+	}
+	return items, nil
+}
+
+func oneOf(e entry, raw jsontext.Value, path string) (value, error) {
+	var word string
+	if err := jsonv2.Unmarshal(raw, &word); err != nil {
+		return value{}, fmt.Errorf("%w: %s: must be one of: %s", ErrBadStatus, path, e.valueWords())
+	}
+	v, ok := e.valueOf(word)
+	if !ok {
+		return value{}, fmt.Errorf("%w: %s: %q is not one of: %s", ErrBadStatus, path, word, e.valueWords())
+	}
+	return v, nil
+}
+
+func listOf(e entry, raw jsontext.Value, path string) ([]string, error) {
+	var words []string
+	if err := jsonv2.Unmarshal(raw, &words); err != nil || len(words) == 0 {
+		return nil, fmt.Errorf("%w: %s: must be a non-empty list of: %s", ErrBadStatus, path, e.valueWords())
+	}
+	out := make([]string, 0, len(words))
+	for i, word := range words {
+		v, ok := e.valueOf(word)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s[%d]: %q is not one of: %s", ErrBadStatus, path, i, word, e.valueWords())
+		}
+		if slices.Contains(out, v.to) {
+			return nil, fmt.Errorf("%w: %s[%d]: %q is listed twice", ErrBadStatus, path, i, word)
+		}
+		out = append(out, v.to)
+	}
+	return out, nil
+}
