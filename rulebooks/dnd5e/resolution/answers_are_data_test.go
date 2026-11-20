@@ -102,30 +102,8 @@ var allowedInterfaceFields = map[string]string{
 	"World.Reserve.Recipe.Bag":                                                             "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Recipe.States.Transitions.When.Fact.Value":                              "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Recipe.States.Transitions.Do.Set.Value":                                 "mind/machine scalar: bool, int or string; world data, not a sheet",
-	// A configured effect's guard is the same machine Guard as a recipe's
-	// (mechanics/effects/machine). Its compared value and bag value are
-	// scalars: compiling the guard refuses any value that is not bool, int or
-	// string (machine/guard.go checker.fact and checker.bagLeaf, through
-	// kindOf in machine/vocabulary.go). They reach answers since dnd5e
-	// v0.216 (rpg-toolkit#2401): every folded frame (a reaction's, an attack
-	// target's, a strike step's, an outcome's own) carries each held effect's
-	// output, and a projected or dirty monster's cast carries its maintenance
-	// parts. One rule, six places it surfaces, a fact and a bag value each.
-	// Declarative effect data, never a sheet.
-	"Reactions.Struck.Folded.Frame.HeldEffects.Outputs.Definition.When.Fact.Value": "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Reactions.Struck.Folded.Frame.HeldEffects.Outputs.Definition.When.Bag.Value":  "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Actions.Cast.Maintenance.When.Fact.Value":                                     "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Actions.Cast.Maintenance.When.Bag.Value":                                      "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"DirtyMonsters.Actions.Cast.Maintenance.When.Fact.Value":                       "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"DirtyMonsters.Actions.Cast.Maintenance.When.Bag.Value":                        "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Targets.Attack.Folded.Frame.HeldEffects.Outputs.Definition.When.Fact.Value":   "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Targets.Attack.Folded.Frame.HeldEffects.Outputs.Definition.When.Bag.Value":    "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Steps.Strike.Folded.Frame.HeldEffects.Outputs.Definition.When.Bag.Value":      "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Steps.Strike.Folded.Frame.HeldEffects.Outputs.Definition.When.Fact.Value":     "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Folded.Frame.HeldEffects.Outputs.Definition.When.Bag.Value":                   "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"Folded.Frame.HeldEffects.Outputs.Definition.When.Fact.Value":                  "machine guard scalar: bool, int or string, refused otherwise at compile; effect data, not a sheet",
-	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":                              "sealed in saves; same declarative DC as a direct attack rider",
-	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC":                            "sealed in saves; same declarative DC as a direct attack rider",
+	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":                                      "sealed in saves; same declarative DC as a direct attack rider",
+	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC":                                    "sealed in saves; same declarative DC as a direct attack rider",
 	// Preflight's refusal causes are prose — they exist to be read by a person
 	// deciding which offer row is dead and why. A sheet smuggled behind an
 	// error would have to survive the entry's own construction, and Preflight
