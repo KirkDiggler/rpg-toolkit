@@ -197,6 +197,22 @@ templates:
     name: Prisoner
     actions:
       - dnd5e:weapons:club
+  # Hand edit (rpg-project#1023): the rightful king, the old king's son, held
+  # in the cells. A prisoner's kit (his own sword is later content) on a
+  # trained fighter's scores.
+  rightful-king:
+    base: dnd5e:monsters:human
+    name: The Rightful King
+    hitDice: 4d8
+    abilities:
+      str: 14
+      dex: 12
+      con: 12
+      wis: 11
+      cha: 15
+    proficiency: 2
+    actions:
+      - dnd5e:weapons:club
 # Hand edit (rpg-project#670, S3 bundles): the gate guards' shared
 # behaviours, each authored once and used as one line of a table. A `use:`
 # row is a group: it takes one share of the roll, and its own rows roll
@@ -302,6 +318,9 @@ factions:
   - id: kitchen
     mind: cook
   - id: prisoners
+  # Hand edit (rpg-project#1023): the rightful king's side, a side of one.
+  - id: true-crown
+    mind: prince
   - id: townsfolk
 dispositions:
   # The captain's word outranks recognition: the first step that holds wins
@@ -342,6 +361,24 @@ dispositions:
       - prisoners
       - party
     stance: neutral
+  # Hand edit (rpg-project#1023): the rightful king is civil to the party
+  # until they take him on, with no check (`prince-recruited`); then he is
+  # the party's side. Recruited, the king's court is his enemy too. He is
+  # civil to the garrison; the allegiance talk is later content.
+  - between:
+      - true-crown
+      - party
+    stance: neutral
+    until: {fact: prince-recruited, then: allied}
+  - between:
+      - true-crown
+      - loyalists
+    stance: neutral
+    until: {fact: prince-recruited}
+  - between:
+      - true-crown
+      - garrison
+    stance: neutral
   - between:
       - townsfolk
       - party
@@ -364,6 +401,11 @@ intel:
   - id: kitchen-way
     reveals:
       concealment: kitchen-passage
+  # Hand edit (rpg-project#1023): the weak place in the cell, as the rightful
+  # king tells it. Whoever holds it knows the way out.
+  - id: cell-weak-place
+    reveals:
+      concealment: cell-drain
 exits:
   - id: postern
     cell:
@@ -411,6 +453,12 @@ concealments:
   kitchen-passage:
     checks: [{ ability: investigation, dc: 18 }]
     props: [grate]
+  # Hand edit (rpg-project#1023): the cell's weak place, a drain at the back
+  # of the cell rusted loose. A search finds it (Investigation DC 11, the
+  # design's number), and the rightful king tells it.
+  cell-drain:
+    checks: [{ ability: investigation, dc: 11 }]
+    props: [cell-drain]
 room:
   version: 3
   id: room-1
@@ -464,6 +512,18 @@ room:
           x: -32.90896534380867
           y: 0
           z: -21.0
+          rotationY: 0
+      # Hand edit (rpg-project#1023): the drain at the back of the cell, its
+      # weak place. The concealment `cell-drain` hides it; the rightful king
+      # tells the way.
+      - id: cell-drain
+        kind: prop
+        assetRef: dnd5e:props:dark-fortress:sewer_grate_02
+        label: Drain at the Back of the Cell
+        transform:
+          x: -34.64101615137754
+          y: 0
+          z: 21
           rotationY: 0
       - id: orders
         kind: prop
@@ -1409,6 +1469,14 @@ room:
           depth: 0.8
           offsetX: 0
           offsetZ: 0
+      cell-drain:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint:
+          width: 0.8
+          depth: 0.8
+          offsetX: 0
+          offsetZ: 0
       orders:
         blocksMovement: false
         blocksLineOfSight: false
@@ -1548,6 +1616,15 @@ room:
             q: -22
             r: 13
         appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-02-a
+      # Hand edit (rpg-project#1023): the rightful king, in the cells with
+      # the prisoners.
+      - id: prince
+        ref: dnd5e:monsters:rightful-king
+        startingCell:
+          location:
+            q: -27
+            r: 11
+        appearanceRef: dnd5e:npcs:kingdom:prince-01-style-03-b
       - id: pedlar
         ref: dnd5e:monsters:commoner
         startingCell:
@@ -2287,6 +2364,42 @@ room:
         holds:
           - king-whereabouts
           - key-bearer
+      # Hand edit (rpg-project#1023, the Keep's shared cell): the rightful
+      # king. Every line is plain: no check, so it cannot be missed. Taking
+      # him on teaches `prince-recruited`, which makes his side the party's;
+      # taking him on or leaving him, he tells the weak place in the cell,
+      # and whoever catches it comes to hold `cell-weak-place`.
+      prince:
+        faction: true-crown
+        options:
+          - id: in-for
+            say: What are you in for?
+            success:
+              - say: Being my father's son. And you?
+          - id: kill-the-king
+            say: We're here to kill the king.
+            success:
+              - say: He's no king. He killed my father. I'm the rightful king now.
+          - id: join-us
+            say: Then take your throne back with us.
+            requires:
+              not:
+                fact: prince-recruited
+            success:
+              - say: Gladly. Help me home and the vault is yours. And there is a way out of here, the drain at the back of the cell. It's rusted through. Lift it.
+                fact: prince-recruited
+                tells: cell-weak-place
+          - id: leave-him
+            say: We go alone.
+            requires:
+              not:
+                fact: prince-recruited
+            success:
+              - say: Then go by the drain at the back of the cell. It's rusted through. Lift it, and remember who told you.
+                tells: cell-weak-place
+        behaviors:
+          - id: policy
+            use: prince-policy
       # The stranger (the QA castle's step 2, rpg-project#639): every option
       # needs a check, so the line rolls against DC 5 and its success and
       # failure both teach `feast-tonight`.
@@ -2369,6 +2482,19 @@ room:
               - relocate:
                   to: region-cells
                   words: The tunnel drops, and you squeeze out through a drain in the cells.
+                  rounds: 1
+      # Hand edit (rpg-project#1023): the cell's weak place. One way, into
+      # the service passage that comes out behind the armoury's racks, away
+      # from the gate, so nobody who sees you there knows you were jailed.
+      cell-drain:
+        options:
+          - id: to-armoury
+            do: You lift the drain and crawl into the passage.
+            seen: lifts the drain at the back of the cell and crawls into the dark
+            success:
+              - relocate:
+                  to: region-armoury
+                  words: The passage runs under the yard, and you come up behind the racks in the armoury.
                   rounds: 1
       orders:
         holdable: true
@@ -3311,4 +3437,35 @@ behaviorDefinitions:
             enemy: seen
           fact: alarm-raised
         - weight: 1
+          hold: {}
+  # Hand edit (rpg-project#1023): the rightful king's table, the ally
+  # walk's veteran's. He strikes a foe in reach and walks at one in sight;
+  # taken on, with no foe, he follows the nearest ally (`toward: ally`);
+  # not taken on, he holds.
+  prince-policy:
+    recipe:
+      ref: site:behaviors:prince-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when: {enemy: reach}
+          attack: enemy
+        - when: {enemy: seen}
+          toward: enemy
+        - when:
+            - {fact: prince-recruited}
+            - {enemy: none}
+          toward: ally
+        - when:
+            - not: {fact: prince-recruited}
+            - {enemy: none}
           hold: {}
