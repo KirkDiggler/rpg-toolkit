@@ -841,6 +841,17 @@ var (
 	// ruling E5).
 	ErrStalePause = errors.New("encounter: stored pause was written by another build")
 
+	// ErrSavedByOlderVersion is what [LoadEncounter] returns for a saved
+	// game whose lines carry a grant this build no longer reads: a status
+	// grant with no receiver, saved before a status effect always said who
+	// receives it (rpg-project#990). ITS TEXT IS A PLAYER'S SENTENCE, the
+	// whole of what a host should show: the game cannot be loaded, start a
+	// new one. Why is a developer's, in the error it rides beside
+	// ([ErrInvalidData], [ErrBadMember]) and on [StatusGrant.To]. No
+	// default and no migration: pre-release, a game saved across such a
+	// change is started again.
+	ErrSavedByOlderVersion = errors.New("this game was saved by an older version of the game and can no longer be loaded; start a new game")
+
 	// ErrUnsupportedPolicy is what [Encounter.Route] returns for any
 	// [MovePolicy] that is neither [MoveLine] nor [MoveAway] — including the
 	// zero value, which is not a default.

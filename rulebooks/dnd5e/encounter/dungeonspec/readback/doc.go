@@ -134,7 +134,10 @@
 // `place.status` ([KindStatus]) about {status, <id>}, at `statuses.<id>`,
 // naming it by id and name. A line's row that gives one is a `line.grant`
 // statement at the row's `.apply_status`, connected {status, <id>, gives}
-// ([ConnStatus], [RoleGives]). What a status changes and what ends it are
+// ([ConnStatus], [RoleGives]) and {who, <word>, receives, at: <id>}
+// ([ConnWho], [RoleReceives]): who receives it, a word of `apply_status.to`
+// (rpg-project#990) — `speaker`, `party_in_sight` or `spoken_to` — which its
+// sentence says in plain words. What a status changes and what ends it are
 // the rules' words, judged when it is given; the read-back does not restate
 // them.
 //

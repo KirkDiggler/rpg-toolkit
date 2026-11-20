@@ -39,6 +39,11 @@ import (
 // `spoken_to` resolve to nobody. Each member the word resolves to is returned
 // once ([GrantedStatus]).
 //
+// `spoken_to` ALWAYS HAS A SHEET TODAY because only authored creatures carry
+// lines — a world NPC is placed with none — so no line is ever said to one; if
+// world NPCs ever get authored lines, that change must refuse `to: spoken_to`
+// on them.
+//
 // EVERY MEMBER THE WORD RESOLVES TO IS RETURNED, sheet or no sheet: the
 // encounter does not know which members the rules hold a sheet for, and does
 // not guess. A receiver the rules cannot give the status to fails that give,
@@ -54,10 +59,10 @@ type StatusGrant struct {
 	// as canonical JSON. The encounter never reads inside it.
 	Status json.RawMessage `json:"status"`
 
-	// To is who receives it: a word of [WhoInApplyStatusTo]. EMPTY IS THE
-	// SPEAKER for now — the short form `apply_status: <id>` the dungeonspec
-	// grammar still compiles, and a grant saved before this field — until the
-	// grammar requires the word (rpg-project#990).
+	// To is who receives it: a word of [WhoInApplyStatusTo]. REQUIRED, and
+	// never defaulted (rpg-project#990): a grant with none — a run saved by
+	// an engine from before this field — is refused when it is set up or
+	// loaded, saying the run must be started again.
 	To string `json:"to,omitzero"`
 }
 
@@ -82,7 +87,13 @@ func validateStatusGrant(what string, g StatusGrant) error {
 	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
 		return fmt.Errorf("%s gives status %q, whose authored block is not a JSON object", what, g.ID)
 	}
-	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); g.To != "" && !ok {
+	if g.To == "" {
+		// A PLAYER'S REFUSAL, BY NAME: the one way to get here is a game
+		// saved before the receiver was always stated — an author's site is
+		// refused first by the compiler, at their path, with what to write.
+		return fmt.Errorf("%s gives status %q with no receiver: %w", what, g.ID, ErrSavedByOlderVersion)
+	}
+	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); !ok {
 		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",
 			what, g.ID, g.To, WhoWordsIn(WhoInApplyStatusTo))
 	}

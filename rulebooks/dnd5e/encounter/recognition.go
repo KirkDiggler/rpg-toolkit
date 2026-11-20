@@ -247,7 +247,7 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 				return fmt.Errorf("%s tells a record: a line's row tells whoever caught its answer; an outcome tells nobody", what)
 			}
 			if c.ApplyStatus != nil {
-				return fmt.Errorf("%s gives a status: a line's row gives its speaker a status; an outcome gives nobody one", what)
+				return fmt.Errorf("%s gives a status: a line's row gives a status; an outcome gives nobody one", what)
 			}
 			if c.Jail != nil {
 				if c.Recognize != nil || c.Arrest != nil {
@@ -451,15 +451,9 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 // grantStatus is one status grant landing: returned, not applied
 // (status_grant.go) — one [GrantedStatus] for each member its word resolves
 // to now ([landing.whoNow]), appended to given. A member given has this
-// status from this row already is not named again. An empty To is the
-// speaker, as the short form `apply_status: <id>` still compiles
-// (rpg-project#990).
+// status from this row already is not named again.
 func (e *Encounter) grantStatus(g StatusGrant, line recognitionLine, given []GrantedStatus) ([]GrantedStatus, error) {
-	word := g.To
-	if word == "" {
-		word = string(RecognitionSpeaker)
-	}
-	receivers, err := e.landingOf(line).whoNow(WhoInApplyStatusTo, word)
+	receivers, err := e.landingOf(line).whoNow(WhoInApplyStatusTo, g.To)
 	if err != nil {
 		return nil, err
 	}

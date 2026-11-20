@@ -12,6 +12,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -101,7 +102,6 @@ func TestAStatusGoesToWhomItsWordNamesWhenTheRowLands(t *testing.T) {
 		holdLine("hold-speaker", string(RecognitionSpeaker)),
 		holdLine("hold-party", string(RecognitionPartyInSight)),
 		holdLine("hold-spoken-to", string(RecognitionSpokenTo)),
-		holdLine("hold-short", ""),
 		holdLine("hold-twice", string(RecognitionSpeaker), string(RecognitionPartyInSight)),
 	}
 	// Bob comes up the yard into the guard's sight; carol stays out of it.
@@ -123,10 +123,6 @@ func TestAStatusGoesToWhomItsWordNamesWhenTheRowLands(t *testing.T) {
 	t.Run("spoken_to is the creature the line was said to", func(t *testing.T) {
 		enc := inSight(t, 2)
 		require.Equal(t, []MemberID{postedGuard}, receivers(t, sayTo(t, enc, "hold-spoken-to").Statuses))
-	})
-	t.Run("no word is the speaker, until the grammar requires one", func(t *testing.T) {
-		enc := inSight(t, 2)
-		require.Equal(t, []MemberID{"alice"}, receivers(t, sayTo(t, enc, "hold-short").Statuses))
 	})
 	t.Run("nobody is named twice", func(t *testing.T) {
 		enc := inSight(t, 2)
@@ -235,4 +231,56 @@ func TestAStatusGrantNamesAReceiverTheTableHas(t *testing.T) {
 func enc0(t *testing.T) *Encounter {
 	t.Helper()
 	return receiverHall(t, 2, nil)
+}
+
+// AN ABANDONED STAGED CHECK IS JUDGED AS SPOKEN (rpg-project#938): alice
+// reserves her push with bob in the guard's sight, both walk off down the
+// yard, carol comes up into his sight, and the missed settle gives the hold
+// to whom he saw when the words were said — alice and bob — not to whom he
+// sees now, the path `give` already takes.
+func TestAnAbandonedStagedStatusGoesToWhomTheGuardSawWhenSaid(t *testing.T) {
+	enc := receiverHall(t, 2, []Option{pushLine()})
+	placeAt(t, enc, "bob", holdSouthWest)
+	at := enc.interactions[hailGate].revision
+	_, err := enc.Reserve(&ReserveInput{Actor: "alice", Target: postedGuard, OptionID: "push", Revision: at, Range: 3})
+	require.NoError(t, err)
+	placeAt(t, enc, "alice", holdOffPost)
+	placeAt(t, enc, "bob", spatial.Position{X: 8, Y: 4})
+	placeAt(t, enc, "carol", holdSouthWest)
+	require.NoError(t, enc.sweepHolds())
+	require.True(t, enc.interactions[hailGate].reservation.Abandoned, "precondition: abandoned")
+
+	out, err := enc.Speak(context.Background(), &SpeakInput{
+		Actor: "alice", Target: postedGuard, OptionID: "push", Roller: wakeRollsOne{}, Range: 3, Revision: at,
+		Skill: "intimidation", Beaten: false, DC: 13, Total: 4,
+	})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []MemberID{"alice", "bob"}, receivers(t, out.Statuses),
+		"the scene as said: carol, in his sight only now, receives nothing")
+}
+
+// A GRANT THAT DOES NOT SAY WHO RECEIVES IT IS REFUSED, never defaulted
+// (rpg-project#990): at setup, and on loading a run saved before the
+// receiver was stated — the old shape, a grant with no `to` — with words a
+// player can act on.
+func TestAStatusGrantWithNoReceiverIsRefused(t *testing.T) {
+	require.ErrorIs(t, validateConsequence("row", statusGrantTo(""), false), ErrSavedByOlderVersion)
+
+	enc := receiverHall(t, 2, []Option{holdLine("hold-speaker", string(RecognitionSpeaker))})
+	raw, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"to":"speaker"`, "precondition: the saved grant states its receiver")
+	old := strings.Replace(string(raw), `,"to":"speaker"`, "", 1)
+	var data EncounterData
+	require.NoError(t, json.Unmarshal([]byte(old), &data))
+	_, err = LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
+	require.ErrorIs(t, err, ErrInvalidData)
+	require.ErrorIs(t, err, ErrSavedByOlderVersion, "the refusal is named, through every wrapper")
+
+	// The same run in the new shape loads, and nothing names it too old.
+	var current EncounterData
+	require.NoError(t, json.Unmarshal(raw, &current))
+	_, err = LoadEncounter(&LoadEncounterInput{Data: current, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, ErrSavedByOlderVersion)
 }

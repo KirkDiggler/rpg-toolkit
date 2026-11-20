@@ -44,6 +44,18 @@ func TestTheWhoWordsAreTheGrammars(t *testing.T) {
 			require.Equal(t, listed, !refused(g, slot[place]), "%s: %s", place, word)
 		}
 	}
+	// AND WHO RECEIVES A STATUS EFFECT (rpg-project#990), on a creature's
+	// line, where every receiver the list holds may be written.
+	statusRefused := func(word string) bool {
+		bad := false
+		g := &grammar{statusIDs: map[string]bool{"s": true}, add: func(at, _ string) { bad = bad || at == "row.apply_status.to" }}
+		g.applyStatus("row.apply_status", ApplyStatusSpec{Status: "s", To: word}, false)
+		return bad
+	}
+	for _, word := range words {
+		_, listed := encounter.WhoWordAt(encounter.WhoInApplyStatusTo, word)
+		require.Equal(t, listed, !statusRefused(word), "%s: %s", encounter.WhoInApplyStatusTo, word)
+	}
 	for _, w := range encounter.WhoWords() {
 		if w.Role == encounter.WhoTaker {
 			require.NotEmpty(t, w.Way, "%s: a taker says how it comes by the note", w.Word)

@@ -739,7 +739,25 @@ func (s *CastleSuite) TestTheCooksStatusesAreSaid() {
 		s.Equal("statuses."+tc.id, declared.Path)
 		s.Contains(declared.Sentence, "named “"+tc.name+"”")
 		s.Require().NotNil(given, "the row that gives %s is said", tc.id)
-		s.Contains(given.Sentence, "the speaker is given the status “"+tc.name+"” (`"+tc.id+"`)")
+		s.Contains(given.Sentence, "the speaker, whether or not anyone sees them, is given the status “"+tc.name+"” (`"+tc.id+"`)")
 		s.Contains(given.Connects, readback.Connection{Kind: readback.ConnStatus, ID: tc.id, Role: readback.RoleGives})
+		s.Contains(given.Connects, readback.Connection{Kind: readback.ConnWho, ID: "speaker", Role: readback.RoleReceives, At: tc.id})
 	}
+}
+
+// THE HALL GUARD HOLDS WHOM HE SEES (rpg-project#990): `push-past` missed
+// gives `held` to the speaker's party in his sight, said in plain words and
+// connected to the who-word that receives it.
+func (s *CastleSuite) TestTheHallGuardsHoldSaysWhoReceivesIt() {
+	const path = "room.room.monsterBindings.hall-1.options[0].failure[0].apply_status"
+	var given *readback.Statement
+	for _, st := range s.rb.Statements() {
+		if st.Kind == readback.KindLineGrant && st.Path == path {
+			given = &st
+		}
+	}
+	s.Require().NotNil(given, "the row that holds the party is said")
+	s.Contains(given.Sentence, "each member of the speaker's party that")
+	s.Contains(given.Sentence, "sees at that moment (the speaker too, if seen) is given the status “Held” (`held`)")
+	s.Contains(given.Connects, readback.Connection{Kind: readback.ConnWho, ID: "party_in_sight", Role: readback.RoleReceives, At: "held"})
 }

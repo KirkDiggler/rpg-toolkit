@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 func TestDungeonspec_AStatusCompilesInTheAuthorsWords(t *testing.T) {
@@ -62,8 +63,13 @@ func vaultWithAStatus(t *testing.T, old, replacement string) string {
 	return strings.Replace(source, old, replacement, 1)
 }
 
+// receiverWords is how a refusal lists who can receive a status: the table's
+// words at `apply_status.to`, each with its label.
+const receiverWords = "`speaker`, the speaker, seen or not, or `party_in_sight`, the speaker's party it sees, or " +
+	"`spoken_to`, the one the line is said to"
+
 const (
-	vaultApply  = "                apply_status: rested\n"
+	vaultApply  = "                apply_status: { status: rested, to: speaker }\n"
 	vaultStatus = "statuses:\n  rested:\n    name: Rested\n    changes:\n      - advantage: saves\n    maintenance:\n      - ends_on: rest\n    again: ignored\n"
 )
 
@@ -73,8 +79,22 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 	for name, tc := range map[string]struct {
 		old, replacement, path, message string
 	}{
-		"a status the site does not have": {vaultApply, "                apply_status: weary\n",
-			asked + ".apply_status", `"weary" is not a status of this site: the statuses declared are rested`},
+		"a status the site does not have": {vaultApply, "                apply_status: { status: weary, to: speaker }\n",
+			asked + ".apply_status.status", `"weary" is not a status of this site: the statuses declared are rested`},
+		"the short form": {vaultApply, "                apply_status: rested\n",
+			asked + ".apply_status", "apply_status names who receives it: write apply_status: { status: rested, to: speaker }"},
+		"no status": {vaultApply, "                apply_status: { to: speaker }\n",
+			asked + ".apply_status.status", "apply_status names the status given: write `status: <id>` (the statuses declared are rested)"},
+		"no receiver": {vaultApply, "                apply_status: { status: rested }\n",
+			asked + ".apply_status.to", "apply_status names who receives it: write `to:` as " + receiverWords},
+		"an unknown receiver": {vaultApply, "                apply_status: { status: rested, to: the_taken }\n",
+			asked + ".apply_status.to", `"the_taken" is not who can receive a status: write ` + "`to:` as " + receiverWords},
+		"another key": {vaultApply, "                apply_status: { status: rested, to: speaker, for: ever }\n",
+			asked + ".apply_status.for", "apply_status takes `status` and `to`, not `for`"},
+		"a list of receivers": {vaultApply, "                apply_status: { status: rested, to: [speaker, spoken_to] }\n",
+			asked + ".apply_status.to", "apply_status's `to` is one word, not a list or a mapping"},
+		"a null receiver": {vaultApply, "                apply_status: { status: rested, to: ~ }\n",
+			asked + ".apply_status.to", "apply_status names who receives it: write `to:` as " + receiverWords},
 		"a status with no name": {"    name: Rested\n", "",
 			"statuses.rested.name", "a status needs a name: the words a player sees"},
 		"a status with an empty name": {"    name: Rested\n", "    name: \"\"\n",
@@ -115,7 +135,7 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 // such status".
 func TestDungeonspec_AStatusIsNotATableRow(t *testing.T) {
 	errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
-		"        - say: Not one step further without my say.\n          apply_status: warmed-up\n"))
+		"        - say: Not one step further without my say.\n          apply_status: { status: warmed-up, to: speaker }\n"))
 	require.NotEmpty(t, errs)
 	for _, e := range errs {
 		require.NotContains(t, e.Message, "is not a status of this site", "warmed-up is declared: %s", e.Message)
@@ -131,7 +151,7 @@ func TestDungeonspec_AStatusIsNotATableRow(t *testing.T) {
 // A SITE THAT DECLARES NO STATUS GIVES NONE: the refusal says there are none.
 func TestDungeonspec_AStatusNeedsADeclaration(t *testing.T) {
 	source := vaultWithAStatus(t, vaultStatus, "")
-	requireExactDefect(t, refusals(t, source), "room.room.monsterBindings.captain.options[0].success[0].apply_status",
+	requireExactDefect(t, refusals(t, source), "room.room.monsterBindings.captain.options[0].success[0].apply_status.status",
 		`"rested" is not a status of this site: this site declares no statuses`)
 }
 
@@ -151,4 +171,47 @@ func TestDungeonspec_ARowNamingAStatusAlwaysCarriesIt(t *testing.T) {
 		require.JSONEq(t, `{"name":"Rested","changes":[{"advantage":"saves"}],"maintenance":[{"ends_on":"rest"}],"again":"ignored"}`,
 			string(g.Consequence.ApplyStatus.Status))
 	}
+}
+
+// ON A THING'S LINE ONLY THE SPEAKER RECEIVES (rpg-project#990): a thing has
+// nobody spoken to, so `party_in_sight` and `spoken_to` are refused at the
+// author's path there, and `speaker` is the speaker.
+func TestDungeonspec_OnAThingsLineOnlyTheSpeakerReceives(t *testing.T) {
+	const relocate = "              - relocate:\n                  to: region-chapel\n" +
+		"                  words: The tunnel climbs, and you come up through a flagstone behind the chapel's altar.\n" +
+		"                  rounds: 1\n"
+	give := func(to string) string {
+		return "              - apply_status: { status: warmed-up, to: " + to + " }\n"
+	}
+	_ = loadSource(t, castleWith(t, relocate, give("speaker")))
+	const at = "room.room.propBindings.grate.options[0].success[0].apply_status.to"
+	for _, to := range []string{"party_in_sight", "spoken_to"} {
+		t.Run(to, func(t *testing.T) {
+			requireExactDefect(t, refusals(t, castleWith(t, relocate, give(to))), at,
+				"on a thing's line nobody is spoken to, so nobody receives it but the speaker: only `to: speaker` can be used here")
+		})
+	}
+}
+
+// THE AUTHOR IS TOLD WHAT TO WRITE, NEVER THE PLAYER'S SENTENCE
+// (rpg-project#990): the short form is refused by the compiler at the
+// author's path; the engine's refusal of a grant with no receiver — written
+// for a player whose saved game is too old — never reaches an author.
+func TestDungeonspec_TheShortFormTellsTheAuthorWhatToWrite(t *testing.T) {
+	errs := refusals(t, vaultWithAStatus(t, vaultApply, "                apply_status: rested\n"))
+	requireExactDefect(t, errs, "room.room.monsterBindings.captain.options[0].success[0].apply_status",
+		"apply_status names who receives it: write apply_status: { status: rested, to: speaker }")
+	for _, e := range errs {
+		require.NotContains(t, e.Message, "saved by an older version", "an author is never told the player's sentence")
+	}
+}
+
+// A KEY WRITTEN TWICE IN apply_status IS REFUSED, at its line in yaml.v3's
+// own sentence, as every hand-read mapping in this package refuses one
+// ([repeatedKey]): the second `to` never quietly wins.
+func TestDungeonspec_ApplyStatusRefusesAKeyWrittenTwice(t *testing.T) {
+	_, err := dungeonspec.Load([]byte(vaultWithAStatus(t, vaultApply,
+		"                apply_status: { status: rested, to: speaker, to: party_in_sight }\n")))
+	require.Error(t, err)
+	require.Regexp(t, `line \d+: mapping key "to" already defined at line \d+`, err.Error())
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
@@ -176,7 +177,7 @@ const welcome = `  welcome:
           success: admitted
         success:
           - say: In you go.
-            apply_status: welcomed
+            apply_status: { status: welcomed, to: speaker }
 `
 
 // TestALineGivingAStatusCompilesAsItsCopy: a used line carries every row
@@ -362,4 +363,38 @@ func (s *ConversationsSuite) TestCompilingLeavesTheSpecAsWritten() {
 	second, err := dungeonspec.CompileSingleRoom(dungeonspec.CompileSingleRoomInput{Spec: spec})
 	s.Require().NoError(err)
 	s.Equal("We are expected.", second.Monsters[0].Options[0].Say, "the second compile reads the edit")
+}
+
+// TestTwoCarriersOfAStatusLineEachHaveTheirOwnGrant (rpg-project#990): a
+// conversation whose line gives a status, carried by two creatures, compiles
+// to a row grant on each — equal, receiver and all, and not one object
+// shared between them, so nothing done to one carrier's grant reaches the
+// other's.
+func (s *ConversationsSuite) TestTwoCarriersOfAStatusLineEachHaveTheirOwnGrant() {
+	src := s.hailWith(welcome, "          - use: welcome\n")
+	src = strings.Replace(src, "    monsterDeclarations:\n",
+		"    monsterDeclarations:\n      - id: porter-2\n        ref: dnd5e:monsters:guard\n"+
+			"        startingCell:\n          location:\n            q: 2\n            r: 0\n          facing: s\n", 1)
+	src = strings.Replace(src, "    monsterBindings:\n",
+		"    monsterBindings:\n      porter-2:\n        faction: watch\n        options:\n          - use: welcome\n", 1)
+	got, err := dungeonspec.Load([]byte(src))
+	s.Require().NoError(err)
+	grants := map[string]*encounter.StatusGrant{}
+	for _, m := range got.Monsters {
+		for _, o := range m.Options {
+			for _, g := range o.Grants {
+				if g.Consequence.ApplyStatus != nil {
+					grants[string(m.ID)] = g.Consequence.ApplyStatus
+				}
+			}
+		}
+	}
+	s.Require().Contains(grants, "porter")
+	s.Require().Contains(grants, "porter-2")
+	one, two := grants["porter"], grants["porter-2"]
+	s.Equal(*one, *two, "the same grant, receiver and all")
+	s.Equal("speaker", one.To)
+	s.NotSame(one, two, "each carrier's own")
+	one.Status[0] = 'x'
+	s.NotEqual(one.Status, two.Status, "nor one status block between them")
 }

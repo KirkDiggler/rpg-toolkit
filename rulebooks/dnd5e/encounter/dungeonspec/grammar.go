@@ -648,7 +648,7 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 					g.fail(rowAt+".flee", "%s", errOptionPropFlees)
 				}
 				g.rowGive(rowAt+".give", verdict.key, o, row, isProp)
-				g.rowPassage(rowAt, row)
+				g.rowPassage(rowAt, row, isProp)
 			}
 		}
 	}
@@ -858,13 +858,58 @@ func (g *grammar) rowGive(at, key string, o OptionSpec, row AnswerSpec, isProp b
 	givingOf(at, row.Give, named, func(path, message string) { g.fail(path, "%s", message) })
 }
 
+// applyStatus judges a row's `apply_status:` (rpg-project#990), at its own
+// path: the short form refused with what to write; `status` a status of this
+// site; `to` a who-word of `apply_status.to`, and on a thing's line only
+// `speaker` — a thing has nobody spoken to, so nobody it could see; and no
+// other key.
+func (g *grammar) applyStatus(at string, a ApplyStatusSpec, isProp bool) {
+	if a.short != "" {
+		g.fail(at, "apply_status names who receives it: write apply_status: { status: %s, to: speaker }", a.short)
+		return
+	}
+	for _, key := range a.others {
+		g.fail(at+"."+key, "apply_status takes `status` and `to`, not `%s`", key)
+	}
+	for _, key := range a.notWords {
+		g.fail(at+"."+key, "apply_status's `%s` is one word, not a list or a mapping", key)
+	}
+	if len(a.notWords) > 0 {
+		return
+	}
+	switch {
+	case a.Status == "":
+		g.fail(at+".status", "apply_status names the status given: write `status: <id>` (%s)", declaredStatusList(g.statusIDs))
+	case !g.statusIDs[a.Status]:
+		g.fail(at+".status", "%q is not a status of this site: %s", a.Status, declaredStatusList(g.statusIDs))
+	}
+	words := encounter.WhoWordsIn(encounter.WhoInApplyStatusTo)
+	if _, ok := encounter.WhoWordAt(encounter.WhoInApplyStatusTo, a.To); !ok {
+		said := make([]string, 0, len(words))
+		for _, w := range words {
+			wd, _ := encounter.WhoWordAt(encounter.WhoInApplyStatusTo, w)
+			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
+		}
+		lead := "apply_status names who receives it"
+		if a.To != "" {
+			lead = fmt.Sprintf("%q is not who can receive a status", a.To)
+		}
+		g.fail(at+".to", "%s: write `to:` as %s", lead, strings.Join(said, ", or "))
+		return
+	}
+	if isProp && a.To != string(encounter.RecognitionSpeaker) {
+		g.fail(at+".to", "on a thing's line nobody is spoken to, so nobody receives it but the speaker: "+
+			"only `to: %s` can be used here", encounter.RecognitionSpeaker)
+	}
+}
+
 // rowPassage judges a line's row `tells:` and `relocate:` (rpg-project#958):
 // one grant per row, a relocate's words written and rounds zero or more, and
 // what each names declared on this site — when the dialect told the grammar
 // its regions and intel records ([grammar.regionIDs], [grammar.intelIDs]).
-func (g *grammar) rowPassage(at string, row AnswerSpec) {
+func (g *grammar) rowPassage(at string, row AnswerSpec, isProp bool) {
 	grants := 0
-	for _, set := range []bool{row.Give != nil, row.Tells != "", row.Relocate != nil, row.ApplyStatus != ""} {
+	for _, set := range []bool{row.Give != nil, row.Tells != "", row.Relocate != nil, row.ApplyStatus != nil} {
 		if set {
 			grants++
 		}
@@ -873,8 +918,8 @@ func (g *grammar) rowPassage(at string, row AnswerSpec) {
 		g.fail(at, "a row grants one thing: `give`, `tells`, `relocate` or `apply_status`, not two")
 		return
 	}
-	if row.ApplyStatus != "" && !g.statusIDs[row.ApplyStatus] {
-		g.fail(at+".apply_status", "%q is not a status of this site: %s", row.ApplyStatus, declaredStatusList(g.statusIDs))
+	if row.ApplyStatus != nil {
+		g.applyStatus(at+".apply_status", *row.ApplyStatus, isProp)
 	}
 	if row.Tells != "" && g.intelIDs != nil && !g.intelIDs[row.Tells] {
 		g.fail(at+".tells", "%q is not an intel record of this site", row.Tells)
@@ -932,7 +977,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		if entry.Relocate != nil {
 			g.fail(at+".relocate", "relocate is only on a line's success or failure row: a table row grants nothing")
 		}
-		if entry.ApplyStatus != "" {
+		if entry.ApplyStatus != nil {
 			g.fail(at+".apply_status", "apply_status is only on a line's success or failure row: a table row grants nothing")
 		}
 	}
@@ -988,7 +1033,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		return
 	// A line's row that reveals or relocates does something
 	// (rpg-project#958), with or without words.
-	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil && entry.ApplyStatus == "":
+	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil && entry.ApplyStatus == nil:
 		g.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
 
 		return

@@ -15,8 +15,9 @@ import (
 
 // statuses.go is A STATUS AN AUTHOR WROTE (rpg-project#1024): the root's
 // `statuses:` — each a named piece that changes what its holder can do, with
-// rules for how long it stays — and a line's row `apply_status: <id>`, which
-// gives one to the row's speaker.
+// rules for how long it stays — and a line's row
+// `apply_status: { status: <id>, to: <who> }`, which gives one to whom its
+// `to` names (rpg-project#990, [ApplyStatusSpec]).
 //
 //	statuses:
 //	  feasted:
@@ -204,15 +205,15 @@ type statusError struct{ id, message string }
 func (e *statusError) Error() string { return "statuses." + e.id + ": " + e.message }
 
 // statusGrantOf is a row's `apply_status:` as the encounter carries it: the
-// id and the status's canonical JSON.
+// id, the status's canonical JSON and who receives it.
 //
 // NEVER NIL FOR A NAMED STATUS: a status the site does not carry (refused by
 // the grammar first) still compiles to a grant, with no block, and the
 // encounter refuses that grant when it is built ("whose authored block is
 // not a JSON object") — so a row that names a status can never compile
 // quietly without its grant.
-func statusGrantOf(id string, statuses map[string]json.RawMessage) *encounter.StatusGrant {
-	return &encounter.StatusGrant{ID: id, Status: append(json.RawMessage(nil), statuses[id]...)}
+func statusGrantOf(a ApplyStatusSpec, statuses map[string]json.RawMessage) *encounter.StatusGrant {
+	return &encounter.StatusGrant{ID: a.Status, Status: append(json.RawMessage(nil), statuses[a.Status]...), To: a.To}
 }
 
 // declaredStatusList is the declared ids as a refusal lists them.
