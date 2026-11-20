@@ -5,13 +5,13 @@ package session
 
 import (
 	"context"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 

@@ -67,12 +67,20 @@ var _ encounter.Sheets = sheetSeam{}
 // has none to give, so the verb's own is captured when the seam is built, and
 // the seam is built fresh for every verb (S1, S4).
 //
-// # No cache, deliberately
+// # Read once per verb, never kept past it
 //
-// Every consult re-reads. A verb that equips a weapon or levels a character
-// writes the sheet part-way through itself, and an answer remembered from the
-// top of the call would describe a sheet that no longer exists — the exact
-// copy rpg-project#538 retired from the composition, moved one layer up.
+// A member's sheet facts ([Sheets]) are read at most once per verb, through
+// the verb's [sheetFactsMemo] (rpg-toolkit#2493), and forgotten the moment
+// the verb writes that member's sheet at either door — the sheet store's
+// save, or [writeScope.replaceMonsterSheet]. A verb that equips a weapon,
+// levels a character, or gives or ends a hold therefore reads the written
+// sheet at its next consult, never an answer from the top of the call: the
+// copy rpg-project#538 retired from the composition is not brought back one
+// layer up. Nothing is kept past the verb and nothing is saved: what follows
+// from a creature's effects is worked out when read
+// (https://github.com/KirkDiggler/rpg-project/issues/990#issuecomment-7034098169),
+// and the memo only spares one verb working it out twice from the same sheet.
+// Sight and initiative still re-read the sheet on every consult.
 //
 // THE SAME FIELDS AS [standingSeam], AND NONE OF ITS METHODS: a defined type
 // over it, so the two capabilities share where the sheets are and which verb

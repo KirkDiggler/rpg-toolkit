@@ -39,6 +39,11 @@ import (
 // sheet written through one of them, so the next ask reads it afresh. A read
 // that failed is not kept.
 //
+// A continued walk (a Move that answers before the world runs) keeps its
+// memo across the wait for the host, which is safe only because it holds the
+// session guard for that whole time: a host writing a record outside the SDK
+// in between would break it, as it already breaks the participation memo.
+//
 // The sneaker's halved speed is NOT here: it is asked of the live encounter
 // at every read ([sheetSeam.factsOf]).
 type sheetFactsMemo struct {
