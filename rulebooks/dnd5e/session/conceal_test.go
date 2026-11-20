@@ -728,7 +728,9 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 	launched := s.startDriven(session.Driver(), sc,
 		armedSearcher("alice"), armedFighter("bob"), dullEyed("carol"))
 	s.Require().Len(launched.Formed, 1, "a monster in plain view and in reach forms the fight at launch")
-	s.Equal([]string{"alice", "bob", "carol", "zed-1"}, launched.Formed[0].Order)
+	// The zombie (DEX 6, -2) acts before carol, whose dull-eyed sheet scores
+	// every ability 0 (DEX -5): flat dice, so Dexterity alone orders them.
+	s.Equal([]string{"alice", "bob", "zed-1", "carol"}, launched.Formed[0].Order)
 
 	// alice finds the veil inside the fight, so every reload below replays a
 	// world carrying a real detection fact rather than a virgin blob.
@@ -772,13 +774,13 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 		"activating inside a concealed dungeon reconstructs the world through the same door")
 	s.Equal("dnd5e:combat_abilities:dodge", dodged.Ability)
 
-	s.Equal("carol", endTurn("bob").Next)
-
-	// THE MONSTER'S TURN — striker.go's reload, driven inside carol's EndTurn
+	// THE MONSTER'S TURN — striker.go's reload, driven inside bob's EndTurn
 	// because the zombie is next in the order and no player ends its turn.
 	mark := s.marks("alice")["alice"]
+	s.Equal("carol", endTurn("bob").Next)
+
 	wrapped := endTurn("carol")
-	s.True(wrapped.RoundWrapped, "the zombie closed the round")
+	s.True(wrapped.RoundWrapped, "carol closed the round")
 	s.Equal("alice", wrapped.Next, "which wraps back to whoever led it")
 
 	swungBack := false

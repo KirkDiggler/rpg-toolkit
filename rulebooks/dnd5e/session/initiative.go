@@ -10,8 +10,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/initiative"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // Roller is the host's source of randomness. Required.
@@ -45,8 +47,67 @@ type Roller interface {
 // Unexported for the reason the boundary test exists: if the host had to
 // satisfy encounter.InitiativeRoller directly, replacing the composition would
 // break every host that implemented it.
+//
+// It is built PER VERB, beside that verb's sheets, because the modifier is
+// read off the rolling member's sheet at the moment the fight forms — the
+// same "sheet facts asked at use time" rule [sheetSeam] follows, and the same
+// sheets it reads.
 type initiativeSeam struct {
-	dice Roller
+	dice   Roller
+	sheets sheetSeam
+}
+
+// initiativeFor is the initiative capability for one verb, reading the given
+// verb's sheets.
+func (m *Manager) initiativeFor(sheets sheetSeam) initiativeSeam {
+	return initiativeSeam{dice: m.dice, sheets: sheets}
+}
+
+// initiativeContribution is one named thing a member adds to their initiative
+// roll, and how much.
+type initiativeContribution struct {
+	// Source names where the amount comes from, as a player would read it.
+	Source string
+	// Amount is what it adds; negative subtracts.
+	Amount int
+}
+
+// initiativeContributions is THE ONE PLACE a member's initiative modifier is
+// worked out: every named contribution, read off the member's sheet. The
+// modifier is their sum ([initiativeModifier]); a new way to add to
+// initiative is one more entry here, never a second path.
+//
+// Today the list has one entry, the Dexterity modifier, for a player (from its
+// character record) and for a monster (from its stat block). A world NPC's
+// recorded content states no ability scores, so it contributes nothing — the
+// true answer from that content, as [sheetSeam.Sheets] answers zero speed.
+//
+// A member the verb holds no sheet for is refused by [sheetSeam.sheetOf],
+// never answered with zero: zero is a real modifier.
+func (s initiativeSeam) initiativeContributions(id encounter.MemberID) ([]initiativeContribution, error) {
+	held, err := s.sheets.sheetOf(id)
+	if err != nil {
+		return nil, err
+	}
+	var scores shared.AbilityScores
+	switch {
+	case held.character != nil:
+		scores = held.character.AbilityScores
+	case held.monster != nil:
+		scores = held.monster.AbilityScores
+	default:
+		return nil, nil
+	}
+	return []initiativeContribution{{Source: "Dexterity", Amount: scores.Modifier(abilities.DEX)}}, nil
+}
+
+// initiativeModifier sums a member's contributions.
+func initiativeModifier(contributions []initiativeContribution) int {
+	total := 0
+	for _, c := range contributions {
+		total += c.Amount
+	}
+	return total
 }
 
 // RollInitiative asks the rulebook to order the members a fight is starting
@@ -68,12 +129,12 @@ type initiativeSeam struct {
 // made in the open rather than left to map iteration. Flat rolls make ties
 // common rather than rare, which is what makes it load-bearing today.
 //
-// FLAT ROLLS, NO MODIFIERS is the one gap left, and it is about production
-// rather than shape. Every member is passed a Dexterity modifier of zero,
-// because a member ID is all the composition hands over at formation and
-// resolving each one to a sheet mid-verb is its own piece of work. When the
-// modifier arrives it is looked up HERE, and neither the host's interface nor
-// the composition's changes.
+// EACH MEMBER ADDS ITS MODIFIER, worked out by [initiativeContributions] from
+// the sheet this verb holds (rpg-project#990): today the Dexterity modifier
+// and nothing else. Neither the host's interface nor the composition's
+// changed to carry it; the composition still hands over IDs only, and the
+// order is still all it gets back. Ties are NOT broken by Dexterity: equal
+// totals order by ID, as before.
 //
 // A dice failure ABORTS, and has to be caught rather than returned: RollForOrder
 // discards the roller's error (`roll, _ := roller.Roll(...)`) and would hand
@@ -86,7 +147,11 @@ func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounte
 	dice := &diceSeam{roller: s.dice}
 	rolls := make([]initiative.Roll, 0, len(asking))
 	for _, id := range asking {
-		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): 0}, dice)
+		contributions, err := s.initiativeContributions(id)
+		if err != nil {
+			return nil, fmt.Errorf("initiative modifier for %q: %w", id, err)
+		}
+		one := initiative.RollForOrder(map[core.Entity]int{memberEntity(id): initiativeModifier(contributions)}, dice)
 		if dice.err != nil {
 			return nil, fmt.Errorf("rolling initiative for %q: %w", id, dice.err)
 		}

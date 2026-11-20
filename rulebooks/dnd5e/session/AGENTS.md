@@ -465,11 +465,13 @@ dropping it. But `verbRank` ([`offers.go`](./offers.go):909) has a silent
 `default: return 7`. The selector check is what actually catches you; the sort
 will not.
 
-**Initiative is flat.** `RollInitiative` ([`initiative.go`](./initiative.go):82)
-passes every member a Dexterity modifier of zero, because a member ID is all the
-composition hands over at formation. Ties are broken by ID for reproducibility
-(C8). Both are documented decisions, not bugs — but a test that expects a
-high-Dex character to act first will fail, and it will look like the dice.
+**Initiative adds Dexterity, and only Dexterity.** `RollInitiative`
+([`initiative.go`](./initiative.go)) adds each member's modifier, worked out in
+one place, `initiativeContributions`, from the sheet the verb holds: today one
+named entry, the Dexterity modifier, for players and monsters (rpg-project#990).
+A new way to add to initiative is one more entry there. Ties are still broken by
+ID, not by Dexterity, for reproducibility (C8). A fixture whose sheet has no
+ability scores rolls at -5: that is the rule reading an empty sheet, not the dice.
 
 **`../CLAUDE.md` says `initiative/` is dead. It is not.**
 [`initiative.go`](./initiative.go):14 imports it, and is its only non-test

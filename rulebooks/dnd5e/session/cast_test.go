@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -141,9 +142,23 @@ func (s *CastSuite) build(
 	s.T().Helper()
 
 	// One die per member of the bubble the launch forms, ahead of whatever
-	// this scene scripted.
-	initiativeRolls := 2 + len(allies)
-	scripted := append(make([]int, initiativeRolls), rolls...)
+	// this scene scripted. Members are asked in sorted order; the caster's die
+	// is a 20 and every other a 0, so the caster leads whatever its allies'
+	// and the skeleton's Dexterity add (rpg-project#990).
+	asked := []string{bard.ID, "skeleton"}
+	for _, ally := range allies {
+		asked = append(asked, ally.ID)
+	}
+	slices.Sort(asked)
+	scripted := make([]int, 0, len(asked)+len(rolls))
+	for _, id := range asked {
+		face := 0
+		if id == bard.ID {
+			face = 20
+		}
+		scripted = append(scripted, face)
+	}
+	scripted = append(scripted, rolls...)
 
 	sheets := append([]*character.Data{bard}, allies...)
 	s.characters = newFakeCharacters(sheets...)
