@@ -14,7 +14,7 @@ One line per entry. Every line ends with a link: a PR, an issue comment, a commi
 
 - The one seam changed its return type and no second method was added beside it, because two ways to ask for initiative drift; the lead's call — [rpg-project#1047](https://github.com/KirkDiggler/rpg-project/issues/1047).
 - A roll with no Calculation means placed, not rolled, and is not recorded, so a record written by a placing roller is byte for byte what it was — [rpg-project#1047](https://github.com/KirkDiggler/rpg-project/issues/1047).
-- Everyone in a fight reads every member's roll: the rolls ride the fight-forming entry, whose audience is the fight's members; the operator's ruling of 2026-11-21 — [rpg-project#1035 comment](https://github.com/KirkDiggler/rpg-project/issues/1035#issuecomment-7051043597).
+- Everyone in a fight reads every member's roll: the rolls ride the fight-forming entry, which today goes to the whole roster like every other entry (`audienceFor` in `encounter.go`, the pre-v1 "everyone" policy) and narrows to the fight's members when rpg-toolkit#940 lands; the operator's ruling of 2026-11-21 — [rpg-project#1035 comment](https://github.com/KirkDiggler/rpg-project/issues/1035#issuecomment-7051043597).
 
 ## Found
 
