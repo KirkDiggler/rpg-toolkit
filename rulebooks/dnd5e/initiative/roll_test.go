@@ -105,14 +105,14 @@ func TestRollOneWithNoModifiersIsTheDieAlone(t *testing.T) {
 	assert.Len(t, out.Calculation.Components, 1)
 }
 
-// Catches a refusal that is missing, or a roller's error that is swallowed.
+// Catches a refusal that is missing, a die spent on a roll that is then
+// refused, or a roller's error that is swallowed.
 func TestRollOneRefusals(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	failing := mock_dice.NewMockRoller(ctrl)
 	failing.EXPECT().Roll(gomock.Any(), 20).Return(0, errors.New("dice broke"))
-	// Validation runs on the finished record, so the die is thrown first.
+	// No EXPECT: any roll through this roller fails the test.
 	idle := mock_dice.NewMockRoller(ctrl)
-	idle.EXPECT().Roll(gomock.Any(), 20).Return(10, nil).AnyTimes()
 
 	cases := map[string]*initiative.RollOneInput{
 		"nil input":    nil,
@@ -120,6 +120,8 @@ func TestRollOneRefusals(t *testing.T) {
 		"nil roller":   {MemberID: "alice"},
 		"no ref": {MemberID: "alice", Roller: idle, Modifiers: []initiative.Modifier{
 			{Source: dnd5eEvents.RollSource{Name: "Dexterity"}, Amount: 1}}},
+		"invalid ref": {MemberID: "alice", Roller: idle, Modifiers: []initiative.Modifier{
+			{Source: dnd5eEvents.RollSource{Ref: &core.Ref{}, Name: "Dexterity"}, Amount: 1}}},
 		"no name": {MemberID: "alice", Roller: idle, Modifiers: []initiative.Modifier{
 			{Source: dnd5eEvents.RollSource{Ref: refs.Abilities.Dexterity()}, Amount: 1}}},
 		"roller error": {MemberID: "alice", Roller: failing},

@@ -23,3 +23,4 @@ One line per entry. Every line ends with a link: a PR, an issue comment, a commi
 
 - The first build rolled the d20 before refusing a bad modifier source, and its refusal test used dice that accept any number of rolls; the slice issue listed the refusals without saying they come before the die; the independent review caught both — [rpg-toolkit#2501 review](https://github.com/KirkDiggler/rpg-toolkit/pull/2501#pullrequestreview-5999801946).
 - The slice issue left the run record out of its file list — [rpg-project#1049 addendum](https://github.com/KirkDiggler/rpg-project/issues/1049#issuecomment-7051394539).
+- Fix list item 3 asked for a test of something that cannot be observed; the builder's gap report caught it — [rpg-project#1049 gap](https://github.com/KirkDiggler/rpg-project/issues/1049#issuecomment-7051379889).

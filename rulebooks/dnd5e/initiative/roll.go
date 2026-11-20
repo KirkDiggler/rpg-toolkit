@@ -48,8 +48,10 @@ type RollOneOutput struct {
 // RollOne rolls one member's initiative and returns the full record of it:
 // the d20, each modifier with the content it comes from, and the total.
 //
-// Errors: a nil input, a blank member, a nil roller, a roller that fails, and
-// a modifier whose source has no ref or no name.
+// Errors: a nil input, a blank member, a nil roller, a modifier whose source
+// has no ref, an invalid ref or no name, and a roller that fails. Every refusal
+// except the roller's own failure happens before the die; a refused roll
+// consumes no randomness.
 func RollOne(ctx context.Context, in *RollOneInput) (*RollOneOutput, error) {
 	if in == nil {
 		return nil, errors.New("initiative roll requires an input")
@@ -59,6 +61,12 @@ func RollOne(ctx context.Context, in *RollOneInput) (*RollOneOutput, error) {
 	}
 	if in.Roller == nil {
 		return nil, errors.New("initiative roll requires a roller")
+	}
+
+	for i, m := range in.Modifiers {
+		if err := checkModifierSource(m.Source); err != nil {
+			return nil, fmt.Errorf("initiative roll for %q: modifier %d: %w", in.MemberID, i, err)
+		}
 	}
 
 	ruleRef := *refs.Rules.Initiative()
@@ -82,4 +90,19 @@ func RollOne(ctx context.Context, in *RollOneInput) (*RollOneOutput, error) {
 		return nil, fmt.Errorf("initiative roll for %q: %w", in.MemberID, err)
 	}
 	return &RollOneOutput{Face: d20.Face, Total: calculation.Total, Calculation: calculation}, nil
+}
+
+// checkModifierSource refuses a source with no ref, an invalid ref or no name,
+// so the refusal can come before the die is rolled.
+func checkModifierSource(src dnd5eEvents.RollSource) error {
+	if src.Ref == nil {
+		return errors.New("source has no ref")
+	}
+	if err := src.Ref.IsValid(); err != nil {
+		return fmt.Errorf("source ref: %w", err)
+	}
+	if strings.TrimSpace(src.Name) == "" {
+		return errors.New("source has no name")
+	}
+	return nil
 }
