@@ -116,9 +116,11 @@ type lineContext struct {
 	me    string // "the speaker", "the walker"
 	other string // the display name of the one spoken to or holding the post
 	// about is the who-word a read of a note asks about ([encounter.WhoTheSpeaker],
-	// [encounter.WhoTheWalker]); whose is the creature whose note it is, by
-	// id, when one is named.
-	about, whose string
+	// [encounter.WhoTheWalker]).
+	about string
+	// whose is each creature whose note it may be, by id: the one spoken to
+	// or holding the post, or each carrier of a conversation's line.
+	whose []string
 }
 
 // triggerWords says one compiled requirement or predicate as a clause about
@@ -148,7 +150,7 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 		}
 		return fmt.Sprintf("%s has noted %s about %s%s",
 				ctx.other, quote(string(v.Topic)), ctx.me, held),
-			noteAskEdges(string(v.Topic), "asks", false, ctx.about, ctx.whose)
+			noteAskEdges(string(v.Topic), "asks", false, ctx.about, ctx.whose...)
 	case encounter.TriggerInteraction:
 		in := quoteAll(v.In)
 		state := "in the state " + joinOr(in)
@@ -171,7 +173,7 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 			}
 			return fmt.Sprintf("%s has NOT noted %s about %s%s",
 					ctx.other, quote(string(in.Topic)), ctx.me, held),
-				noteAskEdges(string(in.Topic), "asks", true, ctx.about, ctx.whose)
+				noteAskEdges(string(in.Topic), "asks", true, ctx.about, ctx.whose...)
 		case encounter.TriggerFact:
 			return fmt.Sprintf("%s does NOT know the fact %s", me, quote(string(in.Fact))),
 				[]Connection{{Kind: "fact", ID: string(in.Fact), Role: "asks"}}

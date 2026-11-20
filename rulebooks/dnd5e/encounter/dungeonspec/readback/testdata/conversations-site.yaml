@@ -64,6 +64,23 @@ conversations:
           - say: Then we do this the hard way. To arms!
             loudness: shout
             fact: refused-arrest
+      # Hand edit (rpg-toolkit#2485): the castle's `vouch`, so the golden
+      # says a give and a noted read on a line written once: every carrier
+      # takes it as the one spoken to and is whose note the read asks of.
+      - id: vouch
+        say: They’re with us. The captain let us in.
+        requires:
+          - interaction:
+              id: front-gate
+              in: [admitted]
+          - noted: admitted
+        success:
+          - say: Right you are. Go on through, the lot of you.
+            give:
+              topic: admitted
+              to: spoken_to
+              about: party_in_sight
+              heard_by: carriers_who_witnessed
 room:
   version: 3
   id: room-1
