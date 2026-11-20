@@ -165,13 +165,12 @@ func (s initiativeSeam) RollInitiative(members []encounter.MemberID) ([]encounte
 	return rolls, nil
 }
 
-// diceSeam adapts the host's Roller to the one the rulebook takes, and
-// remembers the error the rulebook throws away.
+// diceSeam adapts the host's Roller to the one the rulebook takes, and keeps
+// the first error the host's dice returned.
 //
-// The remembering is not defensive tidiness. RollForOrder discards its roller's
-// error, so a host whose randomness failed would silently contribute a member
-// who rolled zero — a wrong fight rather than a refused one. The first failure
-// is kept and the caller checks it.
+// The rulebook's [initiative.RollOne] returns a failed die itself, so the
+// session no longer depends on the kept error to refuse a fight; it stays as a
+// record of what the host's dice said.
 //
 // RollN is a loop because the rule only ever rolls a single d20; implementing
 // it by delegation keeps the host's side to the one method it genuinely owns.

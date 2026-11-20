@@ -372,7 +372,9 @@ func (s *CheckpointFenceSuite) TestASaveThatDoesNotAdvanceTheVersionIsABrokenRep
 func (s *CheckpointFenceSuite) fight(rolls ...int) *session.Manager {
 	s.store.chars.byID["alice"] = withFreeReactions(armedFighter("alice"))
 	const initiativeRolls = 2
-	roller := &sequenceDice{rolls: append(make([]int, initiativeRolls), rolls...)}
+	// One die per member of the bubble, each a 1 (a legal d20 face; every
+	// member moves up by the same 1, so the order is what it was with 0s).
+	roller := &sequenceDice{rolls: append([]int{1, 1}, rolls...)}
 	mgr, err := session.NewManager(&session.Config{
 		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: s.store.seats,
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},

@@ -143,8 +143,10 @@ func (s *CastSuite) build(
 
 	// One die per member of the bubble the launch forms, ahead of whatever
 	// this scene scripted. Members are asked in sorted order; the caster's die
-	// is a 20 and every other a 0, so the caster leads whatever its allies'
-	// and the skeleton's Dexterity add (rpg-project#990).
+	// is a 20 and every other a 1 (a legal d20 face; every other member moves
+	// up by the same 1, so their order among themselves is unchanged), so the
+	// caster leads whatever its allies' and the skeleton's Dexterity add
+	// (rpg-project#990).
 	asked := []string{bard.ID, "skeleton"}
 	for _, ally := range allies {
 		asked = append(asked, ally.ID)
@@ -152,7 +154,7 @@ func (s *CastSuite) build(
 	slices.Sort(asked)
 	scripted := make([]int, 0, len(asked)+len(rolls))
 	for _, id := range asked {
-		face := 0
+		face := 1
 		if id == bard.ID {
 			face = 20
 		}
