@@ -301,6 +301,12 @@
 // no-op. Historical full-row updates retain their whole-record upsert
 // semantics.
 //
+// Wall Sections copy immutable visual spans in canonical feet into seam-owned
+// DTOs. They follow the owning wall's already-decided permission, never a new
+// prop/door identity or source lookup. Snapshot and complete reveal paths agree;
+// malformed section facts refuse the whole reveal, and opening-only replacements
+// do not rewrite this component. Absent legacy lists remain absent.
+//
 // Wall FaceFinishes copy the captured positive-z/negative-z material choices
 // without resource lookup or regional mapping. Their lists are detached; reveal
 // decoding refuses unknown/duplicate sides and blank refs as one whole body.

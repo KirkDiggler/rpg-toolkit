@@ -740,6 +740,8 @@ type AtlasStructuralWall struct {
 	MaterialOverrides []MaterialOverride `json:"material_overrides,omitempty"`
 	// FaceFinishes are detached explicit choices on the same permitted wall.
 	FaceFinishes []WallFaceFinish `json:"face_finishes,omitempty"`
+	// Sections follow this wall's captured disclosure, never opening-only patches.
+	Sections []WallSection `json:"sections,omitempty"`
 
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area, in order along the wall from From to To,
