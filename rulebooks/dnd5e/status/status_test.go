@@ -209,7 +209,7 @@ func documents(words []status.Word) map[string]string {
 				out[name] = base(`{"advantage":"attacks","when":{"`+w.Word+`":`+string(quoted)+`}}`, rule, again)
 			case status.PlaceMaintenance:
 				out[name] = base(change, `{"`+w.Word+`":`+string(quoted)+`}`, again)
-			case status.PlaceStatus:
+			case status.PlaceAgain:
 				out[name] = base(change, rule, string(quoted))
 			}
 		}
@@ -259,7 +259,11 @@ func (s *statusSuite) TestWordsAndCompileAgree() {
 			return
 		}
 		for key, value := range fields {
-			used[string(place)+":"+key] = true
+			if place == status.PlaceStatus && key == "again" {
+				used[string(status.PlaceAgain)+":"+key] = true
+			} else {
+				used[string(place)+":"+key] = true
+			}
 			switch {
 			case place == status.PlaceStatus && (key == "changes" || key == "maintenance"):
 				var items []json.RawMessage

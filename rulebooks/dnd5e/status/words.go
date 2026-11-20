@@ -16,7 +16,8 @@ import (
 type Place string
 
 const (
-	// PlaceStatus is the status itself: its four top-level words.
+	// PlaceStatus is the status itself: name, changes and maintenance, three
+	// of its four top-level words; the fourth, again, has a place of its own.
 	PlaceStatus Place = "status"
 	// PlaceChange is one entry of changes: what the status does.
 	PlaceChange Place = "change"
@@ -24,7 +25,8 @@ const (
 	PlaceWhen Place = "when"
 	// PlaceMaintenance is one rule of maintenance: what ends the status.
 	PlaceMaintenance Place = "maintenance rule"
-	// PlaceAgain is the value of again: what a second giving does.
+	// PlaceAgain is again, the status's fourth top-level word, whose closed
+	// values say what a second giving does.
 	PlaceAgain Place = "again"
 )
 
@@ -137,7 +139,7 @@ var table = []entry{
 	{place: PlaceStatus, word: wordName, shape: ShapeText, label: "the name players see"},
 	{place: PlaceStatus, word: wordChanges, shape: ShapeList, label: "what the status changes"},
 	{place: PlaceStatus, word: wordMaintenance, shape: ShapeList, label: "what ends the status; any one rule ends it"},
-	{place: PlaceStatus, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
+	{place: PlaceAgain, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
 		{word: "ignored", label: "a second giving is ignored"},
 	}},
 
@@ -230,6 +232,19 @@ func changeKinds() string {
 		}
 	}
 	return strings.Join(words, ", ")
+}
+
+// topWords lists the words a status itself is written with: its own place's
+// and again's, for a refusal.
+func topWords() string {
+	return wordsAt(PlaceStatus) + ", " + wordsAt(PlaceAgain)
+}
+
+// isTopWord reports whether word is written on the status itself.
+func isTopWord(word string) bool {
+	_, status := lookup(PlaceStatus, word)
+	_, again := lookup(PlaceAgain, word)
+	return status || again
 }
 
 // valueOf returns the value entry a word accepts.

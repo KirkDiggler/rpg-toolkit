@@ -91,8 +91,8 @@ type compiler struct {
 
 func (c *compiler) status(top map[string]jsontext.Value) error {
 	for word := range top {
-		if _, ok := lookup(PlaceStatus, word); !ok {
-			return fmt.Errorf("%w: the status: unknown word %s; one of: %s", ErrBadStatus, word, wordsAt(PlaceStatus))
+		if !isTopWord(word) {
+			return fmt.Errorf("%w: the status: unknown word %s; one of: %s", ErrBadStatus, word, topWords())
 		}
 	}
 	for _, word := range []string{wordName, wordChanges, wordMaintenance, wordAgain} {
@@ -103,7 +103,7 @@ func (c *compiler) status(top map[string]jsontext.Value) error {
 	if err := jsonv2.Unmarshal(top[wordName], &c.name); err != nil || strings.TrimSpace(c.name) == "" {
 		return fmt.Errorf("%w: name: must be non-empty text", ErrBadStatus)
 	}
-	again, _ := lookup(PlaceStatus, wordAgain)
+	again, _ := lookup(PlaceAgain, wordAgain)
 	if _, err := oneOf(again, top[wordAgain], wordAgain); err != nil {
 		return err
 	}
@@ -292,7 +292,11 @@ func (c *compiler) library() (json.RawMessage, error) {
 func object(raw json.RawMessage, path string, place Place) (map[string]jsontext.Value, error) {
 	var fields map[string]jsontext.Value
 	if err := jsonv2.Unmarshal(raw, &fields); err != nil || fields == nil {
-		return nil, fmt.Errorf("%w: %s: must be an object of: %s", ErrBadStatus, path, wordsAt(place))
+		words := wordsAt(place)
+		if place == PlaceStatus {
+			words = topWords()
+		}
+		return nil, fmt.Errorf("%w: %s: must be an object of: %s", ErrBadStatus, path, words)
 	}
 	return fields, nil
 }
