@@ -117,6 +117,9 @@ var beats = map[string]func(bus events.EventBus, who string) error{
 	"rest": func(bus events.EventBus, who string) error {
 		return dndevents.RestTopic.On(bus).Publish(context.Background(), dndevents.RestEvent{CharacterID: who, RestType: coreResources.ResetLongRest})
 	},
+	"fight starts": func(bus events.EventBus, who string) error {
+		return dndevents.CombatStartTopic.On(bus).Publish(context.Background(), dndevents.CombatStartEvent{SubjectID: who})
+	},
 	"fight ends": func(bus events.EventBus, who string) error {
 		return dndevents.CombatEndTopic.On(bus).Publish(context.Background(), dndevents.CombatEndEvent{SubjectID: who})
 	},
@@ -187,7 +190,7 @@ func (s *statusSuite) TestEachWordDoesWhatItSaysAndNotItsNeighbours() {
 	}
 
 	// Catches any two ends_on values swapped: each ends on its own beat, for
-	// its holder, and on none of the other four, nor on its own beat for
+	// its holder, and on none of the others, nor on its own beat for
 	// another member.
 	for word := range beats {
 		s.Run("ends on "+word, func() {
