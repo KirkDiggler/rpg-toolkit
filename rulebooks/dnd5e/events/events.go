@@ -742,6 +742,23 @@ type CombatEndEvent struct {
 	SubjectID string // whoever the fight just ended for
 }
 
+// RunEndEvent is published when a member's run has ended: the member left
+// the run, or the run was ended for everyone it held.
+//
+// ONE PER MEMBER, for the same reason as [CombatEndEvent]: every attached
+// effect hears every publish on the interaction's single bus, and answers
+// "is this about me?" by comparing the subject against its own holder.
+//
+// SubjectID is whoever the run ended for — a player's character or a monster.
+//
+// A status meant to last "until the run ends" opts in with the effects
+// vocabulary's run_end beat (an end_on maintenance part); a status that should
+// outlive the run simply does not. Nothing in this module publishes it: the
+// party that departs members from a run does.
+type RunEndEvent struct {
+	SubjectID string // whoever the run just ended for
+}
+
 // =============================================================================
 // Death Save Events
 // =============================================================================
@@ -1018,6 +1035,9 @@ var (
 
 	// CombatEndTopic provides typed pub/sub for combat-end events
 	CombatEndTopic = events.DefineTypedTopic[CombatEndEvent]("dnd5e.combat.end")
+
+	// RunEndTopic provides typed pub/sub for a member's run ending
+	RunEndTopic = events.DefineTypedTopic[RunEndEvent]("dnd5e.run.end")
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
 	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](

@@ -50,7 +50,7 @@ func parseEndOn(declaration PartDeclaration) (endOnParams, error) {
 	if err != nil {
 		return endOnParams{}, err
 	}
-	if !slices.Contains([]machine.Beat{BeatRest, BeatCombatEnd, BeatTurnStart, BeatDroppedToZero}, params.Beat) || strings.TrimSpace(params.Reason) == "" {
+	if !slices.Contains([]machine.Beat{BeatRest, BeatCombatEnd, BeatRunEnd, BeatTurnStart, BeatDroppedToZero}, params.Beat) || strings.TrimSpace(params.Reason) == "" {
 		return endOnParams{}, fmt.Errorf("end policy requires a supported holder beat and an explicit reason")
 	}
 	return params, nil
