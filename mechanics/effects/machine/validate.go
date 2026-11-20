@@ -333,12 +333,11 @@ func (c *checker) act(where string, a Act) {
 		n++
 		zero, ok := c.r.Bag[a.Set.Key]
 		want, _ := kindOf(zero)
-		got, valid := kindOf(a.Set.Value)
 		switch {
 		case !ok:
 			c.failf("%s: set key %q is not declared in the bag", where, a.Set.Key)
-		case !valid || got != want:
-			c.failf("%s: set key %q wants a %s value, got %T", where, a.Set.Key, want, a.Set.Value)
+		case a.Set.Value.Kind() != want:
+			c.failf("%s: set key %q wants a %s value, got %s", where, a.Set.Key, want, a.Set.Value.kindName())
 		}
 		c.read[a.Set.Key] = true
 	}
