@@ -15,18 +15,17 @@ import (
 // TestEmit_Deterministic: equal inputs, equal bytes; a different seed moves
 // the props and nothing about the geometry.
 func TestEmit_Deterministic(t *testing.T) {
-	g := keepAt(t, 10000)
-	o := g.opts
-	a, ra := g.doc, g.report
-	b, rb, err := Generate(DefaultPlan(), o)
-	require.NoError(t, err)
+	o := defaultWritten(10000)
+	a, ra := written(t, o)
+	b, rb := written(t, o)
 	require.Equal(t, a, b)
 	require.Equal(t, ra, rb)
 
 	o.Seed = 2
-	c, rc, err := Generate(DefaultPlan(), o)
-	require.NoError(t, err)
-	require.NotEqual(t, a, c, "the seed moves the placements")
+	c, rc := written(t, o)
+	// Past the header, which records the seed itself: the body must differ.
+	body := func(doc []byte) string { return string(doc[strings.Index(string(doc), "version: 5"):]) }
+	require.NotEqual(t, body(a), body(c), "the seed moves the placements")
 	require.Equal(t, ra.GeometryBytes, rc.GeometryBytes, "and not the walls or the regions")
 	require.Equal(t, ra.Walls, rc.Walls)
 }
@@ -34,11 +33,11 @@ func TestEmit_Deterministic(t *testing.T) {
 // TestEmit_HeaderCarriesCommand: the opening comment records the command
 // line and every option.
 func TestEmit_HeaderCarriesCommand(t *testing.T) {
-	g := keepAt(t, 30000)
-	head := string(g.doc[:strings.Index(string(g.doc), "version: 5")])
+	doc, _ := written(t, defaultWritten(30000))
+	head := string(doc[:strings.Index(string(doc), "version: 5")])
 	require.Contains(t, head, "# keepgen-command: keepgen\n")
 	require.Contains(t, head, "# keepgen-options: hexes=30000 seed=1 props=12.5 grounds-props=2.5 monsters=1 key=bench-keep\n")
-	require.True(t, strings.HasPrefix(string(g.doc), "# "), "the header opens the file")
+	require.True(t, strings.HasPrefix(string(doc), "# "), "the header opens the file")
 }
 
 // TestOptionsFromHeader_RoundTrip: the header gives back the Options that
@@ -48,19 +47,18 @@ func TestOptionsFromHeader_RoundTrip(t *testing.T) {
 		Hexes: 12345, Seed: -7, PropDensity: 3.3333, GroundsDensity: 0, MonsterDensity: 0.25,
 		Key: "bench-keep-odd", CommandLine: "keepgen -hexes 12345 -seed -7 -props 3.3333 -grounds-props 0 -monsters 0.25 -key bench-keep-odd -out k.yaml",
 	}
-	doc, _, err := Generate(DefaultPlan(), o)
-	require.NoError(t, err)
+	doc, _ := written(t, o)
 	got, err := OptionsFromHeader(doc)
 	require.NoError(t, err)
 	require.Equal(t, o, got)
-	again, _, err := Generate(DefaultPlan(), got)
-	require.NoError(t, err)
+	again, _ := written(t, got)
 	require.Equal(t, doc, again)
 
-	g := keepAt(t, 10000)
-	got, err = OptionsFromHeader(g.doc)
+	def := defaultWritten(10000)
+	off, _ := written(t, def)
+	got, err = OptionsFromHeader(off)
 	require.NoError(t, err)
-	require.Equal(t, g.opts, got)
+	require.Equal(t, def, got)
 }
 
 // TestOptionsFromHeader_Refuses: no header, a missing option, a bad value.
@@ -82,9 +80,9 @@ const goldenKeep = "62e1aa12b46e03c773445cb5d850fb9a330773697ba9efe0a416872a082c
 // TestGenerate_Golden pins the emitter's output, so any shift in it is
 // visible in the toolkit PR that causes it.
 func TestGenerate_Golden(t *testing.T) {
-	g := keepAt(t, 10000)
-	require.Equal(t, "keepgen", g.opts.CommandLine)
-	require.Equal(t, DefaultOptions().Seed, g.opts.Seed)
-	sum := sha256.Sum256(g.doc)
+	o := defaultWritten(10000)
+	require.Equal(t, DefaultOptions().Seed, o.Seed)
+	doc, _ := written(t, o)
+	sum := sha256.Sum256(doc)
 	require.Equal(t, goldenKeep, hex.EncodeToString(sum[:]))
 }
