@@ -204,6 +204,14 @@ type MonsterView struct {
 	// one number. Zero, a hand-built view's value, is a run that buys nothing.
 	SpeedFeet int
 
+	// CannotMove is the sheet's [SheetFacts.CannotMove], asked when the view
+	// is built: the names of what holds this member so that it cannot move
+	// under its own power, empty when it may move. A driver may read it to
+	// choose something else; one that picks a [Move] or a [Routed] walk of
+	// any kind, own or compelled, anyway does not walk — the member stays where it is, a stayed beat says
+	// why, and its turn ends (rpg-project#990).
+	CannotMove []string
+
 	// Clock is which clock this time is on — [ClockTurn] for a turn in a
 	// fight, [ClockWorld] for a round of the world — set where the view is
 	// asked for ([Encounter.runIntents]). What it decides is whether a run
@@ -755,7 +763,7 @@ func (RefusingMover) Move(context.Context, *Encounter, MoveStep) error {
 
 // BoundaryKind names a temporal boundary a clock verb crossed.
 //
-// THREE KINDS, because three are what anything publishes. play/clock also
+// FOUR KINDS, because four are what anything publishes. play/clock also
 // reports RoundStarted, and this composition translates it to nothing — losing nothing,
 // because clock.Turn.End increments the round BEFORE stamping the TurnStarted
 // that follows a wrap. The round advancing is therefore already visible as a
@@ -786,6 +794,16 @@ const (
 	// dnd5e/events.CombatEndEvent for why a subject-less ending would expire
 	// nothing at all.
 	CombatEnded BoundaryKind = "combat_ended"
+
+	// CombatStarted marks a fight Subject is in starting for them: the fight
+	// formed with them in its order, or they joined one already under way
+	// ([Encounter.Transfer] into the bubble). ONE PER MEMBER, like
+	// [CombatEnded], and exactly once per member per fight; nobody outside
+	// the fight hears it. At formation every member's start is announced
+	// BEFORE the fight's first turn starts, so an effect that ends when its
+	// holder's fight starts is gone before anybody acts (rpg-project#990).
+	// Round is the fight's round at that moment.
+	CombatStarted BoundaryKind = "combat_started"
 )
 
 // Boundary is one temporal boundary this composition crossed, in this

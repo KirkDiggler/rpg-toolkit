@@ -41,10 +41,12 @@ func fleeRoute() []spatial.Position {
 	return []spatial.Position{cellAt(7, 2), cellAt(8, 2), cellAt(9, 2)}
 }
 
-// heldSheets is the goblin's sheet, on the scene and on every reload of it.
+// heldSheets is the goblin's sheet, on the scene and on every reload of it,
+// and bob's for the routes that seat him while a window is open: a resume
+// asks the sheets whether its mover has been held meanwhile (rpg-project#990).
 var heldSheets = sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
 	{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
-}, Targeting: "closest"}, alice: {}}
+}, Targeting: "closest"}, alice: {}, bob: {}}
 
 func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Participation) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

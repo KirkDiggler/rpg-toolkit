@@ -1044,6 +1044,17 @@ func combatEndBoundaries(ms []clock.Milestone, members []MemberID) ([]Boundary, 
 	return crossed, nil
 }
 
+// combatStartBoundaries fans a fight's start out to the members it started
+// for — at formation its whole order, at a join the one who joined — on the
+// fight's round at that moment ([CombatStarted]).
+func combatStartBoundaries(members []MemberID, round int) []Boundary {
+	crossed := make([]Boundary, 0, len(members))
+	for _, id := range members {
+		crossed = append(crossed, Boundary{Kind: CombatStarted, Subject: id, Round: round})
+	}
+	return crossed
+}
+
 // executeTurnIntent runs one Act call's answer and reports whether this
 // member's turn is over — [Pass], an [ErrBadIntent]-refused [Attack] or
 // [Move], or a [Move] that made no progress at all all end the turn the same
@@ -1173,6 +1184,12 @@ func (e *Encounter) executeTurnIntent(
 		return false, nil, nil
 
 	case Move:
+		// A HELD MEMBER'S WALK DOES NOT HAPPEN (rpg-project#990): before
+		// anything is charged, a run included, it stays where it is, the
+		// story says why, and its turn ends. The world round goes on.
+		if len(view.CannotMove) > 0 {
+			return e.stayHeld(activeID, intentCauseMove, view.CannotMove)
+		}
 		// A RUN IS CHARGED BEFORE IT IS MEASURED (rpg-project#671, R17): the
 		// speed it adds is what makes the longer path affordable. A run the
 		// turn cannot pay for ends it, told ([Encounter.refuseUnpaidDash]).
@@ -1322,6 +1339,13 @@ func (e *Encounter) executeTurnIntent(
 		if !known || validateWaypointPause(it.Pause) != nil ||
 			(it.GivesUp != "" && (it.AnchorAt == nil || it.Policy != MoveToward)) {
 			return true, nil, nil
+		}
+
+		// The Move arm's hold (rpg-project#990), for ANY walk on this
+		// member's own legs: a compelled one is still the member moving under
+		// its own power, and a held creature ordered to flee does not walk.
+		if len(view.CannotMove) > 0 {
+			return e.stayHeld(activeID, it.Cause, view.CannotMove)
 		}
 
 		// The Move arm's rule: a run is charged before it is routed, so the
@@ -2517,6 +2541,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Lost:       lost,
 		Budget:     budget,
 		SpeedFeet:  sheet.SpeedFeet,
+		CannotMove: sheet.CannotMove,
 		Round:      round,
 		Dwelling:   e.dwelling(m),
 		Threats:    threats,
@@ -3060,6 +3085,17 @@ func (e *Encounter) formWithParticipation(
 	// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
 	e.breakCustody(in.Order)
 
+	// THE FIGHT HAS STARTED FOR EACH OF ITS MEMBERS (rpg-project#990), told
+	// before its first turn starts below: what ends when its holder's fight
+	// starts is over before anybody in it acts.
+	startRound, rerr := bubble.Round()
+	if rerr != nil {
+		return nil, fmt.Errorf("form round: %w", rerr)
+	}
+	if aerr := e.announceBoundaries(combatStartBoundaries(in.Order, startRound)); aerr != nil {
+		return nil, fmt.Errorf("form announce start: %w", aerr)
+	}
+
 	// The first turn of the fight starts here, and until this line nothing
 	// ever said so: SetOrder has always returned TurnStarted for whoever won
 	// initiative, and this composition has always dropped it. A condition
@@ -3212,6 +3248,15 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		e.endSneaking(in.Member)
 		// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
 		e.breakCustody([]MemberID{in.Member})
+		// The fight has started for the one who joined it (rpg-project#990),
+		// and for nobody else: everyone already in it heard theirs at form.
+		round, rerr := e.bubbles[0].Round()
+		if rerr != nil {
+			return nil, fmt.Errorf("transfer %q round: %w", in.Member, rerr)
+		}
+		if aerr := e.announceBoundaries(combatStartBoundaries([]MemberID{in.Member}, round)); aerr != nil {
+			return nil, fmt.Errorf("transfer %q announce start: %w", in.Member, aerr)
+		}
 	case ClockWorld:
 		if bubble == nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNoBubble)

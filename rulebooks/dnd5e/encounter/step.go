@@ -126,6 +126,14 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, err
 	}
 
+	// HELD BY AN EFFECT (rpg-project#990): a member whose sheet says it
+	// cannot move under its own power does not step — a dash included. Asked
+	// AFTER custody, so a member both in custody and held always hears
+	// custody's sentence; nothing has been spent or moved yet.
+	if err := e.refuseCannotMove("step", in.Member); err != nil {
+		return nil, err
+	}
+
 	// The turn gate (rpg-toolkit#1169, ADR-0044). A member on the world
 	// clock has no bubble and reaches the step below unconditionally, same
 	// as always. A member IN a bubble moves through their OWN turn now

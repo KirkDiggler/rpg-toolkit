@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // SheetFacts is what one member's sheet says about how it moves and what it
@@ -127,6 +128,32 @@ type SheetFacts struct {
 	// ordinary sight, so its arc is not read: its zone stays its sight, and
 	// the red floor never shows less than what sees the sneaker (R22).
 	WatchArc int
+
+	// CannotMove names what holds this member so that it cannot move under
+	// its own power — the display names of the held effects that take moving
+	// away, in the order the sheet holds them (rpg-project#990). EMPTY, the
+	// zero value, MEANS IT MAY MOVE, so a host that has never heard of a hold
+	// keeps every member walking.
+	//
+	// UNDER ITS OWN POWER, willing or compelled. A non-empty list refuses
+	// every move the member makes on its own legs: a player's [Encounter.Step]
+	// (a dash included), a cast whose landing moves its own caster, and a
+	// driven member's [Move] or [Routed] walk of any kind — its own choice or
+	// a compulsion's order (that walk does not happen; the member stays, told
+	// by a stayed beat, and its turn ends), and a compelled [Encounter.Direct]
+	// (the same: it stays, told, and the compeller's action stands). It
+	// refuses NOTHING done to the member: a push or a pull (a displaced
+	// [Encounter.Direct]), [Encounter.Relocate], being set down somewhere. Attacking, being attacked, speaking, sneaking and
+	// a fight forming are untouched.
+	//
+	// The names are carried verbatim into the refusal's sentence
+	// ([CannotMoveError]); this module does not read them (C1). A blank name
+	// is refused (ErrInvalidData): a hold nobody can name cannot be told.
+	//
+	// NOT CUSTODY. The gate's arrest ([ErrInCustody]) is this module's own
+	// hold and stays separate; a member both in custody and held is refused
+	// by custody, which is asked first.
+	CannotMove []string
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -231,7 +258,8 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 
 // validateSheetFacts refuses a negative speed, a negative passive Perception, a
 // negative watch reset distance, a watch arc outside 0–360, a negative action
-// range and a half-named [SheetFacts.BonusDisengage].
+// range, a half-named [SheetFacts.BonusDisengage] and a blank
+// [SheetFacts.CannotMove] name.
 func validateSheetFacts(facts SheetFacts) error {
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
@@ -248,6 +276,11 @@ func validateSheetFacts(facts SheetFacts) error {
 	for _, a := range facts.Actions {
 		if a.RangeFeet < 0 {
 			return fmt.Errorf("action %q range %d feet is negative", a.Ref, a.RangeFeet)
+		}
+	}
+	for _, name := range facts.CannotMove {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("cannot move names a hold with no name")
 		}
 	}
 	if (facts.BonusDisengage.Ref == "") != (facts.BonusDisengage.Name == "") {
