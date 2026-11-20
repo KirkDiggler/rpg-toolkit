@@ -78,6 +78,25 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 		return &ResumeOutput{Kind: PauseDirective, Moved: h.moved}, nil
 	}
 
+	// HELD WHILE THE WINDOW WAS OPEN (rpg-project#990): a compelled walk on a
+	// member held by the time it resumes is not finished — the announced
+	// cell is not taken, the rest is dropped, a stayed beat says why, and the
+	// resume answers with no error, as a fresh compelled directive does. A
+	// displaced walk (a push) is another's act and goes on.
+	if !h.moveKind.Displaced() {
+		heldBy, herr := e.heldBy(h.member)
+		if herr != nil {
+			return nil, fmt.Errorf("resume directive %q hold: %w", h.member, herr)
+		}
+		if len(heldBy) > 0 {
+			why := cannotMoveWhy(heldBy)
+			if berr := e.appendStayedBeat(h.member, h.cause, why, uint64(e.clock.ToData().HighWater)); berr != nil {
+				return nil, fmt.Errorf("resume directive %q: %w", h.member, berr)
+			}
+			return &ResumeOutput{Kind: PauseDirective, Moved: h.moved, StoppedBy: why}, nil
+		}
+	}
+
 	res, werr := e.walkHeld(ctx, h, m)
 	if werr != nil {
 		return nil, werr

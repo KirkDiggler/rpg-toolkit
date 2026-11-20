@@ -110,14 +110,14 @@ func (e *Encounter) stayHeld(member MemberID, cause core.Ref, heldBy []string) (
 // that sentence returned with held true; nothing moves and nothing is
 // refused. A member nothing holds answers held false and nothing is told.
 func (e *Encounter) stayHeldDirected(member MemberID, cause core.Ref) (string, bool, error) {
-	facts, err := e.sheetOf(member)
+	heldBy, err := e.heldBy(member)
 	if err != nil {
 		return "", false, err
 	}
-	if len(facts.CannotMove) == 0 {
+	if len(heldBy) == 0 {
 		return "", false, nil
 	}
-	why := cannotMoveWhy(facts.CannotMove)
+	why := cannotMoveWhy(heldBy)
 	if err := e.appendStayedBeat(member, cause, why, uint64(e.clock.ToData().HighWater)); err != nil {
 		return "", false, err
 	}
@@ -126,3 +126,13 @@ func (e *Encounter) stayHeldDirected(member MemberID, cause core.Ref) (string, b
 
 // cannotMoveWhy is a stayed beat's sentence for a held member.
 func cannotMoveWhy(heldBy []string) string { return "cannot move: " + listNames(heldBy) }
+
+// heldBy asks the member's sheet now what holds it so that it cannot move
+// under its own power; empty when nothing does.
+func (e *Encounter) heldBy(member MemberID) ([]string, error) {
+	facts, err := e.sheetOf(member)
+	if err != nil {
+		return nil, err
+	}
+	return facts.CannotMove, nil
+}

@@ -42,6 +42,15 @@ func (s *CannotMoveSuite) world(
 	members []encounter.MemberInput, sheets sheetFacts, driver encounter.Driver, striker encounter.Striker,
 	announcer encounter.Announcer,
 ) *encounter.Encounter {
+	return s.worldMoving(members, sheets, driver, striker, announcer, quietMover{})
+}
+
+// worldMoving is [CannotMoveSuite.world] with the Mover given, for a walk that
+// stops at a window.
+func (s *CannotMoveSuite) worldMoving(
+	members []encounter.MemberInput, sheets sheetFacts, driver encounter.Driver, striker encounter.Striker,
+	announcer encounter.Announcer, mover encounter.Mover,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
@@ -60,7 +69,7 @@ func (s *CannotMoveSuite) world(
 			Driver:        driver,
 			Actors: encounter.Actors{
 				Striker:   striker,
-				Mover:     quietMover{},
+				Mover:     mover,
 				Announcer: announcer,
 			},
 		},
@@ -341,4 +350,84 @@ func cmCell(p spatial.Position) *spatial.Position { return &p }
 // side fails that side's test instead of an unknown kind refusing every fight.
 func (s *CannotMoveSuite) TestTheFightStartedSpellingIsPinned() {
 	s.Equal(encounter.BoundaryKind("combat_started"), encounter.CombatStarted)
+}
+
+// Catches a paused walk finished by a member held while its window was open:
+// the goblin's turn walk stops for alice's question, the goblin is held
+// before it resumes, alice's answer still lands, and the goblin stays where
+// it paused — the announced cell untaken, a stayed beat, the turn over.
+func (s *CannotMoveSuite) TestAWalkResumedAfterAHoldDoesNotFinish() {
+	sheets := sheetFacts{alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
+		{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+	}}}
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Move{Path: []spatial.Position{cellAt(4, 2), cellAt(5, 2)}},
+	}}
+	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+	enc := s.worldMoving([]encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}},
+	}, sheets, driver, &scriptedStriker{kind: encounter.OutcomeMissed}, quietAnnouncer{}, mover)
+
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(enc.Paused(), "precondition: the goblin's walk stopped for alice's question")
+	paused := whereIs(s.T(), enc, goblin)
+
+	sheets[goblin] = encounter.SheetFacts{SpeedFeet: 30, CannotMove: held}
+	_, err = recordOne(enc, &encounter.RecordInput{
+		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
+	})
+	s.Require().NoError(err, "alice's answer lands")
+
+	_, err = enc.Resume(context.Background())
+	s.Require().NoError(err)
+	s.False(enc.Paused())
+	s.Equal(paused, whereIs(s.T(), enc, goblin), "held, it stays where it paused")
+	s.Equal(encounter.MemberID(alice), s.clockOf(enc, alice).Active, "its turn ended; the round goes on")
+	stayed := stayedBeats(goblinBeats(s.T(), enc))
+	s.Require().NotEmpty(stayed)
+	s.Equal("cannot move: Held", stayed[len(stayed)-1]["why"])
+}
+
+// Catches a resumed directive that finishes a compelled walk for a member held
+// meanwhile, or one that stops a push: a compelled flee paused at its first
+// step, its mover held before it resumes, stays put with no error; a push
+// paused the same way still lands.
+func (s *CannotMoveSuite) TestADirectiveResumedAfterAHold() {
+	for name, tc := range map[string]struct {
+		kind  encounter.MoveKind
+		moves bool
+	}{
+		"compelled": {encounter.MoveCompelled, false},
+		"displaced": {encounter.MoveDisplaced, true},
+	} {
+		s.Run(name, func() {
+			sheets := sheetFacts{alice: {SpeedFeet: 30}, bob: {SpeedFeet: 30}}
+			mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+			enc := s.worldMoving([]encounter.MemberInput{
+				{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+				{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 6}},
+			}, sheets, passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed}, quietAnnouncer{}, mover)
+			from := whereIs(s.T(), enc, bob)
+			to := spatial.Position{X: from.X + 1, Y: from.Y}
+
+			out, err := enc.Direct(context.Background(), encounter.DirectInput{
+				Mover: bob, Cause: cmCause, Route: []spatial.Position{to}, Kind: tc.kind,
+			})
+			s.Require().NoError(err)
+			s.Require().True(out.Paused, "precondition: the walk stopped for a question")
+
+			sheets[bob] = encounter.SheetFacts{SpeedFeet: 30, CannotMove: held}
+			resumed, err := enc.Resume(context.Background())
+			s.Require().NoError(err, "the compeller's action stands")
+			if tc.moves {
+				s.Equal(to, whereIs(s.T(), enc, bob), "a push is another's act and lands")
+				return
+			}
+			s.Equal(from, whereIs(s.T(), enc, bob), "held, the compelled walk is not finished")
+			s.Zero(resumed.Moved)
+			s.Equal("cannot move: Held", resumed.StoppedBy)
+		})
+	}
 }

@@ -998,6 +998,21 @@ func (e *Encounter) finishPausedIntent(
 	if p.turn.afterStrike {
 		return 0, nil, false, nil
 	}
+	// HELD WHILE THE WINDOW WAS OPEN (rpg-project#990): the walk passed the
+	// hold when it began, but a member held by the time it resumes does not
+	// finish it. The announced cell is not taken, the rest is dropped, a
+	// stayed beat says why, and the turn ends — exactly a fresh held walk.
+	// A turn's walk is never displaced, so the check is unconditional.
+	if heldBy, herr := e.heldBy(p.member); herr != nil {
+		return 0, nil, false, fmt.Errorf("resume hold: %w", herr)
+	} else if len(heldBy) > 0 {
+		cause := p.cause
+		if cause == (core.Ref{}) {
+			cause = intentCauseMove // a Move's walk names no cause of its own
+		}
+		_, _, serr := e.stayHeld(p.member, cause, heldBy)
+		return 0, nil, true, serr
+	}
 
 	moved := 0
 	// The announced cell, stepped WITHOUT a second announcement — see this
