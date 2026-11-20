@@ -121,6 +121,22 @@ func (r Report) String() string {
 // line break; [ErrBadOptions] for a garrison that cannot be met), a plan that does not lay out, or a site [Prove] refuses.
 // Equal (p, o) give equal bytes.
 func Generate(p *Plan, o Options) ([]byte, Report, error) {
+	doc, r, err := write(p, o)
+	if err != nil {
+		return nil, Report{}, err
+	}
+	if _, err := Prove(doc); err != nil {
+		return nil, Report{}, err
+	}
+	return doc, r, nil
+}
+
+// write is [Generate] before the proof: Layout → Place → Emit, the bytes and
+// their [Report]. The proof compiles the whole site, which is nearly all of a
+// generation's time; a caller that needs only the bytes — a golden, a header,
+// determinism — has them here, and they are exactly the bytes Generate
+// returns when the proof passes.
+func write(p *Plan, o Options) ([]byte, Report, error) {
 	if p == nil {
 		return nil, Report{}, fmt.Errorf("keepgen: no plan")
 	}
@@ -137,9 +153,6 @@ func Generate(p *Plan, o Options) ([]byte, Report, error) {
 	}
 	out, err := emitSite(p, l, s, o)
 	if err != nil {
-		return nil, Report{}, err
-	}
-	if _, err := Prove(out.doc); err != nil {
 		return nil, Report{}, err
 	}
 	r := Report{

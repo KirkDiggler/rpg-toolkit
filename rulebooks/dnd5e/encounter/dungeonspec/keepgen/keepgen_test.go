@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // TestGenerate_Loads: both default sizes load through the dialect's loader
@@ -21,8 +19,9 @@ func TestGenerate_Loads(t *testing.T) {
 	for _, hexes := range []int{10000, 30000} {
 		t.Run(fmt.Sprint(hexes), func(t *testing.T) {
 			g := keepAt(t, hexes)
-			compiled, err := dungeonspec.Load(g.doc)
-			require.NoError(t, err)
+			// keepAt's compile is the loader's own ([Prove] loads through
+			// [dungeonspec.Load]); compiling the same bytes again proves nothing.
+			compiled := g.compiled
 			require.Len(t, compiled.Field.Regions, len(p.Rooms)+3)
 			cells := 0
 			for _, r := range compiled.Field.Regions {
