@@ -300,3 +300,10 @@ func (s *CannotMoveSuite) TestJoiningAFightUnderWayIsToldOnlyToTheOneWhoJoins() 
 
 // cmCell is p, addressable, for an intent's anchor.
 func cmCell(p spatial.Position) *spatial.Position { return &p }
+
+// Catches a rename of the fight-started kind: resolution looks it up by this
+// very string, and pins the same literal on its side, so a rename on either
+// side fails that side's test instead of an unknown kind refusing every fight.
+func (s *CannotMoveSuite) TestTheFightStartedSpellingIsPinned() {
+	s.Equal(encounter.BoundaryKind("combat_started"), encounter.CombatStarted)
+}
