@@ -9,9 +9,17 @@ Follow-up to [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/
 
 ## Decided
 
-- Every creature carrier of a conversation may be the one spoken to. So the line written once gives the union of what each copy gives: `spoken_to` resolves to every carrier, and so does `carriers_who_witnessed`, because each carrier may hear the line said to another. Faction and prop carriers add nothing, as their copies name no creature spoken to — [rpg-project#1025](https://github.com/KirkDiggler/rpg-project/issues/1025).
+- Every creature carrier of a conversation may be the one spoken to. So the line written once gives the union of what each copy gives: `spoken_to` resolves to every carrier, and so does `carriers_who_witnessed`, because each carrier may hear the line said to another. Faction and prop carriers add no creature spoken to, as their copies name none — [rpg-project#1025](https://github.com/KirkDiggler/rpg-project/issues/1025).
+- A conversation that one creature alone carries is said to that creature, exactly as its one copy: it never overhears a line said to itself. A faction beside it counts as a second carrier, because the line may then be said to a member of the faction and overheard by the creature — [rpg-toolkit#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485).
+- The proof is two-directional: the line written once states exactly the union of its copies, none missing and none extra. It runs over three creature carriers, one creature alone, a creature beside a faction, and the conversations site. A prop cannot be the second carrier in that proof: the grammar refuses a `give` or a `noted` read on a prop's line, so no compiling site has a prop carrying such a line — [rpg-toolkit#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485).
 - `said-to` and `done-to` still point at the conversation, as #2479 decided. The test accepts the carrier as reachable through the head's `carries` edge. It is the only difference between the copied and shared forms that is not a loss — [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/2479).
 
 ## Found
 
+- The conversations site's golden now carries `vouch` with a `give` to `spoken_to` and a `noted:` read, so it pins the edges and the sentence "(of Guard (gate-1), Guard (gate-2) and Guard (captain), each but the one the line was said to)" that a client reads — [rpg-toolkit#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485).
 - `fact`, `tells`, `advance`, `apply_status`, `relocate`, `activity` and loudness lost nothing in the shared form. Their edges do not depend on who the line is said to — [rpg-project#1025](https://github.com/KirkDiggler/rpg-project/issues/1025).
+
+## Mistaken
+
+- [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/2479) shipped the line written once without comparing its read-back with the copied form. Sixty note edges went missing, and nobody saw it until the castle was rewritten. A conversation's read-back is now held to its copies by a test that builds both forms of one site — [rpg-toolkit#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485).
+- The first head of this fix checked only that nothing went missing. It stated a lone carrier `may-note` by `heard` for a line said to itself, and no test could fail on an extra edge. Review found it, and the comparison now runs both ways — [rpg-toolkit#2485](https://github.com/KirkDiggler/rpg-toolkit/pull/2485).

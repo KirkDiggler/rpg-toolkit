@@ -144,9 +144,17 @@ func (b *builder) sharedLineGroups() []Group {
 			b.unsaid = append(b.unsaid, Unsaid{Path: at + ".lines", Kind: "conversation lines",
 				Why: "no carrier of the conversation speaks them, so they are not in the compiled encounter to be said"})
 		}
-		g.Statements = append(g.Statements, b.lineStatementsAt(lines, b.convLinePaths[id], lineTarget{
-			name: "the carrier", short: "the carrier",
-			about: about, prop: allProps, carriers: creatures})...)
+		// WHOM A LINE WRITTEN ONCE IS SAID TO: any of the conversation's
+		// carriers. Each creature carrier may be the one spoken to and, said
+		// to another, may hear it — the union of what each copy states. A
+		// conversation one creature alone carries is said to that creature
+		// and nobody else, exactly as its one copy: it never overhears a
+		// line said to itself.
+		t := lineTarget{name: "the carrier", short: "the carrier", about: about, prop: allProps, carriers: creatures}
+		if len(carriers) == 1 && len(creatures) == 1 {
+			t.id = creatures[0]
+		}
+		g.Statements = append(g.Statements, b.lineStatementsAt(lines, b.convLinePaths[id], t)...)
 		groups = append(groups, g)
 	}
 	return groups

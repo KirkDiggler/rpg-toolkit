@@ -17,10 +17,11 @@ type lineTarget struct {
 	short string  // the folded form's name: "the guard"
 	about Subject // the statement's subject
 	id    string  // the member id, when a creature
-	// carriers is, for a conversation's lines written once (rpg-project#1025),
-	// every creature that carries the conversation: each is one the line may
-	// be said to, so each takes what the line gives the one spoken to and is
-	// whose note its reads ask of, as on its own copy.
+	// carriers is, for a conversation's lines written once (rpg-project#1025)
+	// with no one creature id, every creature that carries the conversation:
+	// each is one the line may be said to, so each takes what the line gives
+	// the one spoken to and is whose note its reads ask of, as on its own
+	// copy.
 	carriers []string
 	prop     bool
 	// done is whether the option being said back is something done to the
@@ -343,8 +344,8 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	conv, _ := optionInteraction(o)
 	var heard []Connection
 	// A line said to one creature: every other carrier may hear it. A
-	// conversation's line said to any of its carriers: each may be the one
-	// spoken to, and each may hear it said to another.
+	// conversation's line said to any of several carriers: each may be the
+	// one spoken to, and each may hear it said to another.
 	var except []string
 	if t.id != "" {
 		except = []string{t.id}
