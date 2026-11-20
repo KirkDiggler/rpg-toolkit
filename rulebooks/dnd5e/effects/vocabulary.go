@@ -102,6 +102,7 @@ func Bind(in *BindInput) (*BindOutput, error) {
 	}
 	return &BindOutput{Machine: machineVocabulary(), Outputs: generic.OutputVocabulary{Kinds: kinds, Amounts: map[generic.AmountName]generic.AmountFn{
 		generic.AmountFixed: fixedAmount, generic.AmountByClassLevel: classAmount, generic.AmountDice: diceAmount,
+		generic.AmountAbilityModifier: abilityModifierAmount,
 	}}}, nil
 }
 

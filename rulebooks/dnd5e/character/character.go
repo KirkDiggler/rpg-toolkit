@@ -900,6 +900,16 @@ func (c *Character) DescribeRollContributions(
 		&conditions.DescribeSelectedRollContributionsInput{Conditions: current, Request: input})
 }
 
+// Initiative is everything the character adds to initiative, with each
+// source: the rules every creature has (Dexterity), read from this sheet's
+// ability scores, then each held effect that adds to initiative. Nothing it
+// reads from the rules is on the sheet or in ToData.
+//
+// Errors: whatever [conditions.Initiative] refuses.
+func (c *Character) Initiative() (*conditions.InitiativeOutput, error) {
+	return conditions.Initiative(&conditions.InitiativeInput{MemberID: c.id, Scores: c.abilityScores, Conditions: c.conditions})
+}
+
 // GetHitPoints returns the character's current hit points
 func (c *Character) GetHitPoints() int {
 	return c.hitPoints
