@@ -169,7 +169,7 @@ func (b *builder) postStatements(id, state string, p encounter.Post, path string
 		var reqs, freqs []string
 		var conns []Connection
 		for _, t := range p.Pass {
-			w, c := b.triggerWords(t, lineContext{me: "the walker", other: name, about: encounter.WhoTheWalker, whose: id})
+			w, c := b.triggerWords(t, lineContext{me: "the walker", other: name, about: encounter.WhoTheWalker, whose: []string{id}})
 			fw, _ := b.triggerWords(t, lineContext{me: "the walker", other: "{self}"})
 			fw = shortClause(fw)
 			reqs = append(reqs, w)

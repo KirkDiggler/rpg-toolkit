@@ -17,10 +17,24 @@ type lineTarget struct {
 	short string  // the folded form's name: "the guard"
 	about Subject // the statement's subject
 	id    string  // the member id, when a creature
-	prop  bool
+	// carriers is, for a conversation's lines written once (rpg-project#1025),
+	// every creature that carries the conversation: each is one the line may
+	// be said to, so each takes what the line gives the one spoken to and is
+	// whose note its reads ask of, as on its own copy.
+	carriers []string
+	prop     bool
 	// done is whether the option being said back is something done to the
 	// prop rather than said to it (rpg-project#959): seen, not heard.
 	done bool
+}
+
+// spokenTo is every creature a line of t may be said to: the one creature,
+// or each carrier of a conversation's lines.
+func (t lineTarget) spokenTo() []string {
+	if t.id != "" {
+		return []string{t.id}
+	}
+	return t.carriers
 }
 
 // lineStatements says every line of one target, each facet its own
@@ -75,7 +89,7 @@ func (b *builder) lineStatementsAt(opts []encounter.Option, paths []string, t li
 				"To win %s, the speaker rolls %s; beating the DC wins the line and missing it misses.",
 				line, checkWords(o.Check)), foldInfo{text: "rolls " + strings.ReplaceAll(checkWords(o.Check), " against ", " vs "), line: heading}))
 		}
-		ctx := lineContext{me: "the speaker", other: t.name, about: encounter.WhoTheSpeaker, whose: t.id}
+		ctx := lineContext{me: "the speaker", other: t.name, about: encounter.WhoTheSpeaker, whose: t.spokenTo()}
 		fctx := lineContext{me: "the speaker", other: "{self}"}
 		for j, req := range o.Requires {
 			w, conns := b.triggerWords(req, ctx)
@@ -328,10 +342,17 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 		lead, holder, quote(topic), subjectsWords(r.About, holder))
 	conv, _ := optionInteraction(o)
 	var heard []Connection
-	s += " " + b.heardWords(r, conv, []string{t.id}, &heard)
-	give := noteGive{topic: topic, about: string(r.About), cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, path)}}
+	// A line said to one creature: every other carrier may hear it. A
+	// conversation's line said to any of its carriers: each may be the one
+	// spoken to, and each may hear it said to another.
+	var except []string
 	if t.id != "" {
-		give.takers = append(give.takers, noteTaker{word: string(encounter.RecognitionSpokenTo), creatures: []string{t.id}})
+		except = []string{t.id}
+	}
+	s += " " + b.heardWords(r, conv, except, &heard)
+	give := noteGive{topic: topic, about: string(r.About), cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, path)}}
+	if spoken := t.spokenTo(); len(spoken) > 0 {
+		give.takers = append(give.takers, noteTaker{word: string(encounter.RecognitionSpokenTo), creatures: spoken})
 	}
 	if r.HeardBy == encounter.RecognitionCarriersWhoWitnessed {
 		give.takers = append(give.takers, noteTaker{word: string(r.HeardBy), creatures: idsOf(heard)})

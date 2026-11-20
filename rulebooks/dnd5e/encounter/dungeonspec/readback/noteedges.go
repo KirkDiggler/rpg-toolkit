@@ -70,15 +70,15 @@ func noteGiveEdges(g noteGive) []Connection {
 
 // noteAskEdges is every connection one read of a topic carries: the topic
 // edge (role as the reader has always read it, negated under a not), whom
-// it asks about, and whose note it is, when a creature is named. THE ONE
+// it asks about, and whose note it is, for each creature named. THE ONE
 // PLACE a read's note edges are made.
-func noteAskEdges(topic, role string, negated bool, about, whose string) []Connection {
+func noteAskEdges(topic, role string, negated bool, about string, whose ...string) []Connection {
 	out := []Connection{
 		{Kind: "topic", ID: topic, Role: role, Not: negated},
 		{Kind: ConnWho, ID: about, Role: "about", At: topic},
 	}
-	if whose != "" {
-		out = append(out, Connection{Kind: "creature", ID: whose, Role: RoleWhose, At: topic})
+	for _, w := range whose {
+		out = append(out, Connection{Kind: "creature", ID: w, Role: RoleWhose, At: topic})
 	}
 	return out
 }

@@ -116,11 +116,14 @@ func (b *builder) sharedLineGroups() []Group {
 		at := "conversations." + id
 		g := Group{Title: "The lines of " + quote(id), About: about}
 		carriers := b.convCarriers[id]
-		var names []string
+		var names, creatures []string
 		allProps := len(carriers) > 0
 		for _, c := range carriers {
 			names = append(names, b.carrierName(c))
 			allProps = allProps && c.Kind == "prop"
+			if c.Kind == "creature" {
+				creatures = append(creatures, c.ID)
+			}
 		}
 		var ids []string
 		for _, line := range b.spec.Conversations[id].Lines {
@@ -143,7 +146,7 @@ func (b *builder) sharedLineGroups() []Group {
 		}
 		g.Statements = append(g.Statements, b.lineStatementsAt(lines, b.convLinePaths[id], lineTarget{
 			name: "the carrier", short: "the carrier",
-			about: about, prop: allProps})...)
+			about: about, prop: allProps, carriers: creatures})...)
 		groups = append(groups, g)
 	}
 	return groups
