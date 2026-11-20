@@ -166,6 +166,18 @@ func (s *statusSuite) TestEachWordDoesWhatItSaysAndNotItsNeighbours() {
 		{"one less damage", `{"damage":-1}`, func(w *world) {
 			s.Equal(9, s.dealt(w, holder, other), "the holder's hit")
 		}},
+		// Catches max_hit_points mapped to initiative (or to the wrong member).
+		{"two more maximum hit points", `{"max_hit_points":2}`, func(w *world) {
+			s.Equal(22, w.sheets[1].GetMaxHitPoints(), "the holder's maximum")
+			s.Equal(20, w.sheets[0].GetMaxHitPoints(), "another member's maximum")
+			s.Zero(s.initiative(w, holder), "it is not initiative")
+		}},
+		// Catches initiative mapped to the hit point maximum (or to the wrong member).
+		{"one more to initiative", `{"initiative":1}`, func(w *world) {
+			s.Equal(1, s.initiative(w, holder), "the holder's initiative")
+			s.Zero(s.initiative(w, other), "another member's initiative")
+			s.Equal(20, w.sheets[1].GetMaxHitPoints(), "it is not the maximum")
+		}},
 	} {
 		s.Run(tc.name, func() {
 			w := s.world()
@@ -193,6 +205,49 @@ func (s *statusSuite) TestEachWordDoesWhatItSaysAndNotItsNeighbours() {
 			s.Require().NoError(beats[word](w.bus, holder))
 			s.Empty(w.sheets[1].GetConditions(), "%q ends on its own beat", word)
 		})
+	}
+}
+
+// initiative is what a member's held conditions add to their initiative.
+func (s *statusSuite) initiative(w *world, who string) int {
+	total := 0
+	for _, c := range w.sheets {
+		if c.GetID() != who {
+			continue
+		}
+		for _, held := range c.GetConditions() {
+			out, err := conditions.InitiativeBonus(&conditions.HeldBonusInput{Condition: held})
+			s.Require().NoError(err)
+			total += out.Amount
+		}
+	}
+	return total
+}
+
+// THE KITCHEN EXAMPLE: both changes in force on the holder, and exactly one
+// heal of 2 returned for the caller to run once. Catches when_given dropped,
+// doubled, put in the library as a part, or carrying the wrong amount.
+func (s *statusSuite) TestTheFeastGivesItsChangesAndOneHeal() {
+	const feast = `{"name":"Feasted","changes":[{"max_hit_points":2},{"initiative":1}],` +
+		`"when_given":[{"heal":2}],"maintenance":[{"ends_on":"run"}],"again":"ignored"}`
+	compiled, err := status.Compile(&status.CompileInput{ID: "feasted", Status: json.RawMessage(feast)})
+	s.Require().NoError(err)
+	s.Equal([]status.WhenGivenAct{{Kind: status.WhenGivenHeal, Amount: 2}}, compiled.WhenGiven)
+	s.NotContains(string(compiled.Library), "heal", "a when_given act is not an effect part")
+
+	w := s.world()
+	s.give(w, compiled)
+	s.Equal(22, w.sheets[1].GetMaxHitPoints())
+	s.Equal(20, w.sheets[1].GetHitPoints(), "giving alone does not heal; the caller runs the act")
+	s.Equal(1, s.initiative(w, "B"))
+
+	for name, doc := range map[string]string{
+		"missing": strings.Replace(feast, `"when_given":[{"heal":2}],`, ``, 1),
+		"empty":   strings.Replace(feast, `[{"heal":2}]`, `[]`, 1),
+	} {
+		out, err := status.Compile(&status.CompileInput{ID: "feasted", Status: json.RawMessage(doc)})
+		s.Require().NoError(err, name)
+		s.Empty(out.WhenGiven, "%s when_given returns no acts", name)
 	}
 }
 

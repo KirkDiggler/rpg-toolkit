@@ -16,8 +16,8 @@ import (
 type Place string
 
 const (
-	// PlaceStatus is the status itself: name, changes and maintenance, three
-	// of its four top-level words; the fourth, again, has a place of its own.
+	// PlaceStatus is the status itself: name, changes, maintenance and
+	// when_given; its other top-level word, again, has a place of its own.
 	PlaceStatus Place = "status"
 	// PlaceChange is one entry of changes: what the status does.
 	PlaceChange Place = "change"
@@ -25,9 +25,12 @@ const (
 	PlaceWhen Place = "when"
 	// PlaceMaintenance is one rule of maintenance: what ends the status.
 	PlaceMaintenance Place = "maintenance rule"
-	// PlaceAgain is again, the status's fourth top-level word, whose closed
-	// values say what a second giving does.
+	// PlaceAgain is again, a top-level word of the status, whose closed values
+	// say what a second giving does.
 	PlaceAgain Place = "again"
+	// PlaceWhenGiven is one entry of when_given: something done once, when the
+	// status is first given, not while it is held.
+	PlaceWhenGiven Place = "when given"
 )
 
 // Shape is what an authored word takes as its value.
@@ -38,8 +41,11 @@ const (
 	ShapeOneOf Shape = "one of"
 	// ShapeListOf takes a non-empty list of the word's Values, none repeated.
 	ShapeListOf Shape = "list of"
-	// ShapeWholeNumber takes a whole number other than zero, signed.
+	// ShapeWholeNumber takes a whole number other than zero, signed, from
+	// -1000 to 1000.
 	ShapeWholeNumber Shape = "whole number"
+	// ShapePositiveWholeNumber takes a whole number from 1 to 1000.
+	ShapePositiveWholeNumber Shape = "positive whole number"
 	// ShapeText takes non-empty text.
 	ShapeText Shape = "text"
 	// ShapeList takes a list of entries, each written with the words of
@@ -101,10 +107,15 @@ const (
 	wordChanges     = "changes"
 	wordMaintenance = "maintenance"
 	wordAgain       = "again"
+	wordWhenGiven   = "when_given"
 
 	wordAdvantage  = "advantage"
 	wordResistance = "resistance"
 	wordDamage     = "damage"
+	wordMaxHP      = "max_hit_points"
+	wordInitiative = "initiative"
+
+	wordHeal = "heal"
 
 	wordWhen = "when"
 
@@ -139,6 +150,7 @@ var table = []entry{
 	{place: PlaceStatus, word: wordName, shape: ShapeText, label: "the name players see"},
 	{place: PlaceStatus, word: wordChanges, shape: ShapeList, label: "what the status changes"},
 	{place: PlaceStatus, word: wordMaintenance, shape: ShapeList, label: "what ends the status; any one rule ends it"},
+	{place: PlaceStatus, word: wordWhenGiven, shape: ShapeList, label: "what happens once, when the status is first given"},
 	{place: PlaceAgain, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
 		{word: "ignored", label: "a second giving is ignored"},
 	}},
@@ -151,6 +163,8 @@ var table = []entry{
 	}},
 	{place: PlaceChange, word: wordResistance, shape: ShapeListOf, label: "resistance to {value} damage", values: damageValues()},
 	{place: PlaceChange, word: wordDamage, shape: ShapeWholeNumber, label: "{value} to the damage the holder deals"},
+	{place: PlaceChange, word: wordMaxHP, shape: ShapePositiveWholeNumber, label: "raises the holder's hit point maximum by {value}"},
+	{place: PlaceChange, word: wordInitiative, shape: ShapePositiveWholeNumber, label: "adds {value} to the holder's initiative"},
 	{place: PlaceChange, word: wordWhen, shape: ShapeEntries, label: "narrows the change it sits beside"},
 
 	{place: PlaceWhen, word: wordAbility, shape: ShapeOneOf, label: "only when the ability is {value}", values: abilityValues()},
@@ -165,6 +179,24 @@ var table = []entry{
 		{word: "next turn", label: "ends when the holder's next turn starts", to: "turn_start", reason: "next_turn"},
 		{word: "dropped to zero", label: "ends when the holder drops to zero hit points", to: "dropped_to_zero", reason: "dropped_to_zero"},
 	}},
+
+	{place: PlaceWhenGiven, word: wordHeal, shape: ShapePositiveWholeNumber, label: "heals the holder by {value} when given"},
+}
+
+// numberBound is the range a number shape accepts. Every authored whole
+// number is bounded here, by its shape, and only here: an unbounded one would
+// overflow the sheet it lands on (a maximum or a heal wrapping negative).
+type numberBound struct {
+	min, max int
+	// zero is whether zero is allowed inside the range.
+	zero bool
+	// says is the refusal's wording, with the bound in it.
+	says string
+}
+
+var numberBounds = map[Shape]numberBound{
+	ShapeWholeNumber:         {min: -1000, max: 1000, says: "must be a whole number other than zero, from -1000 to 1000, such as 2 or -1"},
+	ShapePositiveWholeNumber: {min: 1, max: 1000, says: "must be a whole number of one or more, at most 1000, such as 1 or 2"},
 }
 
 // changeWhen is which when words each change word may use, for a change whose
@@ -172,6 +204,15 @@ var table = []entry{
 var changeWhen = map[string][]string{
 	wordResistance: nil,
 	wordDamage:     {wordAbility, wordAttack},
+	wordMaxHP:      nil,
+	wordInitiative: nil,
+}
+
+// changeKind is the effect part kind each fixed-number change word maps to.
+var changeKind = map[string]string{
+	wordDamage:     "damage_bonus",
+	wordMaxHP:      "hit_point_maximum",
+	wordInitiative: "initiative_bonus",
 }
 
 func abilityValues() []value {
