@@ -87,7 +87,17 @@ type speakLanding struct {
 // a prop to [encounter.Encounter.Interact], which does the same seen and not
 // heard (rpg-project#959). Only the verdict comes back: whether it beat the
 // check.
-func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (bool, error) {
+//
+// A ROW THAT GIVES A STATUS (rpg-project#1024, statuses.go) returns it here,
+// on both landing paths — a line landed at once and a staged check landed
+// when its window is answered — and it is given before the verdict comes
+// back, so the verb's one commit carries the sheet it changed.
+func (m *Manager) landSpoken(ctx context.Context, scope *writeScope, in *speakLanding) (bool, error) {
+	enc := scope.enc
+	source := string(in.Target)
+	if source == "" {
+		source = string(in.Prop)
+	}
 	if in.Verb == VerbInteract {
 		done, err := enc.Interact(&encounter.InteractInput{
 			Actor: in.Actor, Prop: in.Prop,
@@ -98,6 +108,9 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 		})
 		if err != nil {
 			return false, spokenRefusal(err)
+		}
+		if err := m.giveStatuses(ctx, scope, source, done.Statuses); err != nil {
+			return false, err
 		}
 		return done.Beaten, nil
 	}
@@ -112,6 +125,9 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 	})
 	if err != nil {
 		return false, spokenRefusal(err)
+	}
+	if err := m.giveStatuses(ctx, scope, source, out.Statuses); err != nil {
+		return false, err
 	}
 	return out.Beaten, nil
 }
@@ -278,7 +294,7 @@ func (m *Manager) social(ctx context.Context, verb Verb, in *SpeakInput) (*Speak
 		return nil, err
 	}
 
-	spoken, err := m.landSpoken(ctx, scope.enc, &speakLanding{
+	spoken, err := m.landSpoken(ctx, scope, &speakLanding{
 		Actor:       encounter.MemberID(member),
 		Target:      encounter.MemberID(in.Target),
 		Prop:        encounter.PropID(in.Prop),
@@ -317,7 +333,7 @@ func (m *Manager) social(ctx context.Context, verb Verb, in *SpeakInput) (*Speak
 // is spent, nothing is staged or rolled, and the composition answers it from
 // its success rows with no deed. Every door was asked by the caller.
 func (m *Manager) speakPlain(ctx context.Context, scope *writeScope, verb Verb, in *SpeakInput) (*SpeakOutput, error) {
-	spoken, err := m.landSpoken(ctx, scope.enc, &speakLanding{
+	spoken, err := m.landSpoken(ctx, scope, &speakLanding{
 		Actor:    encounter.MemberID(in.Member),
 		Target:   encounter.MemberID(in.Target),
 		Prop:     encounter.PropID(in.Prop),

@@ -149,6 +149,45 @@ var selectorMechanicalFields = []string{
 	"saves.SaveGate.DC",
 	"saves.SaveGate.OnSuccess",
 	"saves.SaveGate.Recurrence",
+
+	// A CAST'S MAINTENANCE CARRIES EFFECT PART DECLARATIONS since dnd5e
+	// v0.216 (rpg-toolkit#2401): each part's guard (the machine's guard tree
+	// and its typed scalar values) and its amount. They decide what the
+	// spell's effect does and when — fact names are identifiers such as
+	// `action.ability`, never words a player reads — so they are mechanical.
+	"effects.Amount.AbilityModifier",
+	"effects.Amount.ByClassLevel",
+	"effects.Amount.Dice",
+	"effects.Amount.Fixed",
+	"effects.ClassSteps.Class",
+	"effects.ClassSteps.Steps",
+	"effects.PartDeclaration.Amount",
+	"effects.PartDeclaration.When",
+	"machine.BagLeaf.Key",
+	"machine.BagLeaf.Op",
+	"machine.BagLeaf.Value",
+	"machine.ClassLevelLeaf.Class",
+	"machine.ClassLevelLeaf.N",
+	"machine.ClassLevelLeaf.Op",
+	"machine.FactLeaf.Name",
+	"machine.FactLeaf.Op",
+	"machine.FactLeaf.Value",
+	"machine.Guard.All",
+	"machine.Guard.Any",
+	"machine.Guard.Bag",
+	"machine.Guard.ClassLevel",
+	"machine.Guard.Fact",
+	"machine.Guard.Flag",
+	"machine.Guard.Not",
+	"machine.Guard.Rounds",
+	"machine.IntOp.N",
+	"machine.IntOp.Op",
+	"machine.RoundsLeaf.SinceAnchor",
+	"machine.RoundsLeaf.WentBackwards",
+	"machine.Scalar.b",
+	"machine.Scalar.i",
+	"machine.Scalar.kind",
+	"machine.Scalar.s",
 }
 
 // selectorProseFields is every field of the definition's type tree that is

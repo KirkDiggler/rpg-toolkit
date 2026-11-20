@@ -136,6 +136,9 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, roadCastleTests) {
 		roadCastles.once.Do(buildTheRoadCastles)
 	}
+	if wantedBy(pattern, wellFedPlayTests) {
+		wellFedPlay.once.Do(buildTheWellFedPlay)
+	}
 	os.Exit(m.Run())
 }
 
