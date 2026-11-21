@@ -19,7 +19,7 @@ Slice [rpg-project#1082](https://github.com/KirkDiggler/rpg-project/issues/1082)
 
 ## Found
 
-- The castle content hash encodes every field of the compiled form, so a new nil `StatusGrant.Until` moves the pin to `23df4760...d278`; the pin is left failing, reported — [gap comment](https://github.com/KirkDiggler/rpg-project/issues/1082#issuecomment-7066979526).
+- The castle content hash encodes every field of the compiled form, so a new nil `StatusGrant.Until` moves the pin to `23df4760...d278`; re-pinned in this PR under Amendment 2, castle testdata unchanged against main — [gap comment](https://github.com/KirkDiggler/rpg-project/issues/1082#issuecomment-7066990985).
 - The folded read-back text wraps lines, so folded-form assertions compare with whitespace collapsed — [status_until_test.go](https://github.com/KirkDiggler/rpg-toolkit/blob/3964022b/rulebooks/dnd5e/encounter/dungeonspec/readback/status_until_test.go).
 - Castle HallGuard and Kitchen tests pass under -race (2.8 to 6.8 s each), so nothing slowed — [commit 3964022b](https://github.com/KirkDiggler/rpg-toolkit/commit/3964022b).
 - Existing tests edited: `status_test.go` "another key" sentence only (one more key allowed) — [commit 3964022b](https://github.com/KirkDiggler/rpg-toolkit/commit/3964022b).
