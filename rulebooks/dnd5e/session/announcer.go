@@ -80,7 +80,19 @@ func (a announcerSeam) Announce(
 			combatTurns[string(member.ID)] = clock.Round
 		}
 	}
-	machine, err := resolution.NewBoundary(&resolution.BoundaryInput{Crossed: crossed, CombatTurns: combatTurns})
+	// A LAPSE IS NOT A CROSSING: resolution refuses an unknown kind in
+	// Crossed, a refused verb is never saved, and the timer would fire and
+	// fail again on every later raise. Lapses go in their own list.
+	var crossings []encounter.Boundary
+	var lapses []resolution.Lapse
+	for _, b := range crossed {
+		if b.Kind == encounter.StatusLapsed {
+			lapses = append(lapses, resolution.Lapse{Member: string(b.Subject), ApplicationID: b.Application})
+			continue
+		}
+		crossings = append(crossings, b)
+	}
+	machine, err := resolution.NewBoundary(&resolution.BoundaryInput{Crossed: crossings, Lapses: lapses, CombatTurns: combatTurns})
 	if err != nil {
 		return fmt.Errorf("announce: %w", err)
 	}
