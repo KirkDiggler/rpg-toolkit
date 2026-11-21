@@ -435,7 +435,7 @@ type EquipAct struct {
 	Change string
 }
 
-// StayAct is a driven word that did nothing (stayed).
+// StayAct is a driven word that did nothing, or a player's wait (stayed).
 type StayAct struct {
 	// Member is who stayed (stayed `member`).
 	Member Party
