@@ -303,6 +303,13 @@ type Encounter struct {
 	// [Encounter.disarm] alone; never persisted.
 	dueAt map[MemberID]uint64
 
+	// lapses is which status timers are due at which world round
+	// (status_lapse.go, rpg-project#1080): one per application, keyed by the
+	// host's application id. lapseAt holds each armed timer's record, and IS
+	// saved ([EncounterData.Lapses]); the heap is rebuilt from it at load.
+	lapses  machine.Due[string]
+	lapseAt map[string]StatusLapseData
+
 	// listeners is who listens for which beat, from every machine's current
 	// state ([machine.Program.Listens]). Derived like due and never
 	// persisted. The default recipe listens for nothing but time, which the
@@ -3124,6 +3131,8 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// roster changing is the graph's declaration changing too (world.go).
 	leaverKind := e.members[in.Member].Kind
 	delete(e.members, in.Member)
+	// NOTHING FIRES ABOUT A MEMBER WHO IS GONE (status_lapse.go).
+	e.dropLapsesOf(in.Member)
 	// A LINE WAITING ON THE LEAVER'S ROLL IS DROPPED (rpg-project#924,
 	// interaction_hold.go): nobody is left to decide on it, and the exit beat
 	// tells it. A line said TO the leaver is released by the sweep below.

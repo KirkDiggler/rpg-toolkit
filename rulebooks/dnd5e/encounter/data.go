@@ -69,6 +69,11 @@ type EncounterData struct {
 	// joins the fight is placed against them. A fight saved without them is
 	// refused on load, never loaded as if nobody had rolled.
 	Initiative []BubbleInitiativeData `json:"initiative,omitempty"`
+	// Lapses is each armed status timer (rpg-project#1080), sorted by
+	// application: a status given for a number of rounds, and the world round
+	// it is due. Omitted when none is armed, which is every run saved before
+	// this field.
+	Lapses []StatusLapseData `json:"lapses,omitempty"`
 	// Landed is every beat landed for the listeners that no raise has
 	// matched yet (wakebeats.go, rpg-project#766 S4), in landing order.
 	// Omitted when nothing waits, which is every run whose content authored
@@ -2622,6 +2627,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
 		Initiative:         initiativeData,
+		Lapses:             e.lapsesData(),
 		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
@@ -3801,6 +3807,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// placement index.
 	if err = e.rebuildWake(); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	// The status timers, armed from the saved record (status_lapse.go).
+	if err = e.restoreLapses(data.Lapses); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
 
 	// The pause, restored exactly as it was stored — validated above, before
