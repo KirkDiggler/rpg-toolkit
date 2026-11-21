@@ -1600,7 +1600,7 @@ func joinPieces(payload []byte) ([]piece, error) {
 	if err := json.Unmarshal(payload, &t); err != nil {
 		return nil, err
 	}
-	if t.To != "turn" {
+	if t.To != string(encounter.ClockTurn) {
 		return nil, nil
 	}
 	if len(t.Rolls) > 1 {
