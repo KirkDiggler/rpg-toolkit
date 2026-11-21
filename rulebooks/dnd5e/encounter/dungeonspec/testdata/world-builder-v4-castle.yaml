@@ -428,6 +428,16 @@ statuses:
     maintenance:
       - ends_on: run
     again: ignored
+  # Hand edit (rpg-project#1036): the Keep design's chapel benefit. Praying at
+  # the altar gives advantage on ability checks, and not on attacks or saving
+  # throws, until the run ends. It does not stack with itself.
+  prayed:
+    name: Prayed
+    changes:
+      - advantage: checks
+    maintenance:
+      - ends_on: run
+    again: ignored
   # Hand edit (rpg-project#990), a small proof scene for the Keep's hold: the
   # great hall guard stops a speaker who tries to shoulder past him. Held, the
   # speaker cannot move by their own will; they can still speak and fight,
@@ -2595,6 +2605,15 @@ room:
                 fact: king-is-cultist
             failure:
               - say: Old stone, old candles.
+          # Hand edit (rpg-project#1036): no check, the full prayer puzzle is the
+          # design's and is not built; reciting it leaves the speaker prayed
+          # until their run ends.
+          - id: pray
+            do: You recite the prayer at the altar.
+            seen: recites a prayer at the altar
+            success:
+              - say: The candles steady. Something is listening.
+                apply_status: { status: prayed, to: speaker }
 # Hand edit (rpg-project#922, Gate S2 of #769): the entrance remembers. The
 # front gate is one run-wide interaction every gate speaker reads and steps:
 # a failed claim warns and closes that claim, the other claim's failure then
