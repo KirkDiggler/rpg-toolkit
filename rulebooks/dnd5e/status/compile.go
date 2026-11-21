@@ -20,6 +20,44 @@ import (
 // words allowed there.
 var ErrBadStatus = errors.New("status: not a status this engine can run")
 
+// Refusal is one refusal to compile an authored status. It wraps
+// [ErrBadStatus], and carries the place inside the status the refusal is about
+// as data, so a form can mark the row without reading the message.
+type Refusal struct {
+	// Path is the place inside the status, in the author's shape
+	// (changes[0].cannot[1], maintenance, name, again); empty for a refusal
+	// about the whole status.
+	Path string
+	// Says is what is wrong, without the fixed prefix and without the path.
+	Says string
+
+	message string
+	cause   error
+}
+
+// Error is the whole message: the fixed prefix, the path and what is wrong.
+func (r *Refusal) Error() string { return r.message }
+
+// Unwrap lets errors.Is find [ErrBadStatus], and the engine's own refusal when
+// the status compiled to a definition the engine refused.
+func (r *Refusal) Unwrap() []error {
+	if r.cause != nil {
+		return []error{ErrBadStatus, r.cause}
+	}
+	return []error{ErrBadStatus}
+}
+
+// refuse builds a refusal at path. The text after the fixed prefix is
+// formatted from format; Says is that text with a leading "path: " removed.
+func refuse(path, format string, args ...any) *Refusal {
+	text := fmt.Sprintf(format, args...)
+	says := text
+	if path != "" {
+		says = strings.TrimPrefix(text, path+": ")
+	}
+	return &Refusal{Path: path, Says: says, message: ErrBadStatus.Error() + ": " + text}
+}
+
 // CompileInput is one authored status.
 type CompileInput struct {
 	// ID is the status's id: the definition's id inside the library, and the
@@ -93,11 +131,11 @@ type WhenGivenAct struct {
 // heals once is not one this engine can hold.
 func Compile(in *CompileInput) (*CompileOutput, error) {
 	if in == nil {
-		return nil, fmt.Errorf("%w: no input", ErrBadStatus)
+		return nil, refuse("", "no input")
 	}
 	id := strings.TrimSpace(in.ID)
 	if id == "" || id != in.ID {
-		return nil, fmt.Errorf("%w: a status needs an id without surrounding spaces", ErrBadStatus)
+		return nil, refuse("", "a status needs an id without surrounding spaces")
 	}
 	top, err := object(in.Status, "the status", PlaceStatus)
 	if err != nil {
@@ -109,7 +147,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	}
 	if in.Until != nil {
 		if in.Until.Rounds < 1 || in.Until.Rounds > 1000 {
-			return nil, fmt.Errorf("%w: until.rounds must be a whole number of one or more, at most 1000", ErrBadStatus)
+			return nil, refuse("", "until.rounds must be a whole number of one or more, at most 1000")
 		}
 		c.timed = true
 	}
@@ -118,7 +156,9 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 		return nil, err
 	}
 	if _, err := conditions.CompileDefinitions(&conditions.CompileDefinitionsInput{Data: library}); err != nil {
-		return nil, fmt.Errorf("%w: %q compiles to a definition the engine refuses: %w", ErrBadStatus, id, err)
+		refusal := refuse("", "%q compiles to a definition the engine refuses: %v", id, err)
+		refusal.cause = err
+		return nil, refusal
 	}
 	return &CompileOutput{Name: c.name, Library: library, DefinitionID: id, WhenGiven: c.whenGiven}, nil
 }
@@ -137,46 +177,52 @@ type compiler struct {
 func (c *compiler) status(top map[string]jsontext.Value) error {
 	for word := range top {
 		if !isTopWord(word) {
-			return fmt.Errorf("%w: the status: unknown word %s; one of: %s", ErrBadStatus, word, topWords())
+			return refuse(word, "the status: unknown word %s; one of: %s", word, topWords())
 		}
 	}
-	for _, word := range []string{wordName, wordChanges, wordMaintenance, wordAgain} {
-		if _, ok := top[word]; !ok {
-			return fmt.Errorf("%w: the status has no %s", ErrBadStatus, word)
+	for _, e := range table {
+		if !e.required {
+			continue
+		}
+		if _, ok := top[e.word]; !ok {
+			return refuse(e.word, "the status has no %s", e.word)
 		}
 	}
 	if err := jsonv2.Unmarshal(top[wordName], &c.name); err != nil || strings.TrimSpace(c.name) == "" {
-		return fmt.Errorf("%w: name: must be non-empty text", ErrBadStatus)
+		return refuse(wordName, "name: must be non-empty text")
 	}
 	again, _ := lookup(PlaceAgain, wordAgain)
 	if _, err := oneOf(again, top[wordAgain], wordAgain); err != nil {
 		return err
 	}
+	changesWord, _ := lookup(PlaceStatus, wordChanges)
 	changes, err := list(top[wordChanges], wordChanges)
 	if err != nil {
 		return err
 	}
 	for i, raw := range changes {
-		if err := c.change(raw, fmt.Sprintf("%s[%d]", wordChanges, i)); err != nil {
+		if err := c.change(raw, fmt.Sprintf("%s[%d]", wordChanges, i), changesWord.holds); err != nil {
 			return err
 		}
 	}
+	maintenanceWord, _ := lookup(PlaceStatus, wordMaintenance)
 	rules, err := list(top[wordMaintenance], wordMaintenance)
 	if err != nil {
 		return err
 	}
 	for i, raw := range rules {
-		if err := c.rule(raw, fmt.Sprintf("%s[%d]", wordMaintenance, i)); err != nil {
+		if err := c.rule(raw, fmt.Sprintf("%s[%d]", wordMaintenance, i), maintenanceWord.holds); err != nil {
 			return err
 		}
 	}
 	if raw, ok := top[wordWhenGiven]; ok {
+		givenWord, _ := lookup(PlaceStatus, wordWhenGiven)
 		acts, err := list(raw, wordWhenGiven)
 		if err != nil {
 			return err
 		}
 		for i, raw := range acts {
-			if err := c.act(raw, fmt.Sprintf("%s[%d]", wordWhenGiven, i)); err != nil {
+			if err := c.act(raw, fmt.Sprintf("%s[%d]", wordWhenGiven, i), givenWord.holds); err != nil {
 				return err
 			}
 		}
@@ -186,18 +232,18 @@ func (c *compiler) status(top map[string]jsontext.Value) error {
 
 // act reads one when_given entry: one word, done once when the status is
 // given.
-func (c *compiler) act(raw jsontext.Value, path string) error {
-	fields, err := object(raw, path, PlaceWhenGiven)
+func (c *compiler) act(raw jsontext.Value, path string, place Place) error {
+	fields, err := object(raw, path, place)
 	if err != nil {
 		return err
 	}
 	if len(fields) != 1 {
-		return fmt.Errorf("%w: %s: one act per entry; an act is one of: %s", ErrBadStatus, path, wordsAt(PlaceWhenGiven))
+		return refuse(path, "%s: one act per entry; an act is one of: %s", path, wordsAt(place))
 	}
 	for word, value := range fields {
-		e, ok := lookup(PlaceWhenGiven, word)
+		e, ok := lookup(place, word)
 		if !ok {
-			return fmt.Errorf("%w: %s.%s: not something done when given; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceWhenGiven))
+			return refuse(path+"."+word, "%s.%s: not something done when given; one of: %s", path, word, wordsAt(place))
 		}
 		n, err := number(e, value, path+"."+word)
 		if err != nil {
@@ -209,28 +255,28 @@ func (c *compiler) act(raw jsontext.Value, path string) error {
 	return nil
 }
 
-func (c *compiler) change(raw jsontext.Value, path string) error {
-	fields, err := object(raw, path, PlaceChange)
+func (c *compiler) change(raw jsontext.Value, path string, place Place) error {
+	fields, err := object(raw, path, place)
 	if err != nil {
 		return err
 	}
 	var kind string
 	for word := range fields {
-		if word == wordWhen {
+		if narrows(place, word) {
 			continue
 		}
-		if _, ok := lookup(PlaceChange, word); !ok {
-			return fmt.Errorf("%w: %s.%s: not a change; a change is one of: %s", ErrBadStatus, path, word, changeKinds())
+		if _, ok := lookup(place, word); !ok {
+			return refuse(path+"."+word, "%s.%s: not a change; a change is one of: %s", path, word, changeKinds())
 		}
 		if kind != "" {
-			return fmt.Errorf("%w: %s: one change per entry, got %s and %s", ErrBadStatus, path, kind, word)
+			return refuse(path, "%s: one change per entry, got %s and %s", path, kind, word)
 		}
 		kind = word
 	}
 	if kind == "" {
-		return fmt.Errorf("%w: %s: names no change; a change is one of: %s", ErrBadStatus, path, changeKinds())
+		return refuse(path, "%s: names no change; a change is one of: %s", path, changeKinds())
 	}
-	e, _ := lookup(PlaceChange, kind)
+	e, _ := lookup(place, kind)
 	at := path + "." + kind
 	part := map[string]any{}
 	var whenWords []string
@@ -257,7 +303,7 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 			return err
 		}
 		if _, ok := fields[wordWhen]; ok {
-			return fmt.Errorf("%w: %s.%s: cannot takes no when; it is in force while held", ErrBadStatus, path, wordWhen)
+			return refuse(path+"."+wordWhen, "%s.%s: cannot takes no when; it is in force while held", path, wordWhen)
 		}
 		part["kind"] = "cannot"
 		part["params"] = map[string]any{"what": what}
@@ -271,7 +317,8 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 		whenWords = changeWhen[kind]
 	}
 	if raw, ok := fields[wordWhen]; ok {
-		guard, err := when(raw, path+"."+wordWhen, kind, whenWords)
+		whenEntry, _ := lookup(place, wordWhen)
+		guard, err := when(raw, path+"."+wordWhen, kind, whenWords, whenEntry.holds)
 		if err != nil {
 			return err
 		}
@@ -283,13 +330,13 @@ func (c *compiler) change(raw jsontext.Value, path string) error {
 	return nil
 }
 
-func when(raw jsontext.Value, path, kind string, allowed []string) (map[string]any, error) {
-	fields, err := object(raw, path, PlaceWhen)
+func when(raw jsontext.Value, path, kind string, allowed []string, place Place) (map[string]any, error) {
+	fields, err := object(raw, path, place)
 	if err != nil {
 		return nil, err
 	}
 	if len(fields) == 0 {
-		return nil, fmt.Errorf("%w: %s: is empty; leave it out, or name one of: %s", ErrBadStatus, path, wordsAt(PlaceWhen))
+		return nil, refuse(path, "%s: is empty; leave it out, or name one of: %s", path, wordsAt(place))
 	}
 	words := make([]string, 0, len(fields))
 	for word := range fields {
@@ -298,16 +345,16 @@ func when(raw jsontext.Value, path, kind string, allowed []string) (map[string]a
 	slices.Sort(words)
 	var facts []map[string]any
 	for _, word := range words {
-		e, ok := lookup(PlaceWhen, word)
+		e, ok := lookup(place, word)
 		if !ok {
-			return nil, fmt.Errorf("%w: %s.%s: not a when word; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceWhen))
+			return nil, refuse(path+"."+word, "%s.%s: not a when word; one of: %s", path, word, wordsAt(place))
 		}
 		if !slices.Contains(allowed, word) {
 			can := "nothing: it takes no when"
 			if len(allowed) > 0 {
 				can = strings.Join(allowed, ", ")
 			}
-			return nil, fmt.Errorf("%w: %s.%s: %s cannot be narrowed by %s; it can use %s", ErrBadStatus, path, word, kind, word, can)
+			return nil, refuse(path+"."+word, "%s.%s: %s cannot be narrowed by %s; it can use %s", path, word, kind, word, can)
 		}
 		v, err := oneOf(e, fields[word], path+"."+word)
 		if err != nil {
@@ -326,18 +373,18 @@ func when(raw jsontext.Value, path, kind string, allowed []string) (map[string]a
 	return map[string]any{"all": facts}, nil
 }
 
-func (c *compiler) rule(raw jsontext.Value, path string) error {
-	fields, err := object(raw, path, PlaceMaintenance)
+func (c *compiler) rule(raw jsontext.Value, path string, place Place) error {
+	fields, err := object(raw, path, place)
 	if err != nil {
 		return err
 	}
 	if len(fields) != 1 {
-		return fmt.Errorf("%w: %s: one rule per entry; a rule is one of: %s", ErrBadStatus, path, wordsAt(PlaceMaintenance))
+		return refuse(path, "%s: one rule per entry; a rule is one of: %s", path, wordsAt(place))
 	}
 	for word, value := range fields {
-		e, ok := lookup(PlaceMaintenance, word)
+		e, ok := lookup(place, word)
 		if !ok {
-			return fmt.Errorf("%w: %s.%s: not a maintenance rule; one of: %s", ErrBadStatus, path, word, wordsAt(PlaceMaintenance))
+			return refuse(path+"."+word, "%s.%s: not a maintenance rule; one of: %s", path, word, wordsAt(place))
 		}
 		v, err := oneOf(e, value, path+"."+word)
 		if err != nil {
@@ -352,10 +399,10 @@ func (c *compiler) rule(raw jsontext.Value, path string) error {
 
 func (c *compiler) library() (json.RawMessage, error) {
 	if len(c.benefits) == 0 {
-		return nil, fmt.Errorf("%w: changes: needs at least one change", ErrBadStatus)
+		return nil, refuse(wordChanges, "changes: needs at least one change")
 	}
 	if len(c.maintenance) == 0 {
-		return nil, fmt.Errorf("%w: maintenance: needs at least one rule, or the status would never end", ErrBadStatus)
+		return nil, refuse(wordMaintenance, "maintenance: needs at least one rule, or the status would never end")
 	}
 	if c.timed {
 		// After the check above: the giving's until is in addition to the
@@ -379,7 +426,7 @@ func (c *compiler) library() (json.RawMessage, error) {
 	}
 	out, err := jsonv2.Marshal(library, jsonv2.Deterministic(true))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrBadStatus, err)
+		return nil, &Refusal{Says: err.Error(), message: ErrBadStatus.Error() + ": " + err.Error(), cause: err}
 	}
 	return out, nil
 }
@@ -393,7 +440,11 @@ func object(raw json.RawMessage, path string, place Place) (map[string]jsontext.
 		if place == PlaceStatus {
 			words = topWords()
 		}
-		return nil, fmt.Errorf("%w: %s: must be an object of: %s", ErrBadStatus, path, words)
+		at := path
+		if place == PlaceStatus {
+			at = ""
+		}
+		return nil, refuse(at, "%s: must be an object of: %s", path, words)
 	}
 	return fields, nil
 }
@@ -401,7 +452,7 @@ func object(raw json.RawMessage, path string, place Place) (map[string]jsontext.
 func list(raw jsontext.Value, path string) ([]jsontext.Value, error) {
 	var items []jsontext.Value
 	if err := jsonv2.Unmarshal(raw, &items); err != nil || items == nil {
-		return nil, fmt.Errorf("%w: %s: must be a list", ErrBadStatus, path)
+		return nil, refuse(path, "%s: must be a list", path)
 	}
 	return items, nil
 }
@@ -410,11 +461,11 @@ func list(raw jsontext.Value, path string) ([]jsontext.Value, error) {
 func number(e entry, raw jsontext.Value, path string) (int, error) {
 	bound, ok := numberBounds[e.shape]
 	if !ok {
-		return 0, fmt.Errorf("%w: %s: %s is not a number word", ErrBadStatus, path, e.word)
+		return 0, refuse(path, "%s: %s is not a number word", path, e.word)
 	}
 	var n int
 	if err := jsonv2.Unmarshal(raw, &n); err != nil || n < bound.min || n > bound.max || (n == 0 && !bound.zero) {
-		return 0, fmt.Errorf("%w: %s: %s", ErrBadStatus, path, bound.says)
+		return 0, refuse(path, "%s: %s", path, bound.says)
 	}
 	return n, nil
 }
@@ -422,11 +473,11 @@ func number(e entry, raw jsontext.Value, path string) (int, error) {
 func oneOf(e entry, raw jsontext.Value, path string) (value, error) {
 	var word string
 	if err := jsonv2.Unmarshal(raw, &word); err != nil {
-		return value{}, fmt.Errorf("%w: %s: must be one of: %s", ErrBadStatus, path, e.valueWords())
+		return value{}, refuse(path, "%s: must be one of: %s", path, e.valueWords())
 	}
 	v, ok := e.valueOf(word)
 	if !ok {
-		return value{}, fmt.Errorf("%w: %s: %q is not one of: %s", ErrBadStatus, path, word, e.valueWords())
+		return value{}, refuse(path, "%s: %q is not one of: %s", path, word, e.valueWords())
 	}
 	return v, nil
 }
@@ -434,18 +485,25 @@ func oneOf(e entry, raw jsontext.Value, path string) (value, error) {
 func listOf(e entry, raw jsontext.Value, path string) ([]string, error) {
 	var words []string
 	if err := jsonv2.Unmarshal(raw, &words); err != nil || len(words) == 0 {
-		return nil, fmt.Errorf("%w: %s: must be a non-empty list of: %s", ErrBadStatus, path, e.valueWords())
+		return nil, refuse(path, "%s: must be a non-empty list of: %s", path, e.valueWords())
 	}
 	out := make([]string, 0, len(words))
 	for i, word := range words {
 		v, ok := e.valueOf(word)
 		if !ok {
-			return nil, fmt.Errorf("%w: %s[%d]: %q is not one of: %s", ErrBadStatus, path, i, word, e.valueWords())
+			return nil, refuse(fmt.Sprintf("%s[%d]", path, i), "%s[%d]: %q is not one of: %s", path, i, word, e.valueWords())
 		}
 		if slices.Contains(out, v.to) {
-			return nil, fmt.Errorf("%w: %s[%d]: %q is listed twice", ErrBadStatus, path, i, word)
+			return nil, refuse(fmt.Sprintf("%s[%d]", path, i), "%s[%d]: %q is listed twice", path, i, word)
 		}
 		out = append(out, v.to)
 	}
 	return out, nil
+}
+
+// narrows reports whether word, written in place, narrows the change beside it
+// rather than being a change.
+func narrows(place Place, word string) bool {
+	e, ok := lookup(place, word)
+	return ok && e.word == wordWhen && e.shape == ShapeEntries
 }
