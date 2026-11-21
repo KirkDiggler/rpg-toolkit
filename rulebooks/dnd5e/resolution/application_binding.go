@@ -61,7 +61,7 @@ func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Partici
 			return nil, err
 		}
 		if held.Held {
-			if _, err := nativeMaintenanceSpell(held.Info.SourceRef, held.Info.SourceName); err != nil {
+			if _, err := nativeMaintenanceHold(held.Info.SourceRef, held.Info.SourceName); err != nil {
 				return nil, err
 			}
 		}
