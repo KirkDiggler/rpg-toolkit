@@ -18,6 +18,8 @@ import (
 const (
 	// KindUntilEmpty ends after the last linked member actually leaves.
 	KindUntilEmpty generic.KindName = "until_empty"
+	// KindLapse ends the one application whose rounds are up.
+	KindLapse generic.KindName = "lapse"
 	// KindEndOn supplies explicit holder-event endings independently of concentration.
 	KindEndOn generic.KindName = "end_on"
 
@@ -93,6 +95,20 @@ func inspectEndOnPart(in *InspectPartInput) (*PartInfo, error) {
 		return nil, err
 	}
 	return inspectEmptyPartState(in.Snapshot)
+}
+
+func bindLapsePart(in *BindPartInput) (boundPart, error) {
+	if err := checkUnparameterizedMaintenance(in.Declaration); err != nil {
+		return boundPart{}, err
+	}
+	return boundPart{recipe: endPartRecipe(in.Ref, machine.Transition{
+		On: BeatStatusLapsed, About: Holder, To: partStateEnded, Reason: "rounds_passed",
+		When: &machine.Guard{Fact: &machine.FactLeaf{Name: factLapsedApplication, Op: machine.OpEq, Value: machine.StringScalar(in.ApplicationID)}},
+	})}, nil
+}
+
+func inspectLapsePart(in *InspectPartInput) (*PartInfo, error) {
+	return inspectUntilEmptyPart(in)
 }
 
 func inspectUntilEmptyPart(in *InspectPartInput) (*PartInfo, error) {
