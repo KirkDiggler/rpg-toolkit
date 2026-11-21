@@ -4,14 +4,18 @@
 package session_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -56,7 +60,8 @@ func (s *HoldStatusSuite) SetupTest() {
 	// A bear's hit points, so the swing that starts the fight does not end it.
 	cook := monsterAt("cook", refs.Monsters.BrownBear().String(), 0, 0)
 	cook.Faction = "kitchen"
-	cook.Options = []encounter.Option{cookLine("hold", "held", heldStatus), cookLine("snare", "snared", snaredStatus)}
+	cook.Options = []encounter.Option{cookLine("hold", "held", heldStatus), cookLine("snare", "snared", snaredStatus),
+		cookLineUntil("hold-3", "held", heldStatus, 3), cookChat()}
 	sc := ambushWorld(cook)
 	sc.Monsters[0].ID, sc.Monsters[0].MemberID = "a-goblin", "a-goblin"
 	sc.Field.Factions = []encounter.FactionInput{{ID: "kitchen", Mind: "cook"}}
@@ -253,4 +258,157 @@ func (s *HoldStatusSuite) TestLeavingTheRunEndsTheHold() {
 	_, err := s.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err, "a held player may always leave")
 	s.Zero(s.heldRows("Held"), "her run ended, and Held with it")
+}
+
+// cookLineUntil is [cookLine] whose giving is for a number of rounds.
+func cookLineUntil(id, statusID, status string, rounds int) encounter.Option {
+	o := cookLine(id, statusID, status)
+	o.Grants[0].Consequence.ApplyStatus.Until = &encounter.StatusUntil{Rounds: rounds}
+	return o
+}
+
+// cookChat is a checked line that gives nothing: said, it is the action and
+// the world is paid one round.
+func cookChat() encounter.Option {
+	return encounter.Option{
+		ID: "chat", Say: "Lovely weather.",
+		Check: []encounter.CheckApproach{{Ability: "persuasion", DC: 5}},
+	}
+}
+
+// round passes one round of world time: a checked line is the action and
+// pays the world its round. Rounds of world time pass only when someone acts
+// or waits (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) round(mgr *session.Manager) {
+	_, err := speakAsOffered(context.Background(), mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "cook", OptionID: "chat"})
+	s.Require().NoError(err)
+}
+
+func (s *HoldStatusSuite) stillHeld(mgr *session.Manager) {
+	s.Equal(1, s.heldRows("Held"), "still on her saved sheet")
+	_, err := mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
+	s.requireHeld(err, "You are Held; you cannot move.")
+}
+
+// Catches a timed giving that never ends: Held for three rounds is held
+// through two, and gone with the third. Rounds of world time pass only when
+// someone acts or waits (Wait is rpg-project#1079), so each round here is a
+// checked line.
+func (s *HoldStatusSuite) TestAHoldForThreeRoundsEndsAfterThree() {
+	s.say("hold-3")
+	s.Require().Equal(1, s.heldRows("Held"))
+	s.round(s.mgr)
+	s.stillHeld(s.mgr)
+	s.round(s.mgr)
+	s.stillHeld(s.mgr)
+	s.round(s.mgr)
+	s.Zero(s.heldRows("Held"), "three rounds are up: Held is gone from her saved sheet")
+	_, err := s.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: ambushPath()})
+	s.NotErrorIs(err, session.ErrCannotMove, "and her walk is no longer refused for a hold")
+}
+
+// Catches an ignored second giving restarting the count: said again one
+// round in, the hold still ends on the first giving's third round. Rounds of
+// world time pass only when someone acts or waits (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) TestASecondGivingWhileHeldDoesNotRestartTheCount() {
+	s.say("hold-3")
+	s.round(s.mgr)
+	s.say("hold-3")
+	s.round(s.mgr)
+	s.round(s.mgr)
+	s.Zero(s.heldRows("Held"), "the second giving was ignored; the first one's three rounds ran out")
+}
+
+// Catches the timer living only in memory: after one round every store is
+// reloaded into a fresh manager, and two more rounds still free her. Rounds
+// of world time pass only when someone acts or waits (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) TestAHoldForRoundsSurvivesAReloadOfEveryStore() {
+	s.say("hold-3")
+	s.round(s.mgr)
+	reloaded := s.manager()
+	s.stillHeld(reloaded)
+	s.round(reloaded)
+	s.stillHeld(reloaded)
+	s.round(reloaded)
+	s.Zero(s.heldRows("Held"), "the reloaded game ended the hold on time")
+}
+
+// Catches a fight's start leaving a timed hold, or its old timer erroring:
+// the fight frees her at once, and three rounds later nothing errors and no
+// sheet changes. Rounds of world time pass only when someone acts or waits
+// (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) TestAFightStillEndsAHoldForRoundsAndItsTimerFiresHarmlessly() {
+	s.say("hold-3")
+	s.swingAtTheCook()
+	s.Zero(s.heldRows("Held"), "the fight starting freed her")
+	s.endTheFight()
+	before := s.sheetConditions()
+	for range 3 {
+		s.round(s.mgr)
+	}
+	s.Equal(before, s.sheetConditions(), "the timer fired for nothing and changed no sheet")
+	s.Zero(s.heldRows("Held"))
+}
+
+// Catches a stale timer ending a later giving: a timed hold is ended by the
+// fight, then a hold with no end of its own is given; three rounds later it
+// is still held. Rounds of world time pass only when someone acts or waits
+// (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) TestAHoldWithoutUntilAfterATimedOneIsNotEndedByTheOldTimer() {
+	s.say("hold-3")
+	s.swingAtTheCook()
+	s.Require().Zero(s.heldRows("Held"))
+	s.endTheFight()
+	s.say("hold")
+	s.Require().Equal(1, s.heldRows("Held"))
+	for range 3 {
+		s.round(s.mgr)
+	}
+	s.stillHeld(s.mgr)
+}
+
+// Catches a lapse for a status that already ended sticking the game: every
+// verb after the fight returns no error, no sheet changes, and a fourth
+// verb still works. Rounds of world time pass only when someone acts or
+// waits (Wait is rpg-project#1079).
+func (s *HoldStatusSuite) TestALapseForAStatusThatAlreadyEndedChangesNothingAndTheGameGoesOn() {
+	s.say("hold-3")
+	s.swingAtTheCook()
+	s.endTheFight()
+	before := s.sheetConditions()
+	for i := range 3 {
+		s.round(s.mgr)
+		s.Equal(before, s.sheetConditions(), "round %d changed a sheet", i+1)
+	}
+	s.round(s.mgr)
+	s.say("hold")
+	s.Equal(1, s.heldRows("Held"), "the run is not stuck: a fourth verb works")
+}
+
+func (s *HoldStatusSuite) endTheFight() {
+	_, err := s.mgr.Dissolve(context.Background(), &session.DissolveInput{Session: "sess", Member: "alice", Cause: session.ByDecision()})
+	s.Require().NoError(err)
+}
+
+// sheetConditions is alice's saved sheet's conditions, as stored.
+func (s *HoldStatusSuite) sheetConditions() string {
+	stored, err := s.characters.GetCharacter(context.Background(), "alice")
+	s.Require().NoError(err)
+	raw, err := json.Marshal(stored.Conditions)
+	s.Require().NoError(err)
+	return string(raw)
+}
+
+// Catches the content check refusing an `until` the rules accept: the
+// castle's Held line, written for three rounds, passes.
+func TestCheckContentRefusesNothingForAGoodUntil(t *testing.T) {
+	raw := castleSource(t)
+	line := []byte("apply_status: { status: held, to: party_in_sight }")
+	require.Equal(t, 1, bytes.Count(raw, line), "precondition: the castle's Held line, once")
+	timed := bytes.Replace(raw, line, []byte("apply_status: { status: held, to: party_in_sight, until: { rounds: 3 } }"), 1)
+	compiled, err := dungeonspec.Load(timed)
+	require.NoError(t, err)
+	checked, err := session.CheckContent(&session.CheckContentInput{Dungeon: &compiled})
+	require.NoError(t, err)
+	require.Empty(t, checked.Refusals)
 }
