@@ -374,6 +374,7 @@ func (s *DefeatSuite) TestOnlyTheDecidedFightEnds() {
 		{Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1},
 		{Order: []core.EntityID{bob, wolf}, ActiveIdx: 0, Round: 1},
 	}
+	data.Initiative = make([]encounter.BubbleInitiativeData, 2) // one empty entry per bubble: the fixture, not the assertion
 
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,

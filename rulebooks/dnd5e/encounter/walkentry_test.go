@@ -1,6 +1,7 @@
 package encounter_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -86,6 +87,33 @@ func (s *WalkEntrySuite) TestAWatchedWalkerOutOfTheFightIsReadmitted() {
 	again, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})
 	s.Require().NoError(err)
 	s.False(again.Joined)
+}
+
+// TestAReadmittedWalkerJoinsByTheJoinRule pins that the walk door is the same
+// door as the straggler's (rpg-project#1068): the transferred entry names the
+// round she joined in and the round of her first turn.
+func (s *WalkEntrySuite) TestAReadmittedWalkerJoinsByTheJoinRule() {
+	enc := s.sceneLit(map[encounter.MemberID]int{alice: 1, goblin: 2})
+	_, err := enc.Transfer(&encounter.TransferInput{Member: alice, To: encounter.ClockWorld})
+	s.Require().NoError(err)
+	got, err := enc.AdmitWalk(&encounter.AdmitWalkInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().True(got.Joined)
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	var last map[string]json.RawMessage
+	for _, entry := range story {
+		var beat map[string]json.RawMessage
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if string(beat["beat"]) == `"`+encounter.BeatTransferred+`"` && string(beat["to"]) == `"turn"` {
+			last = beat
+		}
+	}
+	s.Require().NotNil(last, "the walk's join is on the record")
+	s.Contains(last, "round")
+	s.Contains(last, "first_round")
+	s.Equal(string(last["round"]), string(last["first_round"]), "round one: she acts this round")
 }
 
 func (s *WalkEntrySuite) TestUnseenTeammateDoesNotPullWalkerIntoCombat() {

@@ -85,11 +85,11 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 		if !watching {
 			continue
 		}
-		transferred, err := e.Transfer(&TransferInput{Member: in.Member, To: ClockTurn, Pos: e.bubbleSize()})
+		seq, joinedDeltas, err := e.joinFight([]MemberID{in.Member})
 		if err != nil {
-			return nil, fmt.Errorf("admit walk transfer: %w", err)
+			return nil, fmt.Errorf("admit walk join: %w", err)
 		}
-		out.Joined, out.Seq, out.IntelDeltas = true, transferred.Seq, transferred.IntelDeltas
+		out.Joined, out.Seq, out.IntelDeltas = true, seq, joinedDeltas
 		return out, nil
 	}
 	return out, nil
