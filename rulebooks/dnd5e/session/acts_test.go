@@ -375,6 +375,8 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 	// rpg-project#766 S6: each has its family now.
 	for kind, want := range map[string]session.Family{
 		encounter.BeatState: session.FamilyState, encounter.BeatWakeCut: session.FamilyClock,
+		// A fight join has an act (rpg-project#1068).
+		encounter.BeatTransferred: session.FamilyClock,
 	} {
 		family, mapped, recordOnly := session.FamilyOfBeatForTest(kind)
 		require.True(t, mapped, "%s has a family", kind)
@@ -386,7 +388,7 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 		// `interacted` left this list with things done to props
 		// (rpg-project#959): it has a family now, and a world NPC's version
 		// (no `view`) still folds to nothing.
-		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteraction,
+		encounter.BeatTable, encounter.BeatInteraction,
 		encounter.BeatRecognized, string(encounter.OutcomeBought), string(encounter.OutcomeSold),
 	} {
 		_, _, recordOnly := session.FamilyOfBeatForTest(kind)

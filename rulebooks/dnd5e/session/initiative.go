@@ -50,7 +50,7 @@ type Roller interface {
 // break every host that implemented it.
 //
 // It is built PER VERB, beside that verb's sheets, because the modifier is
-// read off the rolling member's sheet at the moment the fight forms — the
+// read off the rolling member's sheet at the moment the fight forms or is joined — the
 // same "sheet facts asked at use time" rule [sheetSeam] follows, and the same
 // sheets it reads.
 type initiativeSeam struct {
@@ -69,7 +69,7 @@ func (m *Manager) initiativeFor(sheets sheetSeam) initiativeSeam {
 // rulebook's roll takes it: one modifier per contribution, in the sheet's
 // order. The session names no source and sums nothing itself; what adds to
 // initiative (Dexterity by rule, a held status's bonus) is the rulebook's,
-// read off the sheet at the moment the fight forms.
+// read off the sheet at the moment the fight forms or is joined.
 //
 // A monster is loaded with its carried conditions prepared, so a status it
 // holds is counted. A world NPC's recorded content has no sheet to ask, so it
