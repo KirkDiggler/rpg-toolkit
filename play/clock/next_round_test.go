@@ -238,6 +238,9 @@ func (s *NextRoundSuite) TestLoadTurnRefusesABadNextRound() {
 		s.Run(name, func() {
 			_, err := clock.LoadTurn(data)
 			s.Require().ErrorIs(err, clock.ErrInvalidData)
+			if name == "absent from order" {
+				s.Contains(err.Error(), "is not in the order")
+			}
 		})
 	}
 }

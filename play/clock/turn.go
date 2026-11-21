@@ -128,7 +128,8 @@ type EndOutput struct {
 	RoundWrapped bool
 }
 
-// End advances past Actor's turn. Errors: ErrNilInput, ErrIdle, ErrNotActive (with no
+// End advances past Actor's turn, passing over members seated for the next
+// round: they get no turn-start or turn-end of their own. Errors: ErrNilInput, ErrIdle, ErrNotActive (with no
 // state change — R5).
 func (t *Turn) End(in *EndInput) (*EndOutput, error) {
 	if in == nil {
@@ -148,7 +149,7 @@ func (t *Turn) End(in *EndInput) (*EndOutput, error) {
 		t.activeIdx = 0
 		t.round++
 		wrapped = true
-		t.nextRound = nil
+		t.nextRound = nil // guard: already empty, every mark passed was deleted
 		ms = append(ms, Milestone{Kind: RoundStarted, Round: t.round})
 	}
 	next := t.order[t.activeIdx]
@@ -234,8 +235,12 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 		t.nextRound = nil
 	case wasActive:
 		if t.skipNextRound() {
-			t.activeIdx = 0 // active was last; next is first, round unchanged
-			t.nextRound = nil
+			// Active was last, or every member after it was seated for the next
+			// round: next is first, round unchanged. A member seated for the next
+			// round takes its place in the pass that begins here, although the
+			// round number has not moved.
+			t.activeIdx = 0
+			t.nextRound = nil // guard: already empty, every mark passed was deleted
 		}
 		ms = append(ms, Milestone{Kind: TurnStarted, Subject: t.order[t.activeIdx], Round: t.round})
 	case idx < t.activeIdx:
@@ -303,7 +308,7 @@ func (t *Turn) Merge(in *MergeInput) (*MergeOutput, error) {
 		}
 	}
 	in.Other.order = nil
-	in.Other.nextRound = nil
+	in.Other.nextRound = nil // guard: Other's clock is reset, so its set must not outlive its order
 	in.Other.activeIdx = 0
 	in.Other.round = 0
 	return &MergeOutput{Milestones: []Milestone{{Kind: Merged, Round: t.round}}}, nil

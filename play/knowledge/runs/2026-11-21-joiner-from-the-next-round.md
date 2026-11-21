@@ -12,7 +12,7 @@ Slice [rpg-project#1071](https://github.com/KirkDiggler/rpg-project/issues/1071)
 
 ## Found
 
-- none — [rpg-project#1071](https://github.com/KirkDiggler/rpg-project/issues/1071).
+- When the active member leaves and the order wraps without the round advancing, a member seated for the next round acts in the new pass, in the same round number it joined in; pinned by `TestRemovingTheActiveWrapsPastMembersForTheNextRound`; the lead ruled it stays — [fix list 1](https://github.com/KirkDiggler/rpg-project/issues/1071#issuecomment-7058591867).
 
 ## Mistaken
 
