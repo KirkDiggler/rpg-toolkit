@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 
@@ -30,6 +31,18 @@ type BoundaryInput struct {
 	// The caller supplies clock facts; this interaction initializes cold sheets
 	// and refreshes an existing economy only at its owner's TurnStarted boundary.
 	CombatTurns map[string]int
+	// Lapses are the applications whose rounds are up, as the session's timers
+	// name them. They are published after every crossing. May be the only
+	// content of the boundary — see [NewBoundary].
+	Lapses []Lapse
+}
+
+// Lapse is one application whose rounds are up, as the session names it: the
+// holder, and the application id the status was given under. An application
+// nobody holds any more ends nothing.
+type Lapse struct {
+	Member        string
+	ApplicationID string
 }
 
 // BoundaryOutcome is what a boundary interaction produced.
@@ -76,17 +89,23 @@ func (BoundaryOutcome) isOutcome() {}
 //
 // # Refuses an empty set
 //
-// An advance that crossed nothing is not an interaction, and running one would
+// An advance that crossed nothing and lapsed nothing is not an interaction, and running one would
 // load every sheet, attach every effect, publish nothing and hand back a clean
 // world — an expensive way to do nothing, and a resolution in the registration
 // list that no boundary explains. The composition already declines to announce
-// an empty set; this refuses one for the same reason from the other side.
+// an empty set; this refuses one for the same reason from the other side. A
+// lapse with a blank member or application is refused too.
 func NewBoundary(in *BoundaryInput) (Machine, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
-	if len(in.Crossed) == 0 {
-		return nil, fmt.Errorf("%w: no boundaries to announce", ErrBadBoundary)
+	if len(in.Crossed) == 0 && len(in.Lapses) == 0 {
+		return nil, fmt.Errorf("%w: no boundaries or lapses to announce", ErrBadBoundary)
+	}
+	for i, l := range in.Lapses {
+		if strings.TrimSpace(l.Member) == "" || strings.TrimSpace(l.ApplicationID) == "" {
+			return nil, fmt.Errorf("%w: lapse %d needs a member and an application", ErrBadBoundary, i)
+		}
 	}
 	for i, b := range in.Crossed {
 		if b.Subject == "" {
@@ -98,7 +117,7 @@ func NewBoundary(in *BoundaryInput) (Machine, error) {
 	}
 	crossed := make([]encounter.Boundary, len(in.Crossed))
 	copy(crossed, in.Crossed)
-	return &boundaryMachine{crossed: crossed, combatTurns: maps.Clone(in.CombatTurns)}, nil
+	return &boundaryMachine{crossed: crossed, lapses: slices.Clone(in.Lapses), combatTurns: maps.Clone(in.CombatTurns)}, nil
 }
 
 // boundaryTopics is the whole map from a crossing to what it publishes.
@@ -156,6 +175,7 @@ const combatStarted encounter.BoundaryKind = "combat_started"
 
 type boundaryMachine struct {
 	crossed     []encounter.Boundary
+	lapses      []Lapse
 	combatTurns map[string]int
 	cast        *Participants
 }
@@ -191,7 +211,7 @@ func (m *boundaryMachine) Start(_ context.Context, cast *Participants) (Step, er
 // preserved for.
 func (m *boundaryMachine) at(i int) Step {
 	if i >= len(m.crossed) {
-		return Done{Outcome: BoundaryOutcome{Announced: len(m.crossed)}}
+		return m.lapse(0)
 	}
 	b := m.crossed[i]
 	publish := boundaryTopics[b.Kind]
@@ -209,6 +229,28 @@ func (m *boundaryMachine) at(i int) Step {
 				return nil, fmt.Errorf("announce %s for %q: %w", b.Kind, b.Subject, err)
 			}
 			return m.at(i + 1), nil
+		},
+	}
+}
+
+// lapse yields the step that publishes lapse i, or Done when they are
+// exhausted. After the crossings: a status whose rounds are up hears the
+// boundaries that came with them first.
+func (m *boundaryMachine) lapse(i int) Step {
+	if i >= len(m.lapses) {
+		return Done{Outcome: BoundaryOutcome{Announced: len(m.crossed)}}
+	}
+	l := m.lapses[i]
+	return Gather{
+		name: fmt.Sprintf("lapse %s for %s", l.ApplicationID, l.Member),
+		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
+			err := dnd5eEvents.StatusLapsedTopic.On(bus).Publish(ctx, dnd5eEvents.StatusLapsedEvent{
+				SubjectID: l.Member, ApplicationID: l.ApplicationID,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("lapse %q for %q: %w", l.ApplicationID, l.Member, err)
+			}
+			return m.lapse(i + 1), nil
 		},
 	}
 }
