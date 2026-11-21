@@ -548,7 +548,8 @@ func (s *MoveTestSuite) TestSeeingATeammateInAFightKeepsTheWalkerOnTheWorldClock
 // TestAWalkerSpottedByAFightsHostileJoinsBeforeTheNextStep is R7's other half:
 // contact with a hostile of a running fight DOES admit the walker. The same
 // scene; alice walks the whole ambush path, and on its second cell she and
-// the ogre see each other. She joins bob's fight at the end of its order and
+// the ogre see each other. She joins bob's fight at the place her initiative roll
+// gives her (rpg-project#1068; here a three-way tie at 12, so the lower id goes first) and
 // the walk stops there: the two remaining cells are not attempted, because a
 // fight member does not free-roam.
 //
@@ -574,7 +575,7 @@ func (s *MoveTestSuite) TestAWalkerSpottedByAFightsHostileJoinsBeforeTheNextStep
 	alice, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(session.ClockTurn, alice.Clock, "a hostile seeing her is contact")
-	s.Equal([]string{"bob", "ogre", "alice"}, alice.Order, "joined last, as a straggler")
+	s.Equal([]string{"bob", "alice", "ogre"}, alice.Order, "she ties the ogre at 12 and a tie goes to the lower id; she joins in round one, among those yet to act")
 	where, err := s.mgr.Where(ctx, &session.WhereInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Equal(ambushPath()[1], where.Position)
