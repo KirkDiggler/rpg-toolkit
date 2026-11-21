@@ -44,6 +44,11 @@ const (
 	BeatCombatStart machine.Beat = "combat_start"
 	// BeatRunEnd observes a recipient's run ending.
 	BeatRunEnd machine.Beat = "run_end"
+	// BeatStatusLapsed observes the rounds a holder's status was given for running out.
+	BeatStatusLapsed machine.Beat = "status_lapsed"
+
+	// factLapsedApplication is the application a status_lapsed event is about.
+	factLapsedApplication machine.FactName = "lapsed.application"
 )
 
 // Bind supplies a fresh closed vocabulary bound to immutable display/origin
@@ -148,6 +153,13 @@ func machineVocabulary() machine.Vocabulary {
 		factOwnerSource:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.SourceID }),
 		factMembersBefore: membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Before }),
 		factMembersAfter:  membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.After }),
+		factLapsedApplication: {Kind: machine.KindString, Read: func(frame any) (any, bool) {
+			e, ok := frame.(dndevents.StatusLapsedEvent)
+			if !ok {
+				return nil, false
+			}
+			return e.ApplicationID, true
+		}},
 		FactOpportunity: {Kind: machine.KindBool, Read: func(frame any) (any, bool) {
 			q, err := queryFrom(frame)
 			if err != nil || q.Action == nil {
@@ -177,10 +189,11 @@ func machineVocabulary() machine.Vocabulary {
 			}
 			return e.MemberID, e.MemberID != ""
 		}, nil),
-		BeatRest:        typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
-		BeatCombatEnd:   typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
-		BeatCombatStart: typedBeat(dndevents.CombatStartTopic, func(e dndevents.CombatStartEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
-		BeatRunEnd:      typedBeat(dndevents.RunEndTopic, func(e dndevents.RunEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatRest:         typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
+		BeatCombatEnd:    typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatCombatStart:  typedBeat(dndevents.CombatStartTopic, func(e dndevents.CombatStartEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatRunEnd:       typedBeat(dndevents.RunEndTopic, func(e dndevents.RunEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatStatusLapsed: typedBeat(dndevents.StatusLapsedTopic, func(e dndevents.StatusLapsedEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
 		BeatDroppedToZero: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || !e.DroppedToZero {
 				return "", false

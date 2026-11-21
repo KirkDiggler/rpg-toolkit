@@ -30,6 +30,16 @@ type CompileInput struct {
 	// {"name":…, "changes":[…], "maintenance":[…], "again":…}, with an
 	// optional "when_given":[…].
 	Status json.RawMessage
+
+	// Until, when set, is how long the status is given for: it ends when those
+	// rounds are up, in addition to the endings the status states itself.
+	Until *Until
+}
+
+// Until is a status given for a number of rounds of world time; the timer is
+// kept by whoever gives it, and tells the holder when the rounds are up.
+type Until struct {
+	Rounds int
 }
 
 // CompileOutput is the authored status as the engine runs it.
@@ -97,6 +107,12 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	if err := c.status(top); err != nil {
 		return nil, err
 	}
+	if in.Until != nil {
+		if in.Until.Rounds < 1 || in.Until.Rounds > 1000 {
+			return nil, fmt.Errorf("%w: until.rounds must be a whole number of one or more, at most 1000", ErrBadStatus)
+		}
+		c.timed = true
+	}
 	library, err := c.library()
 	if err != nil {
 		return nil, err
@@ -115,6 +131,7 @@ type compiler struct {
 	benefits    []string
 	maintenance []string
 	whenGiven   []WhenGivenAct
+	timed       bool // given for a number of rounds: carries a lapse part
 }
 
 func (c *compiler) status(top map[string]jsontext.Value) error {
@@ -339,6 +356,12 @@ func (c *compiler) library() (json.RawMessage, error) {
 	}
 	if len(c.maintenance) == 0 {
 		return nil, fmt.Errorf("%w: maintenance: needs at least one rule, or the status would never end", ErrBadStatus)
+	}
+	if c.timed {
+		// After the check above: the giving's until is in addition to the
+		// endings the status states itself, never instead of them.
+		c.parts["lapse"] = map[string]any{"kind": "lapse"}
+		c.maintenance = append(c.maintenance, "lapse")
 	}
 	maintenance := make([]map[string]string, 0, len(c.maintenance))
 	for _, key := range c.maintenance {
