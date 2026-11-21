@@ -1395,6 +1395,11 @@ type ApplyStatusSpec struct {
 	// To is who receives it: a who-word of `apply_status.to`.
 	To string `yaml:"to"`
 
+	// Until is how long the status lasts, written where it is given
+	// (rpg-project#1080): `until: { rounds: 3 }`. Nil is a status with no
+	// time of its own.
+	Until *StatusUntilSpec `yaml:"until,omitempty"`
+
 	// short is the bare id the refused short form wrote; empty otherwise.
 	short string
 	// others is every key written beside `status` and `to`, refused.
@@ -1442,11 +1447,86 @@ func (a *ApplyStatusSpec) UnmarshalYAML(value *yaml.Node) error {
 			} else {
 				a.To = word
 			}
+		case "until":
+			a.Until = &StatusUntilSpec{}
+			// Decoded by hand: a null `until` would never reach the
+			// unmarshaler through a pointer, and it is a fault to keep.
+			if err := a.Until.UnmarshalYAML(v); err != nil {
+				return err
+			}
 		default:
 			a.others = append(a.others, k.Value)
 		}
 	}
 	return nil
+}
+
+// StatusUntilSpec is an `apply_status:`'s `until:` (rpg-project#1080): how long the
+// status given lasts, in rounds of world time, written where it is given.
+//
+//	until: { rounds: 3 }
+//
+// Only `rounds` is built. Like [ApplyStatusSpec] it keeps what it cannot
+// carry (a scalar, an empty mapping, another key, a rounds that is not a
+// number) for the grammar to refuse at the author's path.
+type StatusUntilSpec struct {
+	// Rounds is how many rounds of world time, 1 to 1000.
+	Rounds int `yaml:"rounds"`
+
+	// notMapping is `until: 3`, a scalar or list.
+	notMapping bool
+	// empty is `until: {}` or `until: ~`.
+	empty bool
+	// roundsWritten is whether a `rounds` key was written.
+	roundsWritten bool
+	// notNumber is a `rounds` that is not a whole number.
+	notNumber bool
+	// others is every key written beside `rounds`, refused.
+	others []string
+}
+
+// UnmarshalYAML reads `until:` as a mapping of `rounds`, keeping every fault
+// for the grammar.
+//
+// Errors: a key written twice, at its line in yaml.v3's own sentence.
+func (u *StatusUntilSpec) UnmarshalYAML(value *yaml.Node) error {
+	switch {
+	case value.Kind == yaml.ScalarNode && value.Tag == "!!null":
+		u.empty = true
+		return nil
+	case value.Kind != yaml.MappingNode:
+		u.notMapping = true
+		return nil
+	case len(value.Content) == 0:
+		u.empty = true
+		return nil
+	}
+	seen := map[string]int{}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		k, v := value.Content[i], value.Content[i+1]
+		if err := repeatedKey(seen, k); err != nil {
+			return err
+		}
+		if k.Value != "rounds" {
+			u.others = append(u.others, k.Value)
+			continue
+		}
+		u.roundsWritten = true
+		n, err := strconv.Atoi(v.Value)
+		if v.Kind != yaml.ScalarNode || v.Tag != "!!int" || err != nil {
+			u.notNumber = true
+			continue
+		}
+		u.Rounds = n
+	}
+	return nil
+}
+
+// MarshalYAML writes `{ rounds: N }`, so a studio save writes it back the same.
+func (u StatusUntilSpec) MarshalYAML() (any, error) {
+	return struct {
+		Rounds int `yaml:"rounds"`
+	}{u.Rounds}, nil
 }
 
 // RelocateSpec is a row's `relocate:` ([encounter.RelocateGrant]): the

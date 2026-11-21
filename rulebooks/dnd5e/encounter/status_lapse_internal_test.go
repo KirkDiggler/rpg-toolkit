@@ -160,8 +160,14 @@ func TestAFightRoundCountsOnce(t *testing.T) {
 func TestATimeJumpElapsesALapse(t *testing.T) {
 	enc, rec := lapseScene(t)
 	arm(t, enc, "bob", "app", 3)
+	// A creature's wake armed beside the lapse: the jump shifts it as ever,
+	// and the lapse fires on the raised world round, not shifted.
+	// Rounds pass only when someone acts or waits (Wait is rpg-project#1079).
+	enc.due.Arm("alice", 50)
+	enc.dueAt["alice"] = 50
 	require.NoError(t, enc.elapseWorld(600))
 	require.Len(t, rec.lapsesSeen(), 1, "three rounds of a long rest are passed")
+	require.Equal(t, uint64(650), enc.dueAt["alice"], "the creature's wake is shifted by the jump as before")
 }
 
 func TestALapseSurvivesSaveAndLoad(t *testing.T) {

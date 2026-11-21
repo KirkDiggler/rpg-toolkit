@@ -49,7 +49,8 @@ var saidKeys = map[string][]string{
 	"advance":            {"interaction", "success", "failure"},
 	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "apply_status", "activity", "weight"},
 	"relocate":           {"to", "words", "rounds"},
-	"applyStatus":        {"status", "to"},
+	"applyStatus":        {"status", "to", "until"},
+	"statusUntil":        {"rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
 	"recipe":             {"ref", "initial", "states"},
@@ -130,6 +131,7 @@ func (b *builder) notYetSaid() []Unsaid {
 					give(r, rp)
 					check(at(r, "relocate"), rp+".relocate", "relocate")
 					check(at(r, "apply_status"), rp+".apply_status", "applyStatus")
+					check(at(at(r, "apply_status"), "until"), rp+".apply_status.until", "statusUntil")
 					check(at(r, "activity"), rp+".activity", "activity")
 				})
 			}
