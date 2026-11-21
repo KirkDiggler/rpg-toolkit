@@ -66,9 +66,13 @@ func (b *builder) statusGrantStatement(g encounter.StatusGrant, lead, path strin
 	// the id's closing bracket and the full stop, and "for N rounds" folded.
 	var until, foldedFor string
 	if g.Until != nil {
-		until = fmt.Sprintf(" until %d rounds of world time have passed, or sooner if one of the status's own endings comes first",
-			g.Until.Rounds)
-		foldedFor = fmt.Sprintf(" for %d rounds", g.Until.Rounds)
+		unit, passed := "rounds", "have"
+		if g.Until.Rounds == 1 {
+			unit, passed = "round", "has"
+		}
+		until = fmt.Sprintf(" until %d %s of world time %s passed, or sooner if one of the status's own endings comes first",
+			g.Until.Rounds, unit, passed)
+		foldedFor = fmt.Sprintf(" for %d %s", g.Until.Rounds, unit)
 	}
 	s := fmt.Sprintf("%s, %s is given the status %s (%s)%s. The rules apply it to them; a second giving does what the status's "+
 		"`again` says.", lead, who, said(name), quote(g.ID), until)

@@ -924,12 +924,10 @@ func (g *grammar) until(at string, u *StatusUntilSpec) {
 	switch {
 	case u.notNumber:
 		g.fail(at+".rounds", "%s", encounter.StatusUntilRefusal(0))
-	case u.roundsWritten:
+	case len(u.others) == 0:
 		if why := encounter.StatusUntilRefusal(u.Rounds); why != "" {
 			g.fail(at+".rounds", "%s", why)
 		}
-	case len(u.others) == 0:
-		g.fail(at+".rounds", "%s", encounter.StatusUntilRefusal(0))
 	}
 }
 

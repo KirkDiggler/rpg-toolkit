@@ -47,6 +47,17 @@ func TestStatusUntilIsSaid(t *testing.T) {
 	require.Contains(t, folded, "gives the speaker's side in its sight the status “Held” for 3 rounds")
 }
 
+// One round is "1 round", never "1 rounds".
+func TestStatusUntilOneRoundIsSaidInTheSingular(t *testing.T) {
+	given, folded := theHeldRowSaid(t,
+		"                apply_status: { status: held, to: party_in_sight, until: { rounds: 1 } }\n")
+	require.Contains(t, given.Sentence, "until 1 round of world time has passed, or sooner")
+	require.NotContains(t, given.Sentence, "until 1 rounds")
+	require.Contains(t, folded, "the status “Held” for 1 round")
+	t.Logf("%q", folded)
+	require.NotContains(t, folded, "for 1 rounds")
+}
+
 // Without `until` the sentence is the one that has always been said.
 func TestStatusWithoutUntilIsSaidAsBefore(t *testing.T) {
 	given, folded := theHeldRowSaid(t, heldRow)
