@@ -125,12 +125,6 @@ check_module() {
         echo "⚠️  golangci-lint not found, skipping linter checks"
     fi
     
-    # Run tests only on changed packages (faster)
-    echo "→ Running tests on changed packages..."
-    if ! (cd "$module" && go test -race $MODULE_PACKAGES); then
-        module_passed=false
-    fi
-    
     if [[ "$module_passed" == "true" ]]; then
         echo -e "${GREEN}✓ Module $module_name passed all checks${NC}"
         

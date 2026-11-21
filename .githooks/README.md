@@ -56,7 +56,11 @@ For each module with changes:
 1. **Formatting** - `go fmt` on changed packages
 2. **Dependencies** - `go mod tidy` 
 3. **Linting** - `golangci-lint` on changed packages
-4. **Tests** - `go test -race` on changed packages
+
+Tests are not forced at commit: the operator ruled that the hook runs the linter
+and CI is the catch-all ([#2517](https://github.com/KirkDiggler/rpg-toolkit/issues/2517)).
+Run them yourself with the commands in [`docs/how-to/run-tests.md`](../docs/how-to/run-tests.md);
+CI runs them under the race detector on every pull request.
 
 ### Performance Comparison
 
