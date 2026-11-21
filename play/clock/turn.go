@@ -15,6 +15,24 @@ type Turn struct {
 	order     []core.EntityID
 	activeIdx int
 	round     int
+	// nextRound holds members seated for the next round: they stand after the
+	// active slot and the clock passes over them until the round wraps.
+	nextRound map[core.EntityID]struct{}
+}
+
+// skipNextRound moves activeIdx forward past members seated for the next
+// round, deleting each as it is passed. It reports whether it ran off the end
+// of the order (activeIdx is then len(order)); the caller wraps.
+func (t *Turn) skipNextRound() (passedEnd bool) {
+	for t.activeIdx < len(t.order) {
+		id := t.order[t.activeIdx]
+		if _, marked := t.nextRound[id]; !marked {
+			return false
+		}
+		delete(t.nextRound, id)
+		t.activeIdx++
+	}
+	return true
 }
 
 // SetOrderInput carries the rulebook-rolled initiative order.
@@ -46,6 +64,7 @@ func (t *Turn) SetOrder(in *SetOrderInput) (*SetOrderOutput, error) {
 	t.order = append([]core.EntityID(nil), in.Order...)
 	t.activeIdx = 0
 	t.round = 1
+	t.nextRound = nil
 	return &SetOrderOutput{Milestones: []Milestone{
 		{Kind: RoundStarted, Round: 1},
 		{Kind: TurnStarted, Subject: t.order[0], Round: 1},
@@ -109,7 +128,8 @@ type EndOutput struct {
 	RoundWrapped bool
 }
 
-// End advances past Actor's turn. Errors: ErrNilInput, ErrIdle, ErrNotActive (with no
+// End advances past Actor's turn, passing over members seated for the next
+// round: they get no turn-start or turn-end of their own. Errors: ErrNilInput, ErrIdle, ErrNotActive (with no
 // state change — R5).
 func (t *Turn) End(in *EndInput) (*EndOutput, error) {
 	if in == nil {
@@ -125,10 +145,11 @@ func (t *Turn) End(in *EndInput) (*EndOutput, error) {
 	ms := []Milestone{{Kind: TurnEnded, Subject: active, Round: t.round}}
 	t.activeIdx++
 	wrapped := false
-	if t.activeIdx >= len(t.order) {
+	if t.skipNextRound() {
 		t.activeIdx = 0
 		t.round++
 		wrapped = true
+		t.nextRound = nil // guard: already empty, every mark passed was deleted
 		ms = append(ms, Milestone{Kind: RoundStarted, Round: t.round})
 	}
 	next := t.order[t.activeIdx]
@@ -140,6 +161,9 @@ func (t *Turn) End(in *EndInput) (*EndOutput, error) {
 type InsertInput struct {
 	ID  core.EntityID
 	Pos int
+	// NextRound seats the member with no turn in the current round: the clock
+	// passes over it until the round wraps. Read only by an ordered clock.
+	NextRound bool
 }
 
 // InsertOutput reports the milestones Insert caused.
@@ -168,6 +192,11 @@ func (t *Turn) Insert(in *InsertInput) (*InsertOutput, error) {
 	t.order[in.Pos] = in.ID
 	if in.Pos <= t.activeIdx {
 		t.activeIdx++
+	} else if in.NextRound {
+		if t.nextRound == nil {
+			t.nextRound = make(map[core.EntityID]struct{})
+		}
+		t.nextRound[in.ID] = struct{}{}
 	}
 	return &InsertOutput{Milestones: []Milestone{
 		{Kind: MemberJoined, Subject: in.ID, Round: t.round},
@@ -195,6 +224,7 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 		return nil, fmt.Errorf("remove %q: %w", in.ID, ErrNotMember)
 	}
 	wasActive := idx == t.activeIdx
+	delete(t.nextRound, in.ID)
 	t.order = append(t.order[:idx], t.order[idx+1:]...)
 	ms := []Milestone{{Kind: MemberLeft, Subject: in.ID, Round: t.round}}
 	// order matters: sole-member removal is also wasActive; wasActive arm indexes into possibly-empty order
@@ -202,9 +232,15 @@ func (t *Turn) Remove(in *RemoveInput) (*RemoveOutput, error) {
 	case len(t.order) == 0:
 		t.activeIdx = 0
 		t.round = 0
+		t.nextRound = nil
 	case wasActive:
-		if t.activeIdx >= len(t.order) {
-			t.activeIdx = 0 // active was last; next is first, round unchanged
+		if t.skipNextRound() {
+			// Active was last, or every member after it was seated for the next
+			// round: next is first, round unchanged. A member seated for the next
+			// round takes its place in the pass that begins here, although the
+			// round number has not moved.
+			t.activeIdx = 0
+			t.nextRound = nil // guard: already empty, every mark passed was deleted
 		}
 		ms = append(ms, Milestone{Kind: TurnStarted, Subject: t.order[t.activeIdx], Round: t.round})
 	case idx < t.activeIdx:
@@ -266,7 +302,13 @@ func (t *Turn) Merge(in *MergeInput) (*MergeOutput, error) {
 	active := t.order[t.activeIdx]
 	t.order = append([]core.EntityID(nil), in.Order...)
 	t.activeIdx = t.indexOf(active)
+	for id := range t.nextRound {
+		if t.indexOf(id) <= t.activeIdx {
+			delete(t.nextRound, id)
+		}
+	}
 	in.Other.order = nil
+	in.Other.nextRound = nil // guard: Other's clock is reset, so its set must not outlive its order
 	in.Other.activeIdx = 0
 	in.Other.round = 0
 	return &MergeOutput{Milestones: []Milestone{{Kind: Merged, Round: t.round}}}, nil
@@ -299,6 +341,7 @@ func (t *Turn) Dissolve(in *DissolveInput) (*DissolveOutput, error) {
 	t.order = nil
 	t.activeIdx = 0
 	t.round = 0
+	t.nextRound = nil
 	return &DissolveOutput{
 		Members:    members,
 		Milestones: []Milestone{{Kind: Dissolved, Round: round}},
@@ -311,6 +354,9 @@ type TurnData struct {
 	Order     []core.EntityID `json:"order,omitempty"`
 	ActiveIdx int             `json:"active_idx,omitempty"`
 	Round     int             `json:"round,omitempty"`
+	// NextRound lists, in order position, the members seated for the next
+	// round: they have no turn in the current round.
+	NextRound []core.EntityID `json:"next_round,omitempty"`
 }
 
 // ToData snapshots the clock. Family-convention exemption from R3 (design).
@@ -319,7 +365,18 @@ func (t *Turn) ToData() TurnData {
 		Order:     append([]core.EntityID(nil), t.order...),
 		ActiveIdx: t.activeIdx,
 		Round:     t.round,
+		NextRound: t.nextRoundInOrder(),
 	}
+}
+
+func (t *Turn) nextRoundInOrder() []core.EntityID {
+	var out []core.EntityID
+	for _, id := range t.order {
+		if _, ok := t.nextRound[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // LoadTurn reconstructs a Turn from persisted state. A constructor, not a
@@ -331,6 +388,9 @@ func LoadTurn(data TurnData) (*Turn, error) {
 		}
 		if data.Round != 0 {
 			return nil, fmt.Errorf("load turn: idle clock with round %d: %w", data.Round, ErrInvalidData)
+		}
+		if len(data.NextRound) != 0 {
+			return nil, fmt.Errorf("load turn: idle clock with next-round members: %w", ErrInvalidData)
 		}
 		return &Turn{}, nil
 	}
@@ -350,10 +410,34 @@ func LoadTurn(data TurnData) (*Turn, error) {
 	if data.Round < 1 {
 		return nil, fmt.Errorf("load turn: round %d with non-empty order: %w", data.Round, ErrInvalidData)
 	}
+	var nextRound map[core.EntityID]struct{}
+	for _, id := range data.NextRound {
+		idx := -1
+		for i, m := range data.Order {
+			if m == id {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, fmt.Errorf("load turn: next-round member %q is not in the order: %w", id, ErrInvalidData)
+		}
+		if idx <= data.ActiveIdx {
+			return nil, fmt.Errorf("load turn: next-round member %q is at or before the active slot: %w", id, ErrInvalidData)
+		}
+		if _, dup := nextRound[id]; dup {
+			return nil, fmt.Errorf("load turn: next-round member %q listed twice: %w", id, ErrInvalidData)
+		}
+		if nextRound == nil {
+			nextRound = make(map[core.EntityID]struct{})
+		}
+		nextRound[id] = struct{}{}
+	}
 	return &Turn{
 		order:     append([]core.EntityID(nil), data.Order...),
 		activeIdx: data.ActiveIdx,
 		round:     data.Round,
+		nextRound: nextRound,
 	}, nil
 }
 
@@ -361,6 +445,9 @@ func LoadTurn(data TurnData) (*Turn, error) {
 type JoinMemberInput struct {
 	ID  core.EntityID
 	Pos int
+	// NextRound seats the member with no turn in the current round; read only
+	// by an ordered clock (Tick ignores it, as it ignores Pos).
+	NextRound bool
 }
 
 // JoinMemberOutput is the Joiner seam's output shape.
@@ -384,7 +471,7 @@ func (t *Turn) JoinMember(in *JoinMemberInput) (*JoinMemberOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("join member: %w", ErrNilInput)
 	}
-	out, err := t.Insert(&InsertInput{ID: in.ID, Pos: in.Pos})
+	out, err := t.Insert(&InsertInput{ID: in.ID, Pos: in.Pos, NextRound: in.NextRound})
 	if err != nil {
 		return nil, err
 	}

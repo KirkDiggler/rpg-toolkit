@@ -33,6 +33,9 @@ type TransferInput struct {
 	To   Membership
 	ID   core.EntityID
 	Pos  int
+	// NextRound seats ID with no turn in the current round when To is ordered;
+	// an unordered To ignores it.
+	NextRound bool
 }
 
 // TransferOutput reports the transfer's milestones, leave-then-join.
@@ -56,7 +59,7 @@ func Transfer(in *TransferInput) (*TransferOutput, error) {
 	if in.From == in.To {
 		return nil, fmt.Errorf("transfer %q: from and to are the same clock: %w", in.ID, ErrSameClock)
 	}
-	join, err := in.To.JoinMember(&JoinMemberInput{ID: in.ID, Pos: in.Pos})
+	join, err := in.To.JoinMember(&JoinMemberInput{ID: in.ID, Pos: in.Pos, NextRound: in.NextRound})
 	if err != nil {
 		return nil, fmt.Errorf("transfer %q: join: %w", in.ID, err)
 	}
