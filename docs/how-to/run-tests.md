@@ -121,8 +121,11 @@ tests/lint pass. Record that exact failure and the successful owning-module
 evidence; do not bypass hooks or claim the target passed.
 
 The installed `.githooks/pre-commit` script is different from the Make target.
-It inspects staged `.go` files, discovers their owning modules, and checks only
-those changed packages. With no staged Go files (for example, a documentation-
+It inspects staged `.go` files, discovers their owning modules, and runs
+formatting, `go mod tidy` and the linter on only those changed packages. It does
+not run tests; run them yourself with the commands on this page, and CI runs them
+on every pull request. `make pre-commit` is unchanged and remains the by-choice
+full check. With no staged Go files (for example, a documentation-
 only commit), it exits successfully after reporting that fact.
 
 ## Formatting, dependency, and diff checks
