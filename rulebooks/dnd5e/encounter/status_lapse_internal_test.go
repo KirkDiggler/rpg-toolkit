@@ -93,6 +93,8 @@ func TestALapseFiresWhenTheWorldReachesItsRound(t *testing.T) {
 	require.Equal(t, Boundary{Kind: StatusLapsed, Subject: "bob", Application: "status:s:held:bob"}, got[0])
 	require.Zero(t, got[0].Round, "a world round is not a fight round")
 
+	require.Empty(t, enc.ToData().Lapses, "a fired timer is gone from the saved record")
+
 	raise(t, enc, 3)
 	require.Len(t, rec.lapsesSeen(), 1, "fired once, never again")
 }
@@ -193,6 +195,36 @@ func TestALapseSurvivesSaveAndLoad(t *testing.T) {
 	}
 	require.Empty(t, rec.lapsesSeen())
 	require.NoError(t, loaded.spendWorldAction("alice"))
+	require.Len(t, rec.lapsesSeen(), 2, "each fires once")
+}
+
+// A TIMER SURVIVES THE PIECES: the checkpoint's rest is split and joined by the
+// store, and the timers are in the head it carries.
+func TestALapseSurvivesThePieces(t *testing.T) {
+	enc, _ := lapseScene(t)
+	arm(t, enc, "bob", "app-b", 3)
+	arm(t, enc, "bob", "app-a", 3)
+
+	ck, err := enc.ToCheckpoint(&ToCheckpointInput{})
+	require.NoError(t, err)
+	data := ck.Rest
+	require.Len(t, data.Lapses, 2)
+	split, err := SplitPieces(&SplitPiecesInput{Data: &data})
+	require.NoError(t, err)
+	held := map[PieceKey][]byte{}
+	for key, piece := range split.Pieces {
+		held[key] = piece.Bytes
+	}
+	joined, err := JoinPieces(&JoinPiecesInput{Pieces: held})
+	require.NoError(t, err)
+	require.Equal(t, data.Lapses, joined.Lapses, "the timers come back as they went in")
+
+	rec := &lapseAnnouncer{}
+	loaded, err := LoadEncounter(&LoadEncounterInput{Data: *joined, Capabilities: lapseCapabilities(rec)})
+	require.NoError(t, err)
+	for i := 0; i < 3; i++ {
+		require.NoError(t, loaded.spendWorldAction("alice"))
+	}
 	require.Len(t, rec.lapsesSeen(), 2, "each fires once")
 }
 

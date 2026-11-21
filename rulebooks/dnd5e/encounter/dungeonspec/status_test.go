@@ -171,6 +171,17 @@ func TestDungeonspec_AStatusIsNotATableRow(t *testing.T) {
 	}
 }
 
+// AN `until` ON A TABLE ROW IS REFUSED ONCE: the row grants nothing, so the one
+// refusal is the row's, with no second one about the `until` it also wrote.
+func TestDungeonspec_AnUntilOnATableRowIsRefusedOnce(t *testing.T) {
+	errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
+		"        - say: Not one step further without my say.\n"+
+			"          apply_status: { status: warmed-up, to: speaker, until: 3 }\n"))
+	require.Len(t, errs, 1, "exactly one refusal: %v", errs)
+	require.Equal(t, "apply_status is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
+	require.True(t, strings.HasSuffix(errs[0].Path, ".apply_status"), "at the row's own key: %s", errs[0].Path)
+}
+
 // A SITE THAT DECLARES NO STATUS GIVES NONE: the refusal says there are none.
 func TestDungeonspec_AStatusNeedsADeclaration(t *testing.T) {
 	source := vaultWithAStatus(t, vaultStatus, "")

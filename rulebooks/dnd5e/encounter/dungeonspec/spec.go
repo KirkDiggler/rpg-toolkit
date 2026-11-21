@@ -1477,8 +1477,6 @@ type StatusUntilSpec struct {
 	notMapping bool
 	// empty is `until: {}` or `until: ~`.
 	empty bool
-	// roundsWritten is whether a `rounds` key was written.
-	roundsWritten bool
 	// notNumber is a `rounds` that is not a whole number.
 	notNumber bool
 	// others is every key written beside `rounds`, refused.
@@ -1511,7 +1509,6 @@ func (u *StatusUntilSpec) UnmarshalYAML(value *yaml.Node) error {
 			u.others = append(u.others, k.Value)
 			continue
 		}
-		u.roundsWritten = true
 		n, err := strconv.Atoi(v.Value)
 		if v.Kind != yaml.ScalarNode || v.Tag != "!!int" || err != nil {
 			u.notNumber = true
