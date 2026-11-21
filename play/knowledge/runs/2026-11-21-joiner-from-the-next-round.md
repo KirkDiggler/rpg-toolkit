@@ -4,7 +4,7 @@ Slice [rpg-project#1071](https://github.com/KirkDiggler/rpg-project/issues/1071)
 
 ## Shipped
 
-- A member inserted into a turn order for the next round is passed over until the round wraps, survives a save, and rides Insert, JoinMember and Transfer — [rpg-project#1071](https://github.com/KirkDiggler/rpg-project/issues/1071).
+- A member inserted into a turn order for the next round is passed over until the round wraps, survives a save, and rides Insert, JoinMember and Transfer — [rpg-toolkit#2507](https://github.com/KirkDiggler/rpg-toolkit/pull/2507).
 
 ## Decided
 
