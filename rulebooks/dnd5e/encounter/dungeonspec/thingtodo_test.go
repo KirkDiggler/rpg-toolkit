@@ -35,7 +35,7 @@ func TestDungeonspec_AThingToDoCompiles(t *testing.T) {
 			}
 		case "altar":
 			found++
-			require.Len(t, p.Options, 1)
+			require.Len(t, p.Options, 2, "examine it, and pray at it")
 			require.Equal(t, "You examine the altar.", p.Options[0].Do)
 			require.Equal(t, "looks the altar over", p.Options[0].Seen)
 		}

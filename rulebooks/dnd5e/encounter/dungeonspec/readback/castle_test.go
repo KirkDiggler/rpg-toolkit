@@ -745,6 +745,28 @@ func (s *CastleSuite) TestTheCooksStatusesAreSaid() {
 	}
 }
 
+// THE CHAPEL'S PRAYER IS SAID (rpg-project#1036): the declared status `prayed`
+// has its statement, and the altar's `pray` row says the speaker is given it.
+func (s *CastleSuite) TestTheAltarsPrayerStatusIsSaid() {
+	const path = "room.room.propBindings.altar.options[1].success[0].apply_status"
+	var declared, given *readback.Statement
+	for _, st := range s.rb.Statements() {
+		switch {
+		case st.Kind == readback.KindStatus && st.About.ID == "prayed":
+			declared = &st
+		case st.Kind == readback.KindLineGrant && st.Path == path:
+			given = &st
+		}
+	}
+	s.Require().NotNil(declared, "the declared status prayed is said")
+	s.Equal("statuses.prayed", declared.Path)
+	s.Contains(declared.Sentence, "named “Prayed”")
+	s.Require().NotNil(given, "the altar's pray row is said")
+	s.Contains(given.Sentence, "the one who did it, whether or not anyone sees them, is given the status “Prayed” (`prayed`)")
+	s.Contains(given.Connects, readback.Connection{Kind: readback.ConnStatus, ID: "prayed", Role: readback.RoleGives})
+	s.Contains(given.Connects, readback.Connection{Kind: readback.ConnWho, ID: "speaker", Role: readback.RoleReceives, At: "prayed"})
+}
+
 // THE HALL GUARD HOLDS WHOM HE SEES (rpg-project#990): `push-past` missed
 // gives `held` to the speaker's party in his sight, said in plain words and
 // connected to the who-word that receives it.
