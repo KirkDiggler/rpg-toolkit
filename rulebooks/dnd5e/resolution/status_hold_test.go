@@ -10,8 +10,10 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	effects "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
@@ -19,6 +21,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 )
@@ -253,6 +256,62 @@ func (s *StatusHoldSuite) TestASpellHoldStillReadsAsItDid() {
 	s.Equal(refs.Spells.Bless().String(), broke.Spell.Ref)
 	s.Require().Len(broke.Removed, 1)
 	s.Equal("Blessed", broke.Removed[0].Name)
+}
+
+// A cast is still a spell: the widened reader is for what a member holds, and a
+// cast naming a status is refused before a slot is spent.
+func (s *StatusHoldSuite) TestACastNamingAStatusIsRefused() {
+	f := s.fixtures()
+	definition := baneDefinition().Clone()
+	definition.Ref = StatusSourceRef(heldID)
+	machine, err := NewAction(&ActionInput{
+		ApplicationID: "status-cast", Definition: definition, AttackerID: bardID,
+		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 1},
+	})
+	s.Require().NoError(err)
+	caster := baneCaster(1)
+	before, err := json.Marshal(caster)
+	s.Require().NoError(err)
+
+	out, err := f.resolve(f.saver(14), machine, baneCost(), caster)
+	s.Require().ErrorIs(err, ErrBadAction)
+	s.Nil(out, "no cast outcome is written")
+	after, err := json.Marshal(caster)
+	s.Require().NoError(err)
+	s.Equal(before, after, "no spell slot is spent")
+}
+
+func (s *StatusHoldSuite) TestAHoldThatIsNeitherASpellNorAStatusIsRefusedAtLoad() {
+	f := s.fixtures()
+	wolf := f.wolfData()
+	hold := fixtureHold(s.T(), holdFixtureInput{
+		Member: wolfID, Source: &core.Ref{Module: "dnd5e", Type: "items", ID: "wand"},
+		Name: "Wand", Turns: 10,
+	})
+	raw, err := hold.ToJSON()
+	s.Require().NoError(err)
+	wolf.Conditions = append(wolf.Conditions, raw)
+
+	out, err := s.strike(wolf, f.saver(14), f.bard(1), "1d6",
+		&sequenceRoller{singles: []int{straightRoll}, pair: []int{4}})
+	s.Require().ErrorIs(err, ErrBadAction)
+	s.Require().ErrorContains(err, "neither a spell nor a status")
+	s.Nil(out)
+}
+
+// The wolf saves with its bare Constitution modifier and nothing else.
+func (s *StatusHoldSuite) TestAMonsterSavesWithItsBareConstitutionModifier() {
+	wolf, hero, bard := s.hold()
+	wolf.AbilityScores = shared.AbilityScores{abilities.CON: 14}
+
+	out, err := s.strike(wolf, hero, bard, "1d6",
+		&sequenceRoller{singles: []int{straightRoll, 18}, pair: []int{4}})
+	s.Require().NoError(err)
+
+	s.Require().Len(out.ConcentrationChecks, 1)
+	save := out.ConcentrationChecks[0].Save
+	s.Equal(18, save.Roll)
+	s.Equal(18+2, save.Total, "CON 14 is +2, with no proficiency added")
 }
 
 func statusRefString() string {

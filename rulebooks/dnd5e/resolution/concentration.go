@@ -108,11 +108,11 @@ func (c *concentrationCollector) spellHeldBy(
 		return encounter.SpellIdentity{}, err
 	}
 	if held.Held {
-		return nativeMaintenanceSpell(held.Info.SourceRef, held.Info.SourceName)
+		return nativeMaintenanceHold(held.Info.SourceRef, held.Info.SourceName)
 	}
 	for _, fact := range c.facts {
 		if fact.MaintainerID == casterID {
-			return nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
+			return nativeMaintenanceHold(fact.SourceRef, fact.SourceName)
 		}
 	}
 
@@ -240,7 +240,7 @@ func breaksFrom(
 
 	breaks := make([]encounter.ConcentrationBreak, 0, len(facts))
 	for _, fact := range facts {
-		spell, err := nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
+		spell, err := nativeMaintenanceHold(fact.SourceRef, fact.SourceName)
 		if err != nil {
 			return nil, err
 		}
