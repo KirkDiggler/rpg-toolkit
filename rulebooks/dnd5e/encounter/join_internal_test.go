@@ -521,3 +521,20 @@ func TestAMemberWhoLeavesTheFightTakesItsTotalWithIt(t *testing.T) {
 	require.Empty(t, enc.initiativeTotals, "and so are its totals")
 	require.Empty(t, enc.ToData().Initiative)
 }
+
+func TestAJoinWithABadSecondRollMovesNobody(t *testing.T) {
+	bad := joinRoll("wolf", 10)
+	bad.Roll, bad.Total = 0, 0
+	bad.Calculation = &RollCalculation{Components: bad.Calculation.Components, Total: 0}
+	enc := newJoinEnc(t, scriptedRolls{"ogre": joinRoll("ogre", 15), "wolf": bad})
+	formThree(t, enc)
+	before, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+
+	_, _, err = enc.joinFight([]MemberID{"ogre", "wolf"})
+	require.ErrorIs(t, err, ErrInvalidData)
+
+	after, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	require.Equal(t, string(before), string(after), "the good first joiner did not get in either")
+}

@@ -472,7 +472,9 @@ func (e *Encounter) formation(engaged map[MemberID]bool, contact map[MemberID]bo
 	// rolling initiative and is placed by that roll (join.go,
 	// rpg-project#1068): in the fight's first round among those who have not
 	// acted yet, in a later round at its rolled place with no turn in the
-	// round it joins. No latecomer gets a turn ahead of somebody mid-fight.
+	// round it joins. In the first round a joiner whose roll would put it
+	// earlier than where the round has got to lands straight after the one
+	// acting; it never acts before somebody who has already acted.
 	if len(e.bubbles) > 0 {
 		var joined []MemberID
 		for _, id := range form {

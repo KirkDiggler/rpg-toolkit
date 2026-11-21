@@ -3229,9 +3229,11 @@ type TransferOutput struct {
 	Paused bool
 }
 
-// Transfer moves a member between the world clock and the running bubble —
-// the straggler who wandered too close falls in mid-round at a caller-chosen
-// slot, and someone the fight is done with steps back out without ending it.
+// Transfer moves a member between the world clock and the running bubble at
+// a caller-chosen slot, and someone the fight is done with steps back out
+// without ending it. It is the caller-placed verb: a straggler or a walker
+// joining a fight comes in through joinFight, which rolls its initiative and
+// places it by the rule (join.go).
 // R6 holds through the move: the underlying play/clock Transfer joins first
 // and compensates on failure, so a rejected transfer leaves both clocks
 // exactly as they were.

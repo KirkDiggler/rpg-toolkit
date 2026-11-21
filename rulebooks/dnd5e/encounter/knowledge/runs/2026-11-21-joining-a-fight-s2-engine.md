@@ -24,6 +24,8 @@ Slice [rpg-project#1075](https://github.com/KirkDiggler/rpg-project/issues/1075)
 - No existing transcript, scripted die sequence or stand-in roller needed changing in this module (`goblinFirst` and the scripted-dice session tests live in other places or did not break) — [https://github.com/KirkDiggler/rpg-toolkit/pull/2509](https://github.com/KirkDiggler/rpg-toolkit/pull/2509).
 - A fight of players alone dissolves at the first turn, so the new tests stand a goblin last in the order; its turns are driven on the way past — [https://github.com/KirkDiggler/rpg-toolkit/pull/2509](https://github.com/KirkDiggler/rpg-toolkit/pull/2509).
 - Castle tests under `-race`: `TestAllyWalkTheVeteranJoinsFollowsAndFights` 1.68 s, `TestAllyWalkNotJoinedTheVeteranHolds` 0.58 s, `TestMadKingAStragglerIsVouchedFor` 1.01 s, `TestMadKingAStragglerMakesTheirOwnCase` 1.02 s, `TestMadKingAStragglerHasOneTry` 1.49 s, `TestMadKingAStragglerWhoWalksAwayKeepsTheRoll` 1.82 s — none crossed 10 s — [https://github.com/KirkDiggler/rpg-toolkit/pull/2509](https://github.com/KirkDiggler/rpg-toolkit/pull/2509).
+- The turn clock wraps by removal without advancing the round, so a recorded `first_round` can be one ahead in that case; older than this change — [rpg-toolkit#2508](https://github.com/KirkDiggler/rpg-toolkit/issues/2508).
+- No end-to-end replay with a join exists yet; the replay host reads any turn-ward `transferred` entry with `first_round` as a join — [rpg-toolkit#2504](https://github.com/KirkDiggler/rpg-toolkit/issues/2504).
 
 ## Mistaken
 
