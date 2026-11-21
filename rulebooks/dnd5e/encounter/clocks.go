@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -185,6 +186,7 @@ func (e *Encounter) leaveAnyClock(id MemberID) (map[MemberID]*IntelDelta, error)
 		if _, rerr := bubble.Remove(&clock.RemoveInput{ID: core.EntityID(id)}); rerr != nil {
 			return nil, rerr
 		}
+		delete(e.initiativeTotals[bubble], id)
 		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
 			return nil, derr
 		}
@@ -222,6 +224,7 @@ func (e *Encounter) dropBubbleIfIdle(b *clock.Turn) error {
 	for i, x := range e.bubbles {
 		if x == b {
 			e.bubbles = append(e.bubbles[:i], e.bubbles[i+1:]...)
+			delete(e.initiativeTotals, b)
 			break
 		}
 	}
@@ -3091,6 +3094,13 @@ func (e *Encounter) formWithParticipation(
 		return nil, fmt.Errorf("form set order: %w", serr)
 	}
 	e.bubbles = append(e.bubbles, bubble)
+	// Each validated roll's total is the fight's to keep: a creature that
+	// joins later is placed against these (join.go).
+	for _, roll := range in.Rolls {
+		if roll.Calculation != nil {
+			e.keepInitiativeTotal(bubble, roll.Member, roll.Total)
+		}
+	}
 
 	beat := map[string]interface{}{
 		"beat":  BeatFightStarted,
@@ -3191,6 +3201,15 @@ type TransferInput struct {
 	// and is only read when To is ClockTurn — the world clock is unordered,
 	// the same convention as the Membership seam's own JoinMember on a Tick.
 	Pos int
+
+	// Roll is the roll that placed the member, read only when To is ClockTurn.
+	// Its Member must be Member. With a Calculation it is validated, recorded
+	// on the transferred entry and its Total kept with the fight's totals.
+	Roll *InitiativeRoll
+
+	// NextRound says the member has no turn in the fight's current round. Read
+	// only when To is ClockTurn.
+	NextRound bool
 }
 
 // TransferOutput reports what the transfer appended to the story.
@@ -3266,6 +3285,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
 	}
 	var intelDeltas map[MemberID]*IntelDelta
+	var joinRound, firstRound int
 
 	switch in.To {
 	case ClockTurn:
@@ -3275,13 +3295,27 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		if len(e.bubbles) == 0 {
 			return nil, fmt.Errorf("transfer %q: no fight is running: %w", in.Member, ErrNoBubble)
 		}
+		if in.Roll != nil {
+			if in.Roll.Member != in.Member {
+				return nil, fmt.Errorf("transfer %q: the roll is for %q: %w", in.Member, in.Roll.Member, ErrInvalidData)
+			}
+			if in.Roll.Calculation != nil {
+				if verr := validateRecordedD20(in.Roll.Calculation, in.Roll.Roll, in.Roll.Total); verr != nil {
+					return nil, fmt.Errorf("transfer %q initiative roll: %w", in.Member, verr)
+				}
+			}
+		}
 		if _, terr := clock.Transfer(&clock.TransferInput{
-			From: e.clock,
-			To:   e.bubbles[0],
-			ID:   core.EntityID(in.Member),
-			Pos:  in.Pos,
+			From:      e.clock,
+			To:        e.bubbles[0],
+			ID:        core.EntityID(in.Member),
+			Pos:       in.Pos,
+			NextRound: in.NextRound,
 		}); terr != nil {
 			return nil, fmt.Errorf("transfer %q into bubble: %w", in.Member, terr)
+		}
+		if in.Roll != nil && in.Roll.Calculation != nil {
+			e.keepInitiativeTotal(e.bubbles[0], in.Member, in.Roll.Total)
 		}
 		// Off the due heap: the fight prices its time (machine.go).
 		e.disarm(in.Member)
@@ -3297,6 +3331,12 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		}
 		if aerr := e.announceBoundaries(combatStartBoundaries([]MemberID{in.Member}, round)); aerr != nil {
 			return nil, fmt.Errorf("transfer %q announce start: %w", in.Member, aerr)
+		}
+		joinedAt := e.bubbles[0].ToData()
+		joinedIdx := slices.Index(joinedAt.Order, core.EntityID(in.Member))
+		joinRound, firstRound = round, round
+		if in.NextRound || joinedIdx < joinedAt.ActiveIdx {
+			firstRound = round + 1
 		}
 	case ClockWorld:
 		if bubble == nil {
@@ -3318,6 +3358,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		}); terr != nil {
 			return nil, fmt.Errorf("transfer %q out of bubble: %w", in.Member, terr)
 		}
+		delete(e.initiativeTotals[bubble], in.Member)
 		// Back on the due heap at the world's now (machine.go).
 		e.armAt(in.Member, uint64(e.clock.ToData().HighWater))
 		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
@@ -3368,11 +3409,21 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
 	}
 
-	seq, err := e.appendClockBeat(map[string]interface{}{
+	beat := map[string]interface{}{
 		"beat":   BeatTransferred,
 		"member": string(in.Member),
 		"to":     string(in.To),
-	}, subjects...)
+	}
+	if in.To == ClockTurn {
+		// The round the member joined in and the round of its first turn, and
+		// the roll that placed it when it rolled (rpg-project#1068).
+		beat["round"] = joinRound
+		beat["first_round"] = firstRound
+		if in.Roll != nil && in.Roll.Calculation != nil {
+			beat["rolls"] = []InitiativeRoll{*in.Roll}
+		}
+	}
+	seq, err := e.appendClockBeat(beat, subjects...)
 	if err != nil {
 		return nil, fmt.Errorf("transfer append beat: %w", err)
 	}

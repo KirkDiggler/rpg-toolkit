@@ -164,11 +164,19 @@ type Encounter struct {
 	// reached through a member, which R6 makes a total function ("an entity
 	// belongs to at most one clock"). Inventing an ID would create a second
 	// thing to keep true.
-	bubbles     []*clock.Turn
-	intelLog    *perception.Perception
-	story       *record.Log
-	members     map[MemberID]*memberRecord
-	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
+	bubbles []*clock.Turn
+	// initiativeTotals is each member's initiative total in each running
+	// bubble, for the members who rolled one. It is a rule's number, so the
+	// fight keeps it here and the clock never sees it (play/clock stays
+	// rulebook-agnostic). Keyed by the bubble pointer so it cannot drift out of
+	// step with bubbles: dropBubbleIfIdle is the one place a bubble leaves, and
+	// it forgets the map there. A member placed without a roll has no entry
+	// and is never outranked by a joiner (join.go, rpg-project#1068).
+	initiativeTotals map[*clock.Turn]map[MemberID]int
+	intelLog         *perception.Perception
+	story            *record.Log
+	members          map[MemberID]*memberRecord
+	everMembers      map[MemberID]bool // Track all members who have ever joined (for Story access)
 
 	// reserve is every member held back by an arrival predicate
 	// (rpg-project#375, reserve.go): not on the roster, on no clock, in no

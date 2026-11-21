@@ -23,6 +23,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
+// BubbleInitiativeData is one running bubble's initiative totals: the number
+// each member who rolled got. A member placed without a roll has none.
+type BubbleInitiativeData struct {
+	// Totals maps a member of the bubble to its initiative total.
+	Totals map[MemberID]int `json:"totals,omitempty"`
+}
+
 // EncounterData is the persistent representation of an Encounter.
 // Outcome is omitted when the encounter is open; present when closed.
 // All leaves (Clock, Intel, Log) embed their Data types verbatim.
@@ -57,6 +64,11 @@ type EncounterData struct {
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
 	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
+	// Initiative is each running bubble's initiative totals, one entry per
+	// Bubbles entry at the same index (rpg-project#1068). A creature that
+	// joins the fight is placed against them. A fight saved without them is
+	// refused on load, never loaded as if nobody had rolled.
+	Initiative []BubbleInitiativeData `json:"initiative,omitempty"`
 	// Landed is every beat landed for the listeners that no raise has
 	// matched yet (wakebeats.go, rpg-project#766 S4), in landing order.
 	// Omitted when nothing waits, which is every run whose content authored
@@ -2554,10 +2566,20 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 	}
 
 	var bubblesData []clock.TurnData
+	var initiativeData []BubbleInitiativeData
 	if len(e.bubbles) > 0 {
 		bubblesData = make([]clock.TurnData, 0, len(e.bubbles))
+		initiativeData = make([]BubbleInitiativeData, 0, len(e.bubbles))
 		for _, b := range e.bubbles {
 			bubblesData = append(bubblesData, b.ToData())
+			entry := BubbleInitiativeData{}
+			if kept := e.initiativeTotals[b]; len(kept) > 0 {
+				entry.Totals = make(map[MemberID]int, len(kept))
+				for id, total := range kept {
+					entry.Totals[id] = total
+				}
+			}
+			initiativeData = append(initiativeData, entry)
 		}
 	}
 
@@ -2599,6 +2621,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
+		Initiative:         initiativeData,
 		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
@@ -3385,6 +3408,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	var loadedBubbles []*clock.Turn
+	if len(data.Bubbles) > 0 && len(data.Initiative) == 0 {
+		return nil, fmt.Errorf("load encounter: a fight saved without its initiative totals: %w", ErrSavedByOlderVersion)
+	}
+	if len(data.Initiative) != len(data.Bubbles) {
+		return nil, fmt.Errorf("load encounter: %d initiative entries for %d bubbles: %w",
+			len(data.Initiative), len(data.Bubbles), ErrInvalidData)
+	}
 	if len(data.Bubbles) > 0 {
 		loadedBubbles = make([]*clock.Turn, 0, len(data.Bubbles))
 		for i := range data.Bubbles {
@@ -3402,6 +3432,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			loadedBubbles = append(loadedBubbles, b)
 		}
 	}
+	loadedTotals := make(map[*clock.Turn]map[MemberID]int, len(loadedBubbles))
 
 	// R6 — an entity belongs to at most one clock. Validated HERE rather than
 	// trusted, because this is the trust boundary for persisted bytes: a blob
@@ -3455,6 +3486,22 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 			onAClock[id] = struct{}{}
 		}
+		inOrder := make(map[MemberID]bool, len(order))
+		for _, id := range order {
+			inOrder[MemberID(id)] = true
+		}
+		for id := range data.Initiative[i].Totals {
+			if !inOrder[id] {
+				return nil, fmt.Errorf(
+					"load encounter bubble %d: an initiative total for %q, who is not in the order: %w",
+					i, id, ErrInvalidData)
+			}
+		}
+		kept := make(map[MemberID]int, len(data.Initiative[i].Totals))
+		for id, total := range data.Initiative[i].Totals {
+			kept[id] = total
+		}
+		loadedTotals[b] = kept
 	}
 
 	// The pause, validated before anything is constructed (R5) and against
@@ -3641,6 +3688,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
 	e.bubbles = loadedBubbles
+	e.initiativeTotals = loadedTotals
 	e.landed = wakeBeatsFrom(data.Landed)
 	e.intelLog = loadedIntel
 	e.story = loadedLog
