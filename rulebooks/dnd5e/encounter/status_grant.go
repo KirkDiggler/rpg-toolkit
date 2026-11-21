@@ -64,6 +64,22 @@ type StatusGrant struct {
 	// an engine from before this field — is refused when it is set up or
 	// loaded, saying the run must be started again.
 	To string `json:"to,omitzero"`
+
+	// Until is how long the status lasts when it is given for a time
+	// (rpg-project#1080): a number of rounds of world time, written where
+	// the status is given. Nil is a status with no time of its own. Read here
+	// and never inside [StatusGrant.Status]: the number is on the giving,
+	// which is this module's content, so the encounter can read it without
+	// reading inside a status.
+	Until *StatusUntil `json:"until,omitzero"`
+}
+
+// StatusUntil is how long a status given here lasts, in rounds of world
+// time, in or out of a fight; any of the status's own endings may end it
+// sooner. Immutable once built, so a copy of a pointer to it is a copy.
+type StatusUntil struct {
+	// Rounds is how many rounds, 1 to 1000.
+	Rounds int `json:"rounds"`
 }
 
 // GrantedStatus is a status a landed row gave: who was given it, and what.
@@ -96,6 +112,11 @@ func validateStatusGrant(what string, g StatusGrant) error {
 	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); !ok {
 		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",
 			what, g.ID, g.To, WhoWordsIn(WhoInApplyStatusTo))
+	}
+	if g.Until != nil {
+		if why := StatusUntilRefusal(g.Until.Rounds); why != "" {
+			return fmt.Errorf("%s gives status %q: %s: %w", what, g.ID, why, ErrInvalidData)
+		}
 	}
 	return nil
 }

@@ -154,6 +154,7 @@ type headPiece struct {
 	Clock              clock.TickData         `json:"clock"`
 	Bubbles            []clock.TurnData       `json:"bubbles,omitempty"`
 	Initiative         []BubbleInitiativeData `json:"initiative,omitempty"`
+	Lapses             []StatusLapseData      `json:"lapses,omitempty"`
 	Landed             []WakeBeatData         `json:"landed,omitempty"`
 	PerceptionSubjects uint32                 `json:"perception_subjects,omitempty"`
 	Log                record.LogData         `json:"log"`
@@ -222,7 +223,7 @@ func SplitPieces(in *SplitPiecesInput) (*SplitPiecesOutput, error) {
 		return nil
 	}
 	if err := add(PieceHead, headPiece{
-		Clock: d.Clock, Bubbles: d.Bubbles, Initiative: d.Initiative, Landed: d.Landed, PerceptionSubjects: d.PerceptionSubjects,
+		Clock: d.Clock, Bubbles: d.Bubbles, Initiative: d.Initiative, Lapses: d.Lapses, Landed: d.Landed, PerceptionSubjects: d.PerceptionSubjects,
 		Log: d.Log, SiteHash: d.SiteHash, Endings: d.Endings, Retention: d.Retention,
 	}); err != nil {
 		return nil, err
@@ -317,7 +318,7 @@ func JoinPieces(in *JoinPiecesInput) (*EncounterData, error) {
 		return nil, fmt.Errorf("join pieces: %s: %w", PieceHead, ErrRestCarriesRecord)
 	}
 	out := &EncounterData{
-		Clock: head.Clock, Bubbles: head.Bubbles, Initiative: head.Initiative, Landed: head.Landed, PerceptionSubjects: head.PerceptionSubjects,
+		Clock: head.Clock, Bubbles: head.Bubbles, Initiative: head.Initiative, Lapses: head.Lapses, Landed: head.Landed, PerceptionSubjects: head.PerceptionSubjects,
 		Log: head.Log, SiteHash: head.SiteHash, Endings: head.Endings, Retention: head.Retention,
 		Outcome: roster.Outcome, Doors: roster.Doors, SightAreas: roster.SightAreas, Interactions: roster.Interactions,
 		Sharing: roster.Sharing, Reserve: roster.Reserve, EverMembers: roster.EverMembers, Pause: roster.Pause,
