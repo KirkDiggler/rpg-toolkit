@@ -191,13 +191,7 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to", strings.Join(tos, "`, `")))
 	}
 	if !slices.Contains(abouts, r.About) {
-		// Joined from the table, whatever it holds: each word with its label.
-		said := make([]string, 0, len(abouts))
-		for _, w := range abouts {
-			wd, _ := encounter.WhoWordAt(encounter.WhoInGiveAbout, w)
-			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
-		}
-		fail(at+".about", "the subjects are "+strings.Join(said, ", or "))
+		fail(at+".about", subjectsSentence(encounter.WhoInGiveAbout))
 	}
 	switch {
 	case r.HeardBy != "" && !slices.Contains(hearers, r.HeardBy):
@@ -212,11 +206,35 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 	}
 }
 
+// subjectsSentence says whom a note may be about where the who-word table
+// allows `about`, joined from the table whatever it holds: each word with its
+// label. THE ONE SENTENCE a conversation's give and a machine state's give
+// share.
+func subjectsSentence(place string) string {
+	said := []string{}
+	for _, w := range encounter.WhoWordsIn(place) {
+		wd, _ := encounter.WhoWordAt(place, w)
+		said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
+	}
+	return "the subjects are " + strings.Join(said, ", or ")
+}
+
 // lineGrantedTopics is every topic a line's success or failure row gives
 // (rpg-project#929, #932), read straight off the document: a creature's own lines
-// and its faction's.
+// and its faction's, and every topic a behaviour definition's `outcomes` give
+// on entering a state (rpg-project#989), since a topic a state gives counts as
+// given.
 func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	out := map[string]bool{}
+	for _, def := range s.BehaviorDefinitions {
+		for _, consequences := range def.Outcomes {
+			for _, c := range consequences {
+				if c.Give != nil && c.Give.Topic != "" {
+					out[c.Give.Topic] = true
+				}
+			}
+		}
+	}
 	add := func(options []OptionSpec) {
 		for _, o := range options {
 			for _, row := range slices.Concat(o.Success, o.Failure) {

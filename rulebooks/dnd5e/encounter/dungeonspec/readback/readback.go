@@ -136,7 +136,11 @@ const (
 	// KindRoutineFlag is one flag a routine's machine remembers: its bag's
 	// key, its kind and its starting value (rpg-project#1001).
 	KindRoutineFlag Kind = "routine.flag"
-	KindRoutineRow  Kind = "routine.row"
+	// KindRoutineOutcome is one thing a routine's machine gives on entering a
+	// state (rpg-project#989): the topic it notes, about whom, and the state
+	// it is entered at.
+	KindRoutineOutcome Kind = "routine.outcome"
+	KindRoutineRow     Kind = "routine.row"
 )
 
 // EngineRule is the path of a statement that says how the engine runs what

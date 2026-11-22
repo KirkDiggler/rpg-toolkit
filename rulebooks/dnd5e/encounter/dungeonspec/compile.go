@@ -326,6 +326,13 @@ type MonsterPlacement struct {
 	// beside the recipe. Nil when no state holds a passage.
 	Posts map[string]encounter.Post `json:"Posts,omitempty"`
 
+	// Outcomes is, by state of the body machine, what entering that state
+	// gives (rpg-project#989): the consequences of its body definition's
+	// `outcomes`, under the engine's state names — for a host to hand to
+	// [encounter.MemberInput.Outcomes] beside Posts. Nil when its body
+	// definition has none.
+	Outcomes map[string][]encounter.Consequence `json:"Outcomes,omitempty"`
+
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
 	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
