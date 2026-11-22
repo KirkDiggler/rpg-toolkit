@@ -895,7 +895,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
 			Options:            m.Options, Table: m.Table, Machine: m.Machine, Behaviors: m.Behaviors,
-			BlockingStates: m.BlockingStates, Posts: m.Posts,
+			BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -932,10 +932,12 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// pick up (option.go) — asked against the compiled field, so after it —
 	// and a line naming an interaction must name one this run has.
 	memberLines := make([][]Option, 0, len(in.Members))
+	machineNotes := make([]map[string][]Consequence, 0, len(in.Members))
 	for _, m := range in.Members {
 		memberLines = append(memberLines, m.Options)
+		machineNotes = append(machineNotes, m.Outcomes)
 	}
-	granted := grantedTopics(interactions, memberLines...)
+	granted := grantedTopics(interactions, machineNotes, memberLines...)
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
@@ -1141,6 +1143,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 		if err = e.usePosts(member, mi.Posts, f.cellAt(mi.Position)); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+		if err = e.useStateOutcomes(member, mi.Outcomes); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 
@@ -2814,14 +2819,14 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
 		Options:            in.Options, Table: in.Table, Machine: in.Machine, Behaviors: in.Behaviors,
-		BlockingStates: in.BlockingStates, Posts: in.Posts,
+		BlockingStates: in.BlockingStates, Posts: in.Posts, Outcomes: in.Outcomes,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
 	if err := e.field.validateOptionHolds(in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
-	joinGranted := grantedTopics(nil, in.Options)
+	joinGranted := grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
 	for topic := range e.granted {
 		joinGranted[topic] = true
 	}
@@ -2923,11 +2928,15 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	// A JOINER'S GRANTS JOIN THE RUN'S (rpg-project#929), before its own
 	// posts are judged against them; a refused post puts them back.
 	wasGranted := e.granted
-	e.granted = grantedTopics(nil, in.Options)
+	e.granted = grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
 	for topic := range wasGranted {
 		e.granted[topic] = true
 	}
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
+		e.granted = wasGranted
+		return nil, nil, fmt.Errorf("join: %w", err)
+	}
+	if err := e.useStateOutcomes(member, in.Outcomes); err != nil {
 		e.granted = wasGranted
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}

@@ -259,7 +259,7 @@ func CheckInteraction(in *InteractionInput) (*CheckInteractionOutput, error) {
 	}
 	out := &CheckInteractionOutput{States: slices.Sorted(maps.Keys(record.input.Recipe.States))}
 	out.Beats = slices.Sorted(maps.Keys(interactionVocabulary(&record.input.Recipe).Beats))
-	topics := grantedTopics(map[InteractionID]*interactionRecord{record.input.ID: record})
+	topics := grantedTopics(map[InteractionID]*interactionRecord{record.input.ID: record}, nil)
 	out.Topics = slices.Sorted(maps.Keys(topics))
 	return out, nil
 }

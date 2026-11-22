@@ -516,7 +516,7 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		if env.err != nil {
 			return env.err
 		}
-		if err := e.behaviorStepped(m, observed.Steps); err != nil {
+		if err := e.behaviorStepped(m, observed.Steps, ev.Subject, now); err != nil {
 			return err
 		}
 		if len(observed.Outcomes) > 0 {
