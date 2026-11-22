@@ -198,15 +198,19 @@ func TestMadKingTheCaptainRemembersWhoLiedToHim(t *testing.T) {
 	before := loadTheScene(t, liedToScene.blob)
 	require.False(t, before.recognizesOn(kingCaptain, hero, caughtLyingTopic), "before the lie he holds no `caught-lying` about the hero")
 	require.True(t, before.offeredBy(hero, kingCaptain, "the-way-in"), "and offers the admitted hero the feast line")
+	require.True(t, before.offeredBy(hero, kingCaptain, theTurnLine), "and offers the hero the Ashford line, as he has not yet caught him lying")
 
 	s := loadTheScene(t, liedToScene.backAtTheGate)
 	require.True(t, s.recognizesOn(kingCaptain, hero, caughtLyingTopic), "entering `back-to-gate` he noted `caught-lying` about the hero")
 	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
 	require.False(t, s.offeredBy(hero, kingCaptain, "the-way-in"), "he no longer offers the liar the feast line")
+	require.False(t, s.offeredBy(hero, kingCaptain, theTurnLine), "nor the Ashford line: the one he caught cannot say the lie again")
+	require.True(t, s.offeredBy(straggler, kingCaptain, theTurnLine), "the straggler, whom he caught at nothing, is still offered the Ashford line")
 
 	at := loadTheScene(t, liedToScene.heroAtTheGate)
 	require.Contains(t, at.heldAgainst(hero), kingCaptain, "with the hero at the gate, his post bars the hero")
 	require.False(t, at.offeredBy(hero, kingCaptain, "the-way-in"), "and he still offers the liar no feast line")
+	require.False(t, at.offeredBy(hero, kingCaptain, theTurnLine), "and still no Ashford line, with the hero at his gate")
 }
 
 // answeredWithWords is every creature the hero was written answering with

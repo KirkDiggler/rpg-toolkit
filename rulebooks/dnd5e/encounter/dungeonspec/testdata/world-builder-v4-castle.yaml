@@ -2152,8 +2152,12 @@ room:
             check:
               - ability: persuasion
                 dc: 15
+            # Hand edit (rpg-project#989): and not to one he caught lying,
+            # who cannot say the same claim to him again.
             requires:
-              fact: king-burned-village
+              - fact: king-burned-village
+              - not:
+                  noted: caught-lying
             success:
               - say: …Gods forgive me. The garrison is yours. We take the keep.
                 fact: guards-turned
