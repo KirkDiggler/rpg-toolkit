@@ -312,7 +312,7 @@ func (s *behaviorSourceSuite) TestAuthoredSiteDrivesRealMovementAndReload() {
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster,
 			Position: m.At, Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors,
-			BlockingStates: m.BlockingStates, Posts: m.Posts})
+			BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes})
 	}
 	caps := facingCapabilities()
 	die := &behaviorSourceDie{}

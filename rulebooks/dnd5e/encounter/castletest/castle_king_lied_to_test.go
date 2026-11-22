@@ -44,12 +44,16 @@ var liedToScene struct {
 	// the captain, rounds passed until he stood on his gate spot, and one
 	// round more, which leaves him there.
 	backAtTheGate []byte
+	// heroAtTheGate is the same run played on once more: the hero, whom
+	// the captain heard fail, walks out to the captain at his gate, so
+	// the post's bar on him is a hold the hero can see.
+	heroAtTheGate []byte
 }
 
 // liedToSceneTests are the tests that start from [liedToScene].
 var liedToSceneTests = []string{
 	"TestMadKingTheCaptainLeavesTheHallWhenAnAdmittedGuestLies", "TestMadKingAStrangersLieLeavesTheCaptainInTheHall",
-	"TestMadKingTheCaptainHoldsTheGateAgain",
+	"TestMadKingTheCaptainHoldsTheGateAgain", "TestMadKingTheCaptainRemembersWhoLiedToHim",
 }
 
 // buildTheLiedToScene plays [liedToScene] from the admitted scene. The fact
@@ -104,6 +108,13 @@ func buildTheLiedToScene() {
 	s.walkMember(straggler, s.at(kingGate1), false)
 	liedToScene.backAtTheGate, err = json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
+
+	// The hero walks out to the captain, who has not moved.
+	require.Equal(tb, "back-to-gate", machineState(tb, s.enc, kingCaptain), "precondition: the captain is in back-to-gate")
+	require.Equal(tb, captainsGateSpot, s.at(kingCaptain), "precondition: and on his gate spot")
+	s.walkMember(hero, s.at(kingCaptain), false)
+	liedToScene.heroAtTheGate, err = json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
 }
 
 // liedTo loads [liedToScene] into a fresh run.
@@ -151,6 +162,7 @@ func TestMadKingAStrangersLieLeavesTheCaptainInTheHall(t *testing.T) {
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.answeredWithWords("Lies. Get out before I change my mind."),
 		"he answers the straggler")
 	require.Equal(t, "in-hall", machineState(t, s.enc, kingCaptain), "and stays: he holds nothing about them")
+	require.False(t, s.recognizesOn(kingCaptain, straggler, caughtLyingTopic), "and notes nothing about the straggler")
 }
 
 // TestMadKingTheCaptainHoldsTheGateAgain: back on his gate spot he keeps
@@ -168,6 +180,33 @@ func TestMadKingTheCaptainHoldsTheGateAgain(t *testing.T) {
 	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.heldAgainst(straggler),
 		"his post bars the straggler he never admitted, whom the gate guards let through")
+}
+
+// caughtLyingTopic is what the captain notes, entering `back-to-gate`, about
+// the one he heard lie to him.
+const caughtLyingTopic = "caught-lying"
+
+// TestMadKingTheCaptainRemembersWhoLiedToHim plays no round: before the lie
+// the captain holds nothing about the hero and offers the hero the feast
+// line; back at his gate he holds `caught-lying` about the hero (and still
+// `admitted`), no longer offers the line, and his post bars the hero.
+func TestMadKingTheCaptainRemembersWhoLiedToHim(t *testing.T) {
+	t.Parallel()
+	liedToScene.once.Do(buildTheLiedToScene)
+	require.NoError(t, liedToScene.err)
+
+	before := loadTheScene(t, liedToScene.blob)
+	require.False(t, before.recognizesOn(kingCaptain, hero, caughtLyingTopic), "before the lie he holds no `caught-lying` about the hero")
+	require.True(t, before.offeredBy(hero, kingCaptain, "the-way-in"), "and offers the admitted hero the feast line")
+
+	s := loadTheScene(t, liedToScene.backAtTheGate)
+	require.True(t, s.recognizesOn(kingCaptain, hero, caughtLyingTopic), "entering `back-to-gate` he noted `caught-lying` about the hero")
+	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
+	require.False(t, s.offeredBy(hero, kingCaptain, "the-way-in"), "he no longer offers the liar the feast line")
+
+	at := loadTheScene(t, liedToScene.heroAtTheGate)
+	require.Contains(t, at.heldAgainst(hero), kingCaptain, "with the hero at the gate, his post bars the hero")
+	require.False(t, at.offeredBy(hero, kingCaptain, "the-way-in"), "and he still offers the liar no feast line")
 }
 
 // answeredWithWords is every creature the hero was written answering with

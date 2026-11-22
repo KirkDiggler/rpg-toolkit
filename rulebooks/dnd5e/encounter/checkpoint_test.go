@@ -124,7 +124,7 @@ func openCheckpointKeep(t *testing.T, retention int) *encounter.Encounter {
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
 			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors,
-			Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

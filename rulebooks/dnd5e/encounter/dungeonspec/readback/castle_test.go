@@ -717,6 +717,26 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	s.Contains(pass.Sentence, "when Guard Captain (captain) has noted `admitted` about the walker")
 }
 
+// TestTheCaptainRemembersWhoLiedToHim: the read-back says what entering
+// `back-to-gate` gives (rpg-project#989), that the feast line is offered only
+// while he has not noted `caught-lying` about the speaker, and that his
+// `back-to-gate` post lets through only one he has not caught lying.
+func (s *CastleSuite) TestTheCaptainRemembersWhoLiedToHim() {
+	gives := s.statement(readback.KindRoutineOutcome, "behaviorDefinitions.captain-policy.outcomes.back-to-gate[0]")
+	s.Contains(gives.Sentence, "Entering `back-to-gate`, it notes `caught-lying` about the one Guard Captain (captain) heard")
+	s.True(connected(gives, "topic", "caught-lying", "grants"), "it is connected to the topic it gives: %v", gives.Connects)
+	s.True(connected(gives, "state", "back-to-gate", "enters"), "and to the state it is given on: %v", gives.Connects)
+
+	line := s.statement(readback.KindLineRequire, "room.room.monsterBindings.captain.options[8].requires[1]")
+	s.Contains(line.Sentence, "is offered to a speaker only while Guard Captain (captain) has NOT noted `caught-lying` about the speaker")
+	s.True(connected(line, "topic", "caught-lying", "asks"), line.Sentence)
+
+	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
+	s.Contains(pass.Sentence, "has noted `admitted` about the walker and Guard Captain (captain) has NOT noted `caught-lying` about the walker")
+	ready := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.ready.pass")
+	s.NotContains(ready.Sentence, "caught-lying", "his `ready` post is unchanged")
+}
+
 // THE COOK'S STATUSES ARE SAID (rpg-project#1024): each declared status
 // once, by id and name, and under the `help` and `taste` lines' wins the
 // grant, connected to it. A status's statement is unchanged in shape by its

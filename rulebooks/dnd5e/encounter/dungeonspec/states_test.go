@@ -118,8 +118,11 @@ func TestDungeonspec_HoldsCompilesToPosts(t *testing.T) {
 	// cells, each letting through whom he recognises.
 	recognized := []encounter.Trigger{encounter.TriggerRecognized{Topic: "admitted"}}
 	require.Equal(t, map[string]encounter.Post{"ready": {Door: gate.Door, Cells: []spatial.Position{{X: -3, Y: 10}, {X: -2, Y: 8}, {X: -4, Y: 10}, {X: -2, Y: 10}}, Against: encounter.PostEntering, Pass: recognized}}, monsterNamed(t, c, "gate-2").Posts)
-	// The captain keeps the same post back from the hall (rpg-project#1000).
+	// The captain keeps the same post back from the hall (rpg-project#1000),
+	// and bars the one he caught lying (rpg-project#989).
 	captains := encounter.Post{Door: gate.Door, Cells: []spatial.Position{{X: -4, Y: 8}}, Against: encounter.PostEntering, Pass: recognized}
-	require.Equal(t, map[string]encounter.Post{"ready": captains, "back-to-gate": captains}, monsterNamed(t, c, "captain").Posts)
+	backAtTheGate := captains
+	backAtTheGate.Pass = []encounter.Trigger{encounter.TriggerRecognized{Topic: "admitted"}, encounter.TriggerNot{Inner: encounter.TriggerRecognized{Topic: "caught-lying"}}}
+	require.Equal(t, map[string]encounter.Post{"ready": captains, "back-to-gate": backAtTheGate}, monsterNamed(t, c, "captain").Posts)
 	require.True(t, slices.ContainsFunc(c.Field.Doors, func(d encounter.DoorInput) bool { return d.ID == gate.Door }))
 }
