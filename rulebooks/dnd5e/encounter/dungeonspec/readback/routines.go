@@ -95,7 +95,7 @@ func (b *builder) routines() []Group {
 					fmt.Sprintf("In the state %s, %s.", quote(state), s),
 					foldInfo{state: state, text: shortWake(tr) + ".", site: "the routine " + quote(def)}, conns...))
 			}
-			for _, st := range b.stateOutcomes(def, state, inst.Recipe, who, about) {
+			for _, st := range b.stateOutcomes(def, state, inst.Recipe, who, about, runners) {
 				add(st)
 			}
 		}
@@ -222,16 +222,10 @@ func flagKind(v any) string {
 // (rpg-project#989), one statement per consequence at
 // `behaviorDefinitions.<routine>.outcomes.<state>[i]`: the topic it notes,
 // about the one each beat entering the state names, connected as any give is
-// (noteGiveEdges: the creatures whose body runs the routine are the takers of
-// `itself`) and to the state it is entered at.
-func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who string, about Subject) []Statement {
+// (noteGiveEdges: the creatures that run THIS routine, `runners`, are the
+// takers of `itself`) and to the state it is entered at.
+func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who string, about Subject, runners []string) []Statement {
 	var out []Statement
-	var runners []string
-	for _, d := range b.spec.Room.Gameplay.MonsterDeclarations {
-		if m := b.monsters[d.ID]; m != nil && len(m.Outcomes[state]) > 0 {
-			runners = append(runners, d.ID)
-		}
-	}
 	var subjects []string
 	for _, name := range statesInOrder(recipe) {
 		for _, tr := range recipe.States[name].Transitions {
@@ -254,7 +248,7 @@ func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who st
 			cause:  Connection{Kind: ConnState, ID: state, Role: "enters"}})
 		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), quote(topic), strings.Join(subjects, " or "))
 		out = append(out, b.fstmt(KindRoutineOutcome, about, fmt.Sprintf("behaviorDefinitions.%s.outcomes.%s[%d]", def, state, i), sentence,
-			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s.", quote(state), quote(topic)), site: "the routine " + quote(def)}, conns...))
+			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), quote(topic), strings.Join(subjects, " or ")), site: "the routine " + quote(def)}, conns...))
 	}
 	return out
 }
