@@ -2184,8 +2184,11 @@ room:
             # Hand edit (rpg-project#929): he goes in once he has admitted
             # anyone, so the line reads the same at the gate or in the hall.
             say: Where will the feast be, captain?
+            # Hand edit (rpg-project#989): and not to one he caught lying.
             requires:
-              noted: admitted
+              - noted: admitted
+              - not:
+                  noted: caught-lying
             success:
               - say: In the great hall. You’re expected.
         behaviors:
@@ -2206,7 +2209,11 @@ room:
           back-to-gate:
             door: gate-wall-door
             against: entering
-            pass: { noted: admitted }
+            # Hand edit (rpg-project#989): admitted, and not caught lying.
+            pass:
+              - noted: admitted
+              - not:
+                  noted: caught-lying
             at:
               - q: -4
                 r: 8
@@ -3164,6 +3171,14 @@ behaviorDefinitions:
             - on: turn
               do:
                 - pick: time
+    # Hand edit (rpg-project#989): entering `back-to-gate`, the captain notes
+    # `caught-lying` about the one he heard lie to him.
+    outcomes:
+      back-to-gate:
+        - give:
+            topic: caught-lying
+            to: itself
+            about: the_one_named
     table:
       approached:
         - say: You there. Nobody passes this gate without my say. Speak.

@@ -49,7 +49,7 @@ var liedToScene struct {
 // liedToSceneTests are the tests that start from [liedToScene].
 var liedToSceneTests = []string{
 	"TestMadKingTheCaptainLeavesTheHallWhenAnAdmittedGuestLies", "TestMadKingAStrangersLieLeavesTheCaptainInTheHall",
-	"TestMadKingTheCaptainHoldsTheGateAgain",
+	"TestMadKingTheCaptainHoldsTheGateAgain", "TestMadKingTheCaptainRemembersWhoLiedToHim",
 }
 
 // buildTheLiedToScene plays [liedToScene] from the admitted scene. The fact
@@ -151,6 +151,7 @@ func TestMadKingAStrangersLieLeavesTheCaptainInTheHall(t *testing.T) {
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.answeredWithWords("Lies. Get out before I change my mind."),
 		"he answers the straggler")
 	require.Equal(t, "in-hall", machineState(t, s.enc, kingCaptain), "and stays: he holds nothing about them")
+	require.False(t, s.recognizesOn(kingCaptain, straggler, caughtLyingTopic), "and notes nothing about the straggler")
 }
 
 // TestMadKingTheCaptainHoldsTheGateAgain: back on his gate spot he keeps
@@ -168,6 +169,30 @@ func TestMadKingTheCaptainHoldsTheGateAgain(t *testing.T) {
 	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.heldAgainst(straggler),
 		"his post bars the straggler he never admitted, whom the gate guards let through")
+}
+
+// caughtLyingTopic is what the captain notes, entering `back-to-gate`, about
+// the one he heard lie to him.
+const caughtLyingTopic = "caught-lying"
+
+// TestMadKingTheCaptainRemembersWhoLiedToHim plays no round: before the lie
+// the captain holds nothing about the hero and offers the hero the feast
+// line; back at his gate he holds `caught-lying` about the hero (and still
+// `admitted`), no longer offers the line, and his post bars the hero.
+func TestMadKingTheCaptainRemembersWhoLiedToHim(t *testing.T) {
+	t.Parallel()
+	liedToScene.once.Do(buildTheLiedToScene)
+	require.NoError(t, liedToScene.err)
+
+	before := loadTheScene(t, liedToScene.blob)
+	require.False(t, before.recognizesOn(kingCaptain, hero, caughtLyingTopic), "before the lie he holds no `caught-lying` about the hero")
+	require.True(t, before.offeredBy(hero, kingCaptain, "the-way-in"), "and offers the admitted hero the feast line")
+
+	s := loadTheScene(t, liedToScene.backAtTheGate)
+	require.True(t, s.recognizesOn(kingCaptain, hero, caughtLyingTopic), "entering `back-to-gate` he noted `caught-lying` about the hero")
+	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
+	require.False(t, s.offeredBy(hero, kingCaptain, "the-way-in"), "he no longer offers the liar the feast line")
+	require.Contains(t, s.heldAgainst(hero), kingCaptain, "and his post bars the hero")
 }
 
 // answeredWithWords is every creature the hero was written answering with
