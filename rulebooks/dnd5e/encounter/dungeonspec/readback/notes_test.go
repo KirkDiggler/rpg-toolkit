@@ -141,7 +141,7 @@ func TestTheCastleTracesAdmitted(t *testing.T) {
 	require.Equal(t, []string{
 		"behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1] | about the_one_named | its host",
 		"behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2] | about anyone | its host",
-		"room.room.monsterBindings.captain.options[8].requires | about the_speaker | captain",
+		"room.room.monsterBindings.captain.options[8].requires[0] | about the_speaker | captain",
 		"room.room.monsterBindings.captain.posts.back-to-gate.pass | about the_walker | captain",
 		"room.room.monsterBindings.captain.posts.ready.pass | about the_walker | captain",
 		"room.room.monsterBindings.gate-1.options[0].requires[1] | about the_speaker | gate-1",
