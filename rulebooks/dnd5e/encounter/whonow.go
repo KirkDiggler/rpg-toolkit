@@ -59,6 +59,13 @@ func (l *landing) whoNow(place, word string) ([]MemberID, error) {
 	}
 	line := l.line
 	switch word {
+	case WhoItself:
+		return []MemberID{line.spokenTo}, nil
+	case WhoTheOneNamed:
+		if line.named == "" {
+			return nil, nil
+		}
+		return []MemberID{line.named}, nil
 	case string(RecognitionSpokenTo):
 		if line.spokenTo == "" {
 			return nil, nil

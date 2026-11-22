@@ -298,7 +298,7 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if env.err != nil {
 		return selectedBehavior{}, env.err
 	}
-	if err := e.behaviorStepped(m, chosen.Steps); err != nil {
+	if err := e.behaviorStepped(m, chosen.Steps, opportunity.subject, opportunity.now); err != nil {
 		return selectedBehavior{}, err
 	}
 	var trace *behaviorDecisionTrace
@@ -319,7 +319,10 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	return selectedBehavior{decision: Decision{Intent: translated.Intent, Pick: chosen.Pick}, instance: chosen.Instance, work: work.Work, trace: trace}, nil
 }
 
-func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceStep) error {
+// behaviorStepped lands what a machine's steps change. named is the one the
+// beat that stepped it names, empty for nobody, and now the round: a step
+// into a state that has outcomes does them ([Encounter.enteredState]).
+func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceStep, named MemberID, now uint64) error {
 	for _, result := range steps {
 		step := result.Step
 		if step.To == "" {
@@ -332,6 +335,9 @@ func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceSt
 			continue
 		}
 		if err := e.appendStateBeat(m.ID, step); err != nil {
+			return err
+		}
+		if err := e.enteredState(m, step.To, named, now); err != nil {
 			return err
 		}
 		from, had := m.postIn(step.From)

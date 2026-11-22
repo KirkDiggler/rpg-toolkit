@@ -572,6 +572,9 @@ type ReserveData struct {
 	// Posts is [MemberData.Posts] for a member still waiting, refused at
 	// load as the member's are.
 	Posts map[string]PostData `json:"posts,omitempty"`
+	// Outcomes is [MemberData.Outcomes] for a member still waiting, refused
+	// at load as the member's are.
+	Outcomes map[string][]Consequence `json:"outcomes,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -2331,6 +2334,13 @@ type MemberData struct {
 	// (ErrInvalidData).
 	Posts map[string]PostData `json:"posts,omitempty"`
 
+	// Outcomes is memberRecord.Outcomes (rpg-project#989): by state of
+	// Recipe, the consequences done once each time a step enters it. Omitted
+	// when the member has none, which is what a record from before them loads
+	// as. A state the recipe lacks, an entry nothing steps into, or a
+	// consequence a machine may not give is refused at load (ErrInvalidData).
+	Outcomes map[string][]Consequence `json:"outcomes,omitempty"`
+
 	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
 	// omitted for the world clock. This build knows the world clock alone,
 	// so any other name is refused at load (ErrInvalidData).
@@ -2510,6 +2520,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Behaviors:          m.behaviors.toData(),
 			BlockingStates:     slices.Clone(m.BlockingStates),
 			Posts:              postsDataFrom(m.Posts),
+			Outcomes:           cloneOutcomes(m.Outcomes),
 			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
@@ -2611,6 +2622,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Behaviors:          rm.record.behaviors.toData(),
 			BlockingStates:     slices.Clone(rm.record.BlockingStates),
 			Posts:              postsDataFrom(rm.record.Posts),
+			Outcomes:           cloneOutcomes(rm.record.Outcomes),
 			BlocksMovement:     rm.record.BlocksMovement,
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
@@ -3271,6 +3283,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Machine:            r.Recipe,
 			Behaviors:          behaviorInputOf(r.Behaviors),
 			BlockingStates:     r.BlockingStates,
+			Outcomes:           r.Outcomes,
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3558,7 +3571,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		savedLines = append(savedLines, memberOptions[id])
 	}
 	savedLines = append(savedLines, reserveOptions...)
-	granted := grantedTopics(interactions, savedLines...)
+	savedNotes := make([]map[string][]Consequence, 0, len(data.Members)+len(data.Reserve))
+	for _, m := range data.Members {
+		savedNotes = append(savedNotes, m.Outcomes)
+	}
+	for _, r := range data.Reserve {
+		savedNotes = append(savedNotes, r.Outcomes)
+	}
+	granted := grantedTopics(interactions, savedNotes, savedLines...)
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
 		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
@@ -3731,6 +3751,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if perr := e.loadPosts(member, m.Posts); perr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
 		}
+		if perr := e.useStateOutcomes(member, m.Outcomes); perr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
+		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
@@ -3785,6 +3808,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, rerr)
 		}
 		if perr := e.loadPosts(&rm.record, r.Posts); perr != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, perr)
+		}
+		if perr := e.useStateOutcomes(&rm.record, r.Outcomes); perr != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, perr)
 		}
 		e.reserveMember(rm)

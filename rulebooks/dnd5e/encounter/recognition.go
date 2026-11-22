@@ -352,8 +352,19 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 // grantedTopics is every topic some interaction's outcome grants, or some
 // line's answer among the lists given grants (rpg-project#929): the topics a
 // [TriggerRecognized] may name.
-func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[]Option) map[TopicID]bool {
+func grantedTopics(interactions map[InteractionID]*interactionRecord, machines []map[string][]Consequence, lines ...[]Option) map[TopicID]bool {
 	out := map[TopicID]bool{}
+	// A creature's machine gives the topics of its state outcomes
+	// (rpg-project#989): a line may require one only a machine gives.
+	for _, outcomes := range machines {
+		for _, cs := range outcomes {
+			for _, c := range cs {
+				if c.Recognize != nil {
+					out[c.Recognize.Topic] = true
+				}
+			}
+		}
+	}
 	for _, r := range interactions {
 		for _, cs := range r.input.Outcomes {
 			for _, c := range cs {
@@ -570,6 +581,9 @@ type recognitionLine struct {
 	// witness or hearer of the line (arrest.go): who is wanted is the guards'
 	// own memory.
 	holdersOnly bool
+	// named is the one a machine's step names ([Encounter.enteredState]):
+	// what `the_one_named` means at `state.give.about`. Empty for a line.
+	named MemberID
 }
 
 // knowsHolder is whether reader may be named the holder of a recognition
@@ -649,9 +663,16 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 // ([sightMember]), the observer key the store's sightings use and the load
 // check demands, and is told as [BeatRecognized] beats ([Encounter.tellRecognition]).
 func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error {
+	return e.grantRecognitionAt(r, line, WhoInGiveTo, WhoInGiveAbout)
+}
+
+// grantRecognitionAt is [Encounter.grantRecognition] with the places its
+// words are written at: a line's (`give.to`, `give.about`) or a machine
+// state's (`state.give.to`, `state.give.about`).
+func (e *Encounter) grantRecognitionAt(r Recognition, line recognitionLine, toPlace, aboutPlace string) error {
 	// WHO, BY THE ONE RESOLVER a status grant asks too ([landing.whoNow]).
 	landed := e.landingOf(line)
-	holders, err := landed.whoNow(WhoInGiveTo, string(r.Holder))
+	holders, err := landed.whoNow(toPlace, string(r.Holder))
 	if err != nil || len(holders) == 0 {
 		return err
 	}
@@ -660,7 +681,7 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	subjects, err := landed.whoNow(WhoInGiveAbout, string(r.About))
+	subjects, err := landed.whoNow(aboutPlace, string(r.About))
 	if err != nil || len(subjects) == 0 {
 		return err
 	}
