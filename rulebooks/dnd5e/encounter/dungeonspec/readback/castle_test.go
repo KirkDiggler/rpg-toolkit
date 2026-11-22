@@ -731,6 +731,10 @@ func (s *CastleSuite) TestTheCaptainRemembersWhoLiedToHim() {
 	s.Contains(line.Sentence, "is offered to a speaker only while Guard Captain (captain) has NOT noted `caught-lying` about the speaker")
 	s.True(connected(line, "topic", "caught-lying", "asks"), line.Sentence)
 
+	turn := s.statement(readback.KindLineRequire, "room.room.monsterBindings.captain.options[5].requires[1]")
+	s.Contains(turn.Sentence, "is offered to a speaker only while Guard Captain (captain) has NOT noted `caught-lying` about the speaker")
+	s.True(connected(turn, "topic", "caught-lying", "asks"), "the Ashford line's requirement is connected to the topic: %v", turn.Connects)
+
 	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
 	s.Contains(pass.Sentence, "has noted `admitted` about the walker and Guard Captain (captain) has NOT noted `caught-lying` about the walker")
 	ready := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.ready.pass")
