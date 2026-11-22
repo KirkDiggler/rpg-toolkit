@@ -5,7 +5,7 @@ Slice [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109)
 ## Shipped
 
 - `testdata/captain-remembers-walk.yaml`: a hall and a yard joined by one open door, a Guard Captain with the castle's cut machine, posts and three lines — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
-- `captain_remembers_walk_test.go`: `CaptainRemembersWalkSuite` with `TestTheCaptainRemembersWhoLiedToHim` and `TestAStrangersLieLeavesHimInTheHall`, played through `session.Manager` — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- `captain_remembers_walk_test.go`: `CaptainRemembersWalkSuite` with `TestTheCaptainRemembersWhoLiedToHim` and `TestTheOtherCharactersLieIsCaughtToo`, played through `session.Manager` — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
 
 ## Decided
 
@@ -24,6 +24,16 @@ Slice [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109)
 - Proof 3, post `pass` is `[ { noted: caught-lying } ]`: step 7 fails (the friend's walk errors); step 6 fails too, because the liar now passes, and she stands in the doorway the friend needs — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
 - The suite takes 1.02 s with `-race` (2.07 s including compile); the whole module `go test ./... -count=1 -timeout 20m` at the final head: both packages ok, 59.6 s — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
 - `golangci-lint run ./...` prints 0 issues — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+
+## Amendment 1 (2026-11-22)
+
+- The `expected` line and the `admitted` note are gone; nothing has to be done first, and `TestAStrangersLieLeavesHimInTheHall` is deleted with them — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- The captain reaches his gate after ONE `Wait`, as the operator's steps say — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- The second liar is NOT caught: the captain is already in `back-to-gate` and no transition enters it again, so bob's failed lie writes no second note; bob is still offered the lie and the question, only alice lost them. `TestTheOtherCharactersLieIsCaughtToo` asserts this — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- Proof 1, remove the `requires` from `lie`: the liar is still offered the lie, in both tests — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- Proof 2, remove the `requires` from `the-way-in`: the liar is still offered the question — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- Proof 3, delete the captain's `posts:` block: the liar is not stopped at the door, takes a step — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
+- The suite takes 1.28 s with `-race`; the whole module `go test ./... -count=1 -timeout 20m` at the final head: both packages ok, 59.6 s; `golangci-lint run ./...` 0 issues — [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109).
 
 ## Mistaken
 

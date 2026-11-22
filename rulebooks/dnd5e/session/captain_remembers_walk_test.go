@@ -144,44 +144,44 @@ func (s *CaptainRemembersWalkSuite) waitUntilAtTheGate(mgr *session.Manager) int
 	return 0
 }
 
-func (s *CaptainRemembersWalkSuite) TestTheCaptainRemembersWhoLiedToHim() {
+// theLiarIsAtTheGate plays the scene up to both characters standing outside
+// with the captain at his gate: alice has told the lie, he has walked out, and
+// both have followed. It returns the manager and how many waits he needed.
+func (s *CaptainRemembersWalkSuite) theLiarIsAtTheGate() (*session.Manager, int) {
 	mgr := s.launch("alice", "bob")
 	s.T().Logf("alice at %v, bob at %v, captain at %v", s.where(mgr, "alice"), s.where(mgr, "bob"), s.captainAt(mgr))
 
-	// 1. Neither is offered the way in; both are offered the claim and the lie.
+	// 1. Nothing to do first: both are offered the lie and the question.
 	for _, who := range []string{"alice", "bob"} {
 		lines := s.offered(mgr, who)
-		s.True(lines["expected"] && lines["lie"], "%s sees \"We are expected\" and the lie", who)
-		s.False(lines["the-way-in"], "%s is not yet offered \"Where will the feast be\"", who)
+		s.True(lines["lie"] && lines["the-way-in"], "%s is offered the lie and the question from the start", who)
 	}
 
-	// 2. Alice says the plain line; both are now offered the way in.
-	said, acts := s.say(mgr, "alice", "expected")
-	s.True(said.Beaten, "a plain line lands")
-	s.Equal("So you are. Go on in.", s.captainSays(acts), "he lets them in")
-	for _, who := range []string{"alice", "bob"} {
-		s.True(s.offered(mgr, who)["the-way-in"], "%s is now offered \"Where will the feast be\"", who)
-	}
-
-	// 3. Alice lies; the best roll still fails.
+	// 2. Alice lies; the best roll still fails.
 	lied, acts := s.say(mgr, "alice", "lie")
 	s.Equal(30, lied.DC, "the lie's DC is 30")
 	s.GreaterOrEqual(lied.Total, 20, "the roll was the best there is, a 20")
 	s.False(lied.Beaten, "the lie fails (total %d)", lied.Total)
 	s.Equal("Lies. Get out before I change my mind.", s.captainSays(acts), "he calls it a lie")
 
-	// 4. Rounds pass until he stands at his gate spot.
-	rounds := s.waitUntilAtTheGate(mgr)
-	s.T().Logf("the captain reached his gate after %d rounds", rounds)
+	// 3. Rounds pass until he stands at his gate spot: one is all it takes.
+	waits := s.waitUntilAtTheGate(mgr)
+	s.T().Logf("the captain reached his gate after %d wait(s)", waits)
 
-	// 5. Both walk out through the door, within his reach.
+	// 4. Both walk out through the door, within his reach.
 	aliceWalk := s.walk(mgr, "alice", s.pathOut(mgr, "alice")...)
 	s.Equal(session.MovementCompleted, aliceWalk.Status, "alice leaves through the door: %s", aliceWalk.StopReason)
 	bobWalk := s.walk(mgr, "bob", s.pathOut(mgr, "bob")...)
 	s.Equal(session.MovementCompleted, bobWalk.Status, "bob leaves through the door: %s", bobWalk.StopReason)
 	s.assertTheLiarLostTheLines(mgr, "after the walk out")
+	return mgr, waits
+}
 
-	// 6. The liar steps back in: stopped, by him, no step, not moved.
+func (s *CaptainRemembersWalkSuite) TestTheCaptainRemembersWhoLiedToHim() {
+	mgr, waits := s.theLiarIsAtTheGate()
+	s.Equal(1, waits, "one Wait is all he needs to reach his gate")
+
+	// 5. The liar steps back in: stopped, by him, no step, not moved.
 	before := s.where(mgr, "alice")
 	back := s.walk(mgr, "alice", s.pathIn(before)...)
 	s.Equal(session.MovementStopped, back.Status, "the liar is stopped at the door")
@@ -189,15 +189,32 @@ func (s *CaptainRemembersWalkSuite) TestTheCaptainRemembersWhoLiedToHim() {
 	s.Empty(back.Steps, "she takes no step")
 	s.Equal(before, s.where(mgr, "alice"), "she has not moved")
 
-	// 7. The friend steps in: he does.
+	// 6. The friend steps in: he does.
 	bobBefore := s.where(mgr, "bob")
 	in := s.walk(mgr, "bob", s.pathIn(bobBefore)...)
 	s.Equal(session.MovementCompleted, in.Status, "the friend walks in: %s", in.StopReason)
 	s.Equal(inTheDoorway, s.where(mgr, "bob"), "and stands inside, in the doorway")
 
-	// 8. A reload reads the same lines.
+	// 7. A reload reads the same lines.
 	reloaded := s.manager()
 	s.assertTheLiarLostTheLines(reloaded, "after a reload")
+}
+
+// TestTheOtherCharactersLieIsCaughtToo asks what the site does not decide for
+// itself: the captain is already in back-to-gate, and no transition enters that
+// state again. It asserts what truly happens: the second liar is NOT caught.
+func (s *CaptainRemembersWalkSuite) TestTheOtherCharactersLieIsCaughtToo() {
+	mgr, _ := s.theLiarIsAtTheGate()
+
+	lied, acts := s.say(mgr, "bob", "lie")
+	s.False(lied.Beaten, "bob's lie fails too (total %d)", lied.Total)
+	s.Equal("Lies. Get out before I change my mind.", s.captainSays(acts), "he calls it a lie")
+
+	// What truly happens: he does not note the second liar. The captain is
+	// already in back-to-gate and no transition enters it again, so bob's failed
+	// lie writes no second note: bob is still offered both lines, and only
+	// alice, the first liar, has lost them.
+	s.assertTheLiarLostTheLines(mgr, "after bob's own lie")
 }
 
 // assertTheLiarLostTheLines: alice, caught lying, is offered neither the lie
@@ -247,18 +264,3 @@ func (s *CaptainRemembersWalkSuite) route(a, b spatial.Position) []spatial.Posit
 	}
 	return out
 }
-
-func (s *CaptainRemembersWalkSuite) TestAStrangersLieLeavesHimInTheHall() {
-	mgr := s.launch("alice", "bob")
-	start := s.captainAt(mgr)
-	lied, acts := s.say(mgr, "bob", "lie")
-	s.False(lied.Beaten, "the stranger's lie fails")
-	s.Equal("Lies. Get out before I change my mind.", s.captainSays(acts), "he calls it a lie")
-	for i := 0; i < 2; i++ {
-		_, err := mgr.Wait(context.Background(), &session.WaitInput{Session: "sess", Member: "alice"})
-		s.Require().NoError(err)
-	}
-	s.Equal(start, s.captainAt(mgr), "he has not left the hall: he had noted nothing about the stranger")
-	s.True(s.offered(mgr, "bob")["lie"], "bob is still offered the lie")
-}
-

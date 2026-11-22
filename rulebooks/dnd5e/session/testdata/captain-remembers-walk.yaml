@@ -1,10 +1,10 @@
 # THE CAPTAIN REMEMBERS WHO LIED (rpg-project#989): a small walk site, cut from
 # the mad king's castle gate, for the one thing the castle made hard to test.
-# Start in the hall beside the Guard Captain with two characters. Say "We are
-# expected at the feast." Then, with one character, tell him the lie: it fails
-# whatever is rolled (DC 30). Press Wait until he stands at the gate, walk both
-# out to him: the liar is refused the lie, the question and the way back in; the
-# friend keeps all three. Tell the lie before "We are expected" and he stays.
+# Nothing has to be done first. Start in the hall beside the Guard Captain with
+# two characters. With one of them, tell him the lie: it fails whatever is
+# rolled (DC 30). Press Wait once: he walks out to the gate. Walk both out to
+# him: the liar has lost the lie and the question and is barred from coming
+# back in; the other character keeps both lines and walks through.
 version: 5
 key: captain-remembers-walk
 play: { void: transparent, lighting: bright, standing: centre-covered }
@@ -35,11 +35,9 @@ behaviorDefinitions:
           transitions:
             - on: heard
               when:
-                all:
-                  - fact: { name: heard.claim, op: eq, value: failed }
-                  - fact: { name: noted:admitted, op: eq, value: true }
+                fact: { name: heard.claim, op: eq, value: failed }
               to: back-to-gate
-              reason: an admitted guest lied to him
+              reason: someone lied to him
         back-to-gate:
           transitions:
             - on: time
@@ -124,14 +122,6 @@ room:
       captain:
         faction: garrison
         options:
-          - id: expected
-            say: We are expected at the feast.
-            success:
-              - say: So you are. Go on in.
-                give:
-                  topic: admitted
-                  to: spoken_to
-                  about: party_in_sight
           - id: lie
             say: He burned Ashford. Your own village. You know what he is.
             check:
@@ -146,8 +136,7 @@ room:
           - id: the-way-in
             say: Where will the feast be, captain?
             requires:
-              - noted: admitted
-              - not: { noted: caught-lying }
+              not: { noted: caught-lying }
             success:
               - say: In the great hall. You’re expected.
         behaviors:
@@ -159,8 +148,7 @@ room:
             door: gate-wall-door
             against: entering
             pass:
-              - noted: admitted
-              - not: { noted: caught-lying }
+              not: { noted: caught-lying }
             at:
               - q: -4
                 r: 8
