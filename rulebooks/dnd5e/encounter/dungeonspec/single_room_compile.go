@@ -244,7 +244,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		mp := MonsterPlacement{
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			Temper: temperOf(b.Temper, from.temper[sideOf(b.Faction)]), Actions: slices.Clone(b.Actions),
-			Behaviors: bound.Input, BlockingStates: bound.BlockingStates, Posts: bound.Posts,
+			Behaviors: bound.Input, BlockingStates: bound.BlockingStates, Posts: bound.Posts, Outcomes: bound.Outcomes,
 		}
 		// Action augmentation remains carrier data: the session owns resolution
 		// against the base monster and so receives both authored lists verbatim.

@@ -128,6 +128,16 @@
 // {flag, <flag>, clears} beside its act. A reader traces one flag by kind
 // `flag` and its id within one routine (the statement's path names it).
 //
+// What a routine's machine gives on entering a state (rpg-project#989) is one
+// statement per consequence of its `outcomes`, kind `routine.outcome`
+// ([KindRoutineOutcome]), at `behaviorDefinitions.<routine>.outcomes.<state>[i]`:
+// "Entering `<state>`, it notes `<topic>` about <the one each beat entering the
+// state names>." It is traced as any note is (noteedges.go): {topic, <topic>,
+// grants}, {who, the_one_named, about, at: <topic>}, {who, itself, takes, is:
+// judgement, at: <topic>} and {creature, <id>, may-note, at: <topic>} for each
+// creature whose body runs the routine, and {state, <state>, enters} for the
+// state it is entered at.
+//
 // # Status effects (rpg-project#1024)
 //
 // Each status under the root's `statuses:` is one statement of kind

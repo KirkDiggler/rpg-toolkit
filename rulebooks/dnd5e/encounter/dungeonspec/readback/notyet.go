@@ -35,7 +35,7 @@ var saidKeys = map[string][]string{
 	"disposition":        {"between", "stance", "until"},
 	"propBinding":        {"holdable", "holds", "options", "arrives"},
 	"doorBinding":        {"closed", "locked", "opened"},
-	"behaviorDefinition": {"recipe", "table"},
+	"behaviorDefinition": {"recipe", "table", "outcomes"},
 	"interaction":        {"recipe", "approach", "outcomes"},
 	"approach":           {"within"},
 	"outcome":            {"give", "arrest", "jail"},

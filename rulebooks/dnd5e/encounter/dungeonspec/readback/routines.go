@@ -6,7 +6,9 @@ package readback
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
@@ -92,6 +94,9 @@ func (b *builder) routines() []Group {
 				add(b.fstmt(KindRoutineWake, about, fmt.Sprintf("%s.transitions[%d]", spath, k),
 					fmt.Sprintf("In the state %s, %s.", quote(state), s),
 					foldInfo{state: state, text: shortWake(tr) + ".", site: "the routine " + quote(def)}, conns...))
+			}
+			for _, st := range b.stateOutcomes(def, state, inst.Recipe, who, about) {
+				add(st)
 			}
 		}
 		keys := make([]string, 0, len(inst.Table))
@@ -211,4 +216,45 @@ func flagKind(v any) string {
 	default:
 		return encounter.ArgKindString
 	}
+}
+
+// stateOutcomes says what a routine's machine gives on entering a state
+// (rpg-project#989), one statement per consequence at
+// `behaviorDefinitions.<routine>.outcomes.<state>[i]`: the topic it notes,
+// about the one each beat entering the state names, connected as any give is
+// (noteGiveEdges: the creatures whose body runs the routine are the takers of
+// `itself`) and to the state it is entered at.
+func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who string, about Subject) []Statement {
+	var out []Statement
+	var runners []string
+	for _, d := range b.spec.Room.Gameplay.MonsterDeclarations {
+		if m := b.monsters[d.ID]; m != nil && len(m.Outcomes[state]) > 0 {
+			runners = append(runners, d.ID)
+		}
+	}
+	var subjects []string
+	for _, name := range statesInOrder(recipe) {
+		for _, tr := range recipe.States[name].Transitions {
+			if tr.To != state {
+				continue
+			}
+			words := aboutWords(tr.On, who)
+			if !slices.Contains(subjects, words) {
+				subjects = append(subjects, words)
+			}
+		}
+	}
+	for i, c := range b.spec.BehaviorDefinitions[def].Outcomes[state] {
+		if c.Give == nil {
+			continue
+		}
+		topic := c.Give.Topic
+		conns := noteGiveEdges(noteGive{topic: topic, about: encounter.WhoTheOneNamed,
+			takers: []noteTaker{{word: c.Give.To, creatures: runners}},
+			cause:  Connection{Kind: ConnState, ID: state, Role: "enters"}})
+		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), quote(topic), strings.Join(subjects, " or "))
+		out = append(out, b.fstmt(KindRoutineOutcome, about, fmt.Sprintf("behaviorDefinitions.%s.outcomes.%s[%d]", def, state, i), sentence,
+			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s.", quote(state), quote(topic)), site: "the routine " + quote(def)}, conns...))
+	}
+	return out
 }
