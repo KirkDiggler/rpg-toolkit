@@ -129,6 +129,18 @@ type MoveOutput struct {
 	// walker's Speak row ([Declaration.Address]) for as long as it stands.
 	Addressed *Address `json:"addressed,omitempty"`
 
+	// Hailed is present when a creature hailed the walker from its own
+	// machine on a step (rpg-project#1139, a creature hails for itself,
+	// without a conversation): it came inside the creature's distance in its
+	// sight and the creature spoke. It names the creatures who hailed the
+	// walker on the step that stopped the walk, in the engine's order. The
+	// step was taken and is in Steps; the remaining cells were dropped, never
+	// attempted and never resumed, and Status is [MovementStopped] unless the
+	// hail landed on the walk's last cell. It is an answer, never an error:
+	// the creature's line is a table answer inside this Move's own acts, and
+	// nothing stands afterwards: there is no [Declaration.Address].
+	Hailed []string `json:"hailed,omitempty"`
+
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -372,6 +384,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Formed:       res.formed,
 		Barred:       res.barred,
 		Addressed:    res.addressed,
+		Hailed:       res.hailed,
 		Saved:        report,
 		Delivery:     delivery,
 	}, nil
@@ -513,6 +526,7 @@ type walkResult struct {
 	formed       *Formed
 	barred       *Barred
 	addressed    *Address
+	hailed       []string
 	joinedCombat bool
 	// through is the record id of the last moved step's beat.
 	through string
@@ -836,6 +850,15 @@ func (m *Manager) walk(
 			res.addressed = projectAddress(stepped.Addressed[0])
 		}
 
+		// A CREATURE'S OWN HAIL STOPS THE WALK THE SAME WAY (rpg-project#1139):
+		// the step was taken, he spoke inside it, and nothing stands after.
+		if len(stepped.Hailed) > 0 {
+			res.hailed = make([]string, len(stepped.Hailed))
+			for k, id := range stepped.Hailed {
+				res.hailed[k] = string(id)
+			}
+		}
+
 		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:
 			// a closed encounter refuses movement anyway, and attempting them
@@ -849,7 +872,7 @@ func (m *Manager) walk(
 			return nil
 		}
 
-		if res.addressed != nil && i < len(path)-1 {
+		if (res.addressed != nil || len(res.hailed) > 0) && i < len(path)-1 {
 			return nil
 		}
 
