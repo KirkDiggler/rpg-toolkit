@@ -487,6 +487,7 @@ func (m *Manager) continueWalk(
 		Formed:       res.formed,
 		Barred:       res.barred,
 		Addressed:    res.addressed,
+		Hailed:       res.hailed,
 	}
 	return landed, nil
 }
