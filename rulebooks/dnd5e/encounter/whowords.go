@@ -101,6 +101,8 @@ var whoWords = []WhoWord{
 	{Word: WhoTheGone, Role: WhoAbout, Label: "the party members it saw who are not there now", Allowed: WhoInEngine},
 	{Word: WhoItself, Role: WhoTaker, Label: "the creature whose machine stepped", Allowed: WhoInStateGiveTo, Way: ChannelJudgement},
 	{Word: WhoTheOneNamed, Role: WhoAbout, Label: "the one the beat names", Allowed: WhoInStateGiveAbout},
+	{Word: string(RecognitionPartyInSight), Role: WhoAbout, Label: "the party of the one the beat names that it sees", Allowed: WhoInStateGiveAbout},
+	{Word: WhoTheGone, Role: WhoAbout, Label: "the party of the one the beat names that it saw and does not see now", Allowed: WhoInStateGiveAbout},
 	{Word: WhoTheSpeaker, Role: WhoRead, Label: "the speaker", Allowed: WhoInRequires},
 	{Word: WhoTheWalker, Role: WhoRead, Label: "the walker", Allowed: WhoInPass},
 	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNoted},

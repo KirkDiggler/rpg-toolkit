@@ -730,7 +730,7 @@ func stateOutcomesOf(
 				add(giveAt+".heard_by", "a state's note has no line, so nobody else hears it: omit heard_by")
 				rec = false
 			}
-			if rec && g.About == encounter.WhoTheOneNamed {
+			if rec {
 				for _, on := range entering {
 					if b, known := encounter.BeatWordOf(on); !known || !b.Names {
 						add(giveAt+".about", fmt.Sprintf("%q is entered on `%s`, which names nobody, so `%s` has no one to be about: "+

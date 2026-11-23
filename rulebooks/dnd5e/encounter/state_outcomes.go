@@ -99,15 +99,15 @@ func validateStateConsequence(what, state string, c Consequence, entering []mach
 		return errEngineTopicValue(what, r.Topic, r.As)
 	case string(r.Holder) != WhoItself:
 		return fmt.Errorf("%s holder %q: the holder is %q", what, r.Holder, WhoItself)
-	case string(r.About) != WhoTheOneNamed:
-		return fmt.Errorf("%s about %q: the subject is %q", what, r.About, WhoTheOneNamed)
+	case !slices.Contains(WhoWordsIn(WhoInStateGiveAbout), string(r.About)):
+		return fmt.Errorf("%s about %q: the subject is %s", what, r.About, joinWords(quotedWords(WhoWordsIn(WhoInStateGiveAbout)), "or"))
 	case r.HeardBy != "":
 		return fmt.Errorf("%s heard_by %q: a state's note has no line, so nobody else hears it", what, r.HeardBy)
 	}
 	for _, on := range entering {
 		if b, ok := BeatWordOf(string(on)); !ok || !b.Names {
-			return fmt.Errorf("%s notes the one the beat names, and the recipe enters %q on `%s`, which names nobody: "+
-				"it is read on %s", what, state, on, joinWords(familyNaming.beats(), "and"))
+			return fmt.Errorf("%s notes about `%s`, and the recipe enters %q on `%s`, which names nobody: "+
+				"it is read on %s", what, r.About, state, on, joinWords(familyNaming.beats(), "and"))
 		}
 	}
 	return nil
@@ -141,4 +141,13 @@ func (e *Encounter) enteredState(m *memberRecord, to string, named MemberID, now
 		}
 	}
 	return nil
+}
+
+// quotedWords is each word in double quotes, in order.
+func quotedWords(words []string) []string {
+	out := make([]string, 0, len(words))
+	for _, w := range words {
+		out = append(out, fmt.Sprintf("%q", w))
+	}
+	return out
 }
