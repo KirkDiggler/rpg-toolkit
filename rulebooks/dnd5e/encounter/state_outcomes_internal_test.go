@@ -390,7 +390,7 @@ func TestStateOutcomesAreRefused(t *testing.T) {
 			`state outcome "wary" consequence 0 heard_by "carriers_who_witnessed": a state's note has no line, so nobody else hears it`},
 		{"the one named on a beat that names nobody", timed, soNotes("wary", soLied),
 			"state outcome \"wary\" consequence 0 notes the one the beat names, and the recipe enters \"wary\" on `time`, " +
-				"which names nobody: it is read on heard, seen, barred and approached"},
+				"which names nobody: it is read on heard, seen, topic, barred and approached"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateStateOutcomes(tc.recipe, tc.outcomes)

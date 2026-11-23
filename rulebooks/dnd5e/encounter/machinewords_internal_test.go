@@ -274,13 +274,13 @@ func TestMachineWords_TheTableIsACopy(t *testing.T) {
 // beats `heard.claim` and `noted:` are read on.
 func TestMachineWords_WhereAllowedIsPinned(t *testing.T) {
 	require.Equal(t, []string{"heard", "deed", "seen", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Scoped }))
-	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Names }))
+	require.Equal(t, []string{"heard", "seen", "topic", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Names }))
 	require.Equal(t, []string{"time", "turn", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Picks }))
 	require.Equal(t, []string{"time", "turn"}, beatsWhere(func(b BeatWord) bool { return b.Timed }))
 	claim, _ := ConditionWordOf("heard.claim")
 	require.Equal(t, []string{"heard"}, claim.allowedOn())
 	noted, _ := ConditionWordOf("noted:x")
-	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, noted.allowedOn())
+	require.Equal(t, []string{"heard", "seen", "topic", "barred", "approached"}, noted.allowedOn())
 	require.Equal(t, []string{"time", "turn", "heard", "deed", "seen", "fact", "topic", "clock:world", "clock:fight", "barred", "approached"}, MachineBeats)
 }
 

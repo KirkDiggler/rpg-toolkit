@@ -80,7 +80,9 @@ const (
 	beatFact machine.Beat = "fact"
 	// beatTopic is a topic the listener came to hold about somebody
 	// (rpg-project#929): through his own judgement or heard, landed when the
-	// record is first held. A guard reads which topic with `topic:<id>`.
+	// record is first held or its value is replaced, once for each subject
+	// whose note changed, naming that subject (rpg-project#1123). A guard
+	// reads which topic with `topic:<id>`.
 	beatTopic machine.Beat = "topic"
 	// beatClock prefixes a clock's round: `clock:world`, `clock:fight`,
 	// `clock:bell:<prop>`, or an area clock's name.
@@ -145,8 +147,9 @@ type wakeBeat struct {
 // (rpg-project#1000): the opposed member it saw (`seen`), the mover who
 // walked into it (`barred`), the one it hailed (`approached`), and on
 // `heard` the speaker of a character's line whose words it caught while
-// seeing them. Every other beat names nobody: a noise, a voice not seen, a
-// deed, a fact, a topic, a clock. It is what a `noted:<topic>` guard asks
+// seeing them, and on `topic` the one the note is about (a `topic` saved with
+// no subject names nobody). Every other beat names nobody: a noise, a voice
+// not seen, a deed, a fact, a clock. It is what a `noted:<topic>` guard asks
 // about, and what a step's consequences will name (S2).
 //
 // Claim is a caught checked line's verdict, read by `heard.claim`.
@@ -178,6 +181,8 @@ func namesSubject(b wakeBeat) bool {
 		return true
 	case beatHeard:
 		return b.Named
+	case beatTopic:
+		return b.Subject != ""
 	}
 	return false
 }
@@ -283,15 +288,16 @@ func (e *Encounter) landDeedBeat(verb string, actor MemberID, where spatial.Posi
 	}
 }
 
-// landTopicBeat lands a topic on the member who came to hold it, when it
-// listens (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
+// landTopicBeat lands a topic on the member who came to hold it, naming the
+// subject the note is about (rpg-project#1123), when it listens
+// (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
 // a state that is not listening does not hear it, and a later state that
 // listens reads it through its `topic:<id>` guard on the next topic beat.
-func (e *Encounter) landTopicBeat(member MemberID, at uint64) {
+func (e *Encounter) landTopicBeat(member, subject MemberID, at uint64) {
 	if _, ok := e.listensFor(member, beatTopic); !ok {
 		return
 	}
-	e.land(wakeBeat{Beat: beatTopic, Member: member, At: at})
+	e.land(wakeBeat{Beat: beatTopic, Subject: subject, Member: member, At: at})
 }
 
 // landFactBeat lands a fact on the member who learned it, when it listens.

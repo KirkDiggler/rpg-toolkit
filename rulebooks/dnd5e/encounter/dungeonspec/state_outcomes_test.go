@@ -236,7 +236,7 @@ func TestDungeonspec_AStatesOutcomesAreRefusedWhereTheyAreWrong(t *testing.T) {
 			states: strings.Replace(outcomesStates, "on: heard\n              when: { fact: { name: heard.claim, op: eq, value: failed } }",
 				"on: time", 1),
 			outcomes: outcomesBlock, path: at + ".give.about",
-			sentence: "\"back-to-gate\" is entered on `time`, which names nobody, so `the_one_named` has no one to be about: it is read on ",
+			sentence: "\"back-to-gate\" is entered on `time`, which names nobody, so `the_one_named` has no one to be about: it is read on heard, seen, topic, barred and approached",
 		},
 	}
 	for _, tc := range cases {
