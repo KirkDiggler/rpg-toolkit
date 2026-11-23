@@ -1,0 +1,176 @@
+# TWO STRIKES AT THE CAPTAIN (rpg-project#1007): a small walk site, cut from the
+# captain-remembers site, for a note that has a value. Nothing has to be done
+# first. Start in the hall beside the Guard Captain with two characters. With
+# one of them, tell him the lie: it fails whatever is rolled (DC 30), he warns
+# them and stays. Say it again: he sends them out, walks to his gate, and bars
+# them from coming back in. The other character is not barred: say the lie to
+# them once at the gate and they are warned, yet they walk through.
+version: 5
+key: two-strikes-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  guard-captain:
+    base: dnd5e:monsters:human
+    name: Guard Captain
+    hitDice: 10d8
+    armor: dnd5e:armor:breastplate
+    abilities: { str: 15, dex: 14, con: 14, cha: 14 }
+    proficiency: 3
+    actions: [dnd5e:weapons:longsword, dnd5e:weapons:javelin]
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: neutral }
+
+behaviorDefinitions:
+  captain-policy:
+    recipe:
+      ref: site:behaviors:captain-policy
+      initial: in-hall
+      states:
+        in-hall:
+          transitions:
+            - on: heard
+              when:
+                all:
+                  - fact: { name: heard.claim, op: eq, value: failed }
+                  - fact: { name: noted.as:standing, op: eq, value: warned }
+              to: back-to-gate
+              reason: a second lie from someone he warned
+        back-to-gate:
+          transitions:
+            - on: heard
+              when:
+                all:
+                  - fact: { name: heard.claim, op: eq, value: failed }
+                  - fact: { name: noted.as:standing, op: eq, value: warned }
+              to: back-to-gate
+              reason: a second lie from someone else he warned
+            - on: time
+              do:
+                - pick: back-to-gate
+            - on: turn
+              do:
+                - pick: back-to-gate
+    outcomes:
+      back-to-gate:
+        - give:
+            topic: standing
+            as: barred
+            to: itself
+            about: the_one_named
+    table:
+      back-to-gate:
+        - when: { enemy: none }
+          toward: { at: { q: -4, r: 8 } }
+
+room:
+  version: 3
+  id: room-1
+  name: The Castle Gate
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Castle Gate
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-5, 2]] }
+          - { r: 4, q: [[-6, 2]] }
+          - { r: 5, q: [[-6, 1]] }
+          - { r: 6, q: [[-7, 1]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -3, r: 4 }
+    monsterDeclarations:
+      - id: captain
+        ref: dnd5e:monsters:guard-captain
+        startingCell: { location: { q: -1, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      captain:
+        faction: garrison
+        options:
+          - id: lie
+            say: He burned Ashford. Your own village. You know what he is.
+            check:
+              - ability: persuasion
+                dc: 30
+            requires:
+              not: { noted: standing }
+            success:
+              - say: …Gods forgive me.
+            failure:
+              - say: One more lie and you are out.
+                give: { topic: standing, as: warned, to: spoken_to, about: speaker }
+          - id: lie-again
+            say: He burned Ashford. Your own village. You know what he is.
+            check:
+              - ability: persuasion
+                dc: 30
+            requires:
+              noted: { topic: standing, as: warned }
+            success:
+              - say: …Gods forgive me.
+            failure:
+              - say: Lies. Get out before I change my mind.
+          - id: the-way-in
+            say: Where will the feast be, captain?
+            requires:
+              not: { noted: { topic: standing, as: barred } }
+            success:
+              - say: In the great hall. You’re expected.
+        behaviors:
+          - id: policy
+            use: captain-policy
+        behaviorState: policy
+        posts:
+          back-to-gate:
+            door: gate-wall-door
+            against: entering
+            pass:
+              not: { noted: { topic: standing, as: barred } }
+            at:
+              - q: -4
+                r: 8
