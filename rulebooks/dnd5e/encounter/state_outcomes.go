@@ -69,7 +69,7 @@ func beatsEntering(r *machine.Recipe, state string) []machine.Beat {
 // give, saying where it belongs.
 func validateStateConsequence(what, state string, c Consequence, entering []machine.Beat) error {
 	kinds := 0
-	for _, set := range []bool{c.SceneMove != nil, c.Recognize != nil, c.Arrest != nil, c.Jail != nil,
+	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil,
 		c.Tells != "", c.Relocate != nil, c.ApplyStatus != nil} {
 		if set {
 			kinds++
@@ -88,8 +88,6 @@ func validateStateConsequence(what, state string, c Consequence, entering []mach
 		return fmt.Errorf("%s arrests: an arrest follows a conversation entering a state, never a machine's", what)
 	case c.Jail != nil:
 		return fmt.Errorf("%s jails: a jail follows a conversation entering a state, never a machine's", what)
-	case c.SceneMove != nil:
-		return fmt.Errorf("%s moves the scene: a scene move follows a conversation entering a state, never a machine's", what)
 	case c.Recognize == nil:
 		return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
 	}

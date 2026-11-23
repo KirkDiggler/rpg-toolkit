@@ -1355,7 +1355,10 @@ type InteractionSpec struct {
 // ([encounter.Consequence]). Exactly one kind: `give`, `arrest` or
 // `jail`.
 type OutcomeSpec struct {
-	SceneMove *SceneMoveSpec `yaml:"sceneMove,omitempty" json:"sceneMove,omitempty"`
+	// OldSceneMove is never set: it is here so a file still writing the
+	// retired `sceneMove:` is refused naming `relocate` and `on: fact`
+	// ([retiredSceneMove]).
+	OldSceneMove *retiredSceneMove `yaml:"sceneMove,omitempty" json:"-"`
 
 	// Give is: a creature notes a topic about someone
 	// (rpg-project#1005; the engine's [encounter.Recognition]).
