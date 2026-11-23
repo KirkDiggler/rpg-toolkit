@@ -182,7 +182,7 @@ func TestNoteValueStepNotedStillAnswersYesForANoteWithAValue(t *testing.T) {
 
 func TestNoteValueStepABeatThatNamesNobodyIsRefusedBySentence(t *testing.T) {
 	const sentence = "`noted.as:standing` asks about the one this beat is about, and `time` is about nobody: " +
-		"it is read on heard, seen, barred and approached"
+		"it is read on heard, seen, topic, barred and approached"
 
 	require.Equal(t, sentence, GuardWordsRefusal(beatTime, nsNotedAs("warned")))
 	require.Empty(t, GuardWordsRefusal(beatHeard, nsNotedAs("warned")), "on a beat that names someone it is sound")

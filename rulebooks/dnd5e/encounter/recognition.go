@@ -905,9 +905,9 @@ func (e *Encounter) holdTopic(
 	// A DIFFERENT VALUE REPLACES IT (rpg-project#1007): the same value (two
 	// empty ones are the same) is that rule exactly; a new value writes the
 	// new payload over the held one, one note per holder, subject and topic.
-	// A replaced note is news: it lands the `topic` beat as a first contact
+	// A replaced note is news: it lands the `topic` beat, naming its subject, as a first contact
 	// does (rpg-project#1113); the same value given again lands none.
-	replaced := false
+	changed := map[MemberID]bool{}
 	reports := make([]perception.Presence, 0, len(subjects))
 	for _, s := range subjects {
 		report := perception.Presence{ID: sightMember(s), Payload: payload}
@@ -915,7 +915,7 @@ func (e *Encounter) holdTopic(
 			if noteValueOf(held.Payload) == line.as {
 				report.Payload = held.Payload
 			} else {
-				replaced = true
+				changed[s] = true
 			}
 		}
 		reports = append(reports, report)
@@ -930,8 +930,17 @@ func (e *Encounter) holdTopic(
 	// A HOLDER WHO COMES TO HOLD A TOPIC MAY WAKE ON IT (rpg-project#929):
 	// a first holding is news, and so is a value that replaced the held one;
 	// a record confirmed again is not.
-	if len(reported.FirstContact) > 0 || replaced {
-		e.landTopicBeat(holder, line.at)
+	for _, p := range reported.FirstContact {
+		for _, s := range subjects {
+			if sightMember(s) == p.ID {
+				changed[s] = true
+			}
+		}
+	}
+	for _, s := range subjects {
+		if changed[s] {
+			e.landTopicBeat(holder, s, line.at)
+		}
 	}
 	return e.tellRecognition(reach, holder, subjects, topic, channel, line)
 }

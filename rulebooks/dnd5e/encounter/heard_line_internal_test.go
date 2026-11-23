@@ -36,6 +36,8 @@ func TestABeatNamesOnlyWhatASenseNames(t *testing.T) {
 		{"a landed voice", wakeBeat{Beat: beatHeard, Kind: SoundVoice, Cell: &cell, Subject: "alice", Member: "guard"}, false},
 		{"a deed", wakeBeat{Beat: beatDeed, Cell: &cell, Subject: "alice"}, false},
 		{"a fact", wakeBeat{Beat: beatFact, Member: "guard"}, false},
+		{"a topic that names its subject", wakeBeat{Beat: beatTopic, Subject: "alice", Member: "guard"}, true},
+		{"a topic with no subject", wakeBeat{Beat: beatTopic, Member: "guard"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ev, err := enc.evFor("guard", m, tc.beat)
@@ -112,11 +114,11 @@ func TestTheGuardWordsAreRefused(t *testing.T) {
 		{"a claim nested under a not", beatSeen, &machine.Guard{Not: leaf("heard.claim", "held")},
 			"`heard.claim` reads what the creature heard, and `seen` is not hearing: it is read on `heard` only"},
 		{"holds on a fact", beatFact, leaf("noted:admitted", true),
-			"`noted:admitted` asks about the one this beat is about, and `fact` is about nobody: it is read on heard, seen, barred and approached"},
-		{"holds on a topic", beatTopic, leaf("noted:admitted", true),
-			"`noted:admitted` asks about the one this beat is about, and `topic` is about nobody: it is read on heard, seen, barred and approached"},
+			"`noted:admitted` asks about the one this beat is about, and `fact` is about nobody: it is read on heard, seen, topic, barred and approached"},
+		{"holds on time", beatTime, leaf("noted:admitted", true),
+			"`noted:admitted` asks about the one this beat is about, and `time` is about nobody: it is read on heard, seen, topic, barred and approached"},
 		{"holds on a deed", beatDeed, &machine.Guard{All: []machine.Guard{*leaf("noted:admitted", true)}},
-			"`noted:admitted` asks about the one this beat is about, and `deed` is about nobody: it is read on heard, seen, barred and approached"},
+			"`noted:admitted` asks about the one this beat is about, and `deed` is about nobody: it is read on heard, seen, topic, barred and approached"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.sentence, GuardWordsRefusal(tc.on, tc.when))
