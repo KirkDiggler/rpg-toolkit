@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -255,6 +256,27 @@ func (s *KnownOnSightWalkSuite) untilAliceIsBarred() *session.Manager {
 	return s.manager()
 }
 
+// captainDecisionsOnSeen counts the captain's behavior_decision entries on the
+// seen beat in the session's saved log: how often the engine asked him about
+// a sighting.
+func (s *KnownOnSightWalkSuite) captainDecisionsOnSeen() int {
+	s.T().Helper()
+	stored, err := s.encounters.GetEncounter(context.Background(), "sess")
+	s.Require().NoError(err)
+	n := 0
+	for _, entry := range stored.Log.Entries {
+		var p struct {
+			Beat   string `json:"beat"`
+			Member string `json:"member"`
+			On     string `json:"on"`
+		}
+		if json.Unmarshal(entry.Payload, &p) == nil && p.Beat == "behavior_decision" && p.Member == "captain" && p.On == "seen" {
+			n++
+		}
+	}
+	return n
+}
+
 func (s *KnownOnSightWalkSuite) TestKnownOnSight() {
 	mgr := s.untilAliceIsBarred()
 	s.Equal(knownAliceStart, s.where(mgr, "alice"), "alice has not moved")
@@ -265,11 +287,16 @@ func (s *KnownOnSightWalkSuite) TestKnownOnSight() {
 	s.outAndAside(mgr, "alice")
 
 	// 4. Back in his sight: he calls out within two Waits.
+	beforeAlice := s.captainDecisionsOnSeen()
 	s.Contains(s.backInSight(mgr, "alice", knownSeenCell), iSaidOut, "alice steps back into sight: the captain says 'I said out.'")
+
+	s.Equal(beforeAlice+1, s.captainDecisionsOnSeen(), "alice's return asked the captain once")
 
 	// 5. Bob does the same: he says nothing.
 	s.outAndAside(mgr, "bob")
+	beforeBob := s.captainDecisionsOnSeen()
 	s.Empty(s.backInSight(mgr, "bob", knownDoorway), "bob steps back into sight: the captain says nothing")
+	s.Equal(beforeBob, s.captainDecisionsOnSeen(), "the filter never asked the captain about bob")
 
 	// 6. Alice again: he says it again.
 	s.outAndAside(mgr, "alice")
