@@ -515,8 +515,11 @@ func (e *Encounter) validatePass(pass []Trigger) error {
 				return fmt.Errorf("%s requires holding %q, which nobody can pick up", what, r.Prop)
 			}
 		case TriggerRecognized:
-			if !granted[r.Topic] {
+			if !granted.gives(r.Topic) {
 				return fmt.Errorf("%s requires recognition on topic %q, and no interaction's outcome grants it", what, r.Topic)
+			}
+			if r.As != "" && !granted.givesAs(r.Topic, r.As) {
+				return errNothingGivesValue(what, r.Topic, r.As)
 			}
 		}
 	}
