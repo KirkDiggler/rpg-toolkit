@@ -126,6 +126,9 @@ type behaviorSourceInput struct {
 	// Topics is every topic a root interaction's outcomes grant
 	// (rpg-project#928): what a post's `pass` may ask `noted` of.
 	Topics map[string]bool
+
+	// Values is every value each of those topics is given with (rpg-project#1007).
+	Values topicValues
 }
 
 func behaviorSourceError(path, message string) error {
@@ -412,7 +415,7 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 		if !in.Doors[post.Door] {
 			return behaviorLowering{}, behaviorSourceError(path+".door", "must name a door in this site")
 		}
-		if at, refusal := passRefusal(path+".pass", post.Pass, in.Topics); refusal != "" {
+		if at, refusal := passRefusal(path+".pass", post.Pass, in.Topics, in.Values); refusal != "" {
 			return behaviorLowering{}, behaviorSourceError(at, refusal)
 		}
 		lowered := encounter.Post{Door: encounter.DoorID(in.Key + "/" + post.Door), Against: encounter.PostDirection(post.Against), Pass: passOf(post.Pass)}
@@ -489,7 +492,7 @@ func roomBehaviorInput(s *SingleRoomSpec, id string) (behaviorLowering, error) {
 	return bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: uses, Body: body,
 		Blocking: blocks, Posts: posts, Path: "room.room.monsterBindings." + id, Key: s.Key,
 		Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-		Topics: grantedTopicsOf(s)})
+		Topics: grantedTopicsOf(s), Values: givenValuesOf(s)})
 }
 
 func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
@@ -564,7 +567,7 @@ func behaviorSourceValues(s *SingleRoomSpec, add errSink) {
 		_, err := bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: faction.Behaviors,
 			Body: faction.BehaviorState, Blocking: faction.BlockingStates, Posts: faction.Posts,
 			Path: path, Key: s.Key, Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-			Topics: grantedTopicsOf(s)})
+			Topics: grantedTopicsOf(s), Values: givenValuesOf(s)})
 		report(err)
 	}
 	for _, actor := range s.Room.Gameplay.MonsterDeclarations {
@@ -742,7 +745,7 @@ func stateOutcomesOf(
 			}
 			if rec {
 				out[state] = append(out[state], encounter.Consequence{Recognize: &encounter.Recognition{
-					Topic: encounter.TopicID(g.Topic), Holder: encounter.RecognitionHolder(g.To), About: encounter.RecognitionSubjects(g.About),
+					Topic: encounter.TopicID(g.Topic), As: g.As, Holder: encounter.RecognitionHolder(g.To), About: encounter.RecognitionSubjects(g.About),
 				}})
 			}
 		}

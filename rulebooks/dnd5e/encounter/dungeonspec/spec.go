@@ -1592,10 +1592,17 @@ type ArrestAreaSpec struct {
 // any other is refused.
 //
 //	give: { topic: admitted, to: spoken_to, about: party_in_sight, heard_by: carriers_who_witnessed }
+//	give: { topic: standing, as: warned, to: spoken_to, about: speaker }
 type GiveSpec struct {
 	// Topic is the topic given, authored content: what the one it is given
 	// to notes about someone. REQUIRED.
 	Topic string `yaml:"topic" json:"topic"`
+
+	// As is the value the note carries (rpg-project#1007): `as: warned`.
+	// Optional; absent, the topic is noted with no value, as it always was.
+	// A topic has a value everywhere it is given, or nowhere, and the
+	// engine's own `arrested`, `wanted` and `jailed` have none.
+	As string `yaml:"as,omitempty" json:"as,omitempty"`
 
 	// To is who notes it: `spoken_to`, the creature the line that
 	// moved the interaction was said to. REQUIRED.

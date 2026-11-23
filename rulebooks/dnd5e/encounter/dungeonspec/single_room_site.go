@@ -311,11 +311,13 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Bundled:      true,
 		Interactions: interactionShapes(s, add),
 		LineTopics:   lineGrantedTopics(s),
+		Values:       givenValuesOf(s),
 	})
 	g.factions()
 	g.partySharing(s.Party)
 	behaviorSourceValues(s, add)
 	topicGuards(s, add)
+	topicValueRefusals(s, add)
 	g.factionOrders()
 	for _, id := range sortedKeys(s.BehaviorDefinitions) {
 		for _, key := range sortedKeys(s.BehaviorDefinitions[id].table) {

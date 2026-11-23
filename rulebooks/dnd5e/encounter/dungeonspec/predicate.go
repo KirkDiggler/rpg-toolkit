@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -124,6 +125,12 @@ type PredicateSpec struct {
 	// arrival or an ending never waits on it. Must name a topic something in
 	// the document gives, and not a prop: carrying a prop is `carries`.
 	Noted string
+
+	// NotedAs is the value the note must carry (rpg-project#1007): the
+	// `as` of `{ noted: { topic: standing, as: warned } }`. Empty asks whether
+	// the topic is noted at all, whatever it carries. Non-empty must be a
+	// value some give of that topic carries.
+	NotedAs string
 }
 
 // InteractionPredicateSpec is the interaction form's own object: which
@@ -291,14 +298,14 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Not          *PredicateSpec       `yaml:"not"`
 
 		Interaction *InteractionPredicateSpec `yaml:"interaction"`
-		Noted       string                    `yaml:"noted"`
+		Noted       notedForm                 `yaml:"noted"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
 		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Carries: obj.Carries, RetiredHolds: obj.RetiredHolds, Left: obj.Left,
-		Not: obj.Not, Interaction: obj.Interaction, Noted: obj.Noted,
+		Not: obj.Not, Interaction: obj.Interaction, Noted: obj.Noted.Topic, NotedAs: obj.Noted.As,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -307,6 +314,44 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	if p.Form() == "" {
 		return fmt.Errorf("line %d: this predicate's `%s` says nothing — %s", value.Line, forms[0], predicateForms)
 	}
+
+	return nil
+}
+
+// notedForm is what `noted:` is written as (rpg-project#1007): a plain word,
+// the topic, or a mapping of exactly `topic` (required) and `as` (optional).
+type notedForm struct {
+	Topic string
+	As    string
+}
+
+// notedKeys is every key a noted mapping takes, in the order a refusal lists them.
+var notedKeys = []string{"topic", "as"}
+
+// UnmarshalYAML reads a noted as a plain word or a mapping, refusing any other
+// key by name and line, and a mapping with no topic as an author halfway
+// through it.
+func (n *notedForm) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return value.Decode(&n.Topic)
+	}
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		if key := value.Content[i]; !slices.Contains(notedKeys, key.Value) {
+			return fmt.Errorf("line %d: field %s not found in a noted: a noted takes %s",
+				key.Line, key.Value, strings.Join(notedKeys, ", "))
+		}
+	}
+	var body struct {
+		Topic string `yaml:"topic"`
+		As    string `yaml:"as"`
+	}
+	if err := value.Decode(&body); err != nil {
+		return err
+	}
+	if body.Topic == "" {
+		return fmt.Errorf("line %d: a noted names the topic: write `noted: { topic: <topic>, as: <value> }`", value.Line)
+	}
+	n.Topic, n.As = body.Topic, body.As
 
 	return nil
 }
@@ -374,6 +419,9 @@ func (p *PredicateSpec) String() string {
 	case predicateInteraction:
 		return fmt.Sprintf("{ interaction: { id: %s, in: [%s] } }", p.Interaction.ID, strings.Join(p.Interaction.In, ", "))
 	case predicateNoted:
+		if p.NotedAs != "" {
+			return fmt.Sprintf("{ noted: { topic: %s, as: %s } }", p.Noted, p.NotedAs)
+		}
 		return fmt.Sprintf("{ noted: %s }", p.Noted)
 	default:
 		return "{ }"

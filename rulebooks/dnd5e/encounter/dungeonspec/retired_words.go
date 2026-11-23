@@ -52,7 +52,7 @@ func (*retiredStateHolds) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // giveKeys is every key a give takes, in the order a refusal lists them.
-var giveKeys = []string{"topic", "to", "about", "heard_by"}
+var giveKeys = []string{"topic", "as", "to", "about", "heard_by"}
 
 // UnmarshalYAML reads a give, refusing a key it does not take by name and
 // line — a give hangs under a row or an outcome whose own reader does not

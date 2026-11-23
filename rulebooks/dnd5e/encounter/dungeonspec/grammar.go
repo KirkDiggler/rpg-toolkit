@@ -349,6 +349,12 @@ type grammarInput struct {
 	// (rpg-project#929, #932): with the interactions' outcomes, what a
 	// `noted` requirement may name.
 	LineTopics map[string]bool
+
+	// Values is every value each topic the document gives is given with
+	// (rpg-project#1007): what a `noted` that asks a value may ask. A dialect
+	// that does not read the document's gives leaves it nil, and judges no
+	// value.
+	Values topicValues
 }
 
 // interactionShape is what an option may name of one root interaction: the
@@ -445,6 +451,9 @@ type grammar struct {
 
 	// lineTopics is [grammarInput.LineTopics].
 	lineTopics map[string]bool
+
+	// values is [grammarInput.Values].
+	values topicValues
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -462,6 +471,7 @@ func newGrammar(in grammarInput) *grammar {
 		doors:                in.Doors,
 		interactions:         in.Interactions,
 		lineTopics:           in.LineTopics,
+		values:               in.Values,
 	}
 }
 
@@ -711,6 +721,8 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 			g.fail(path+".noted", "%s", errNotedOnProp)
 		case !given:
 			g.fail(path+".noted", "%s", topicNeverGiven(p.Noted))
+		case p.NotedAs != "" && g.values != nil && !g.values.givesAs(p.Noted, p.NotedAs):
+			g.fail(path+".noted", "%s", errNothingGivesValue("this line", p.Noted, p.NotedAs))
 		}
 	case predicateCarries:
 		holdable, placed := props[p.Carries]
