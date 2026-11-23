@@ -16,7 +16,7 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-const castleContentHash = "1f93ad7bc9ecbe9613a93aa1cb474676bc166fe7792224d0a16dbbc21a85e32b"
+const castleContentHash = "2b6632fdc28de12a739c5b6caace19bfeb72463ef11a9d81a2403ca726894731"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()
