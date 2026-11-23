@@ -10,6 +10,7 @@ package dungeonspec_test
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -322,4 +323,16 @@ func TestDungeonspec_NoteValue_TheReadBackSaysAValuedGivesValueAndListsNothingUn
 		require.NotContains(t, un.Path, "give.as", "a line's valued give says its `as`: %v", un)
 	}
 	require.Contains(t, rb.Text(), "is given the topic `standing` as `warned`", "the value is said, not dropped")
+}
+
+// A compiled site's JSON picture writes `As` only when it carries a value, so
+// a picture made before the value existed stays equal to one made today.
+func TestDungeonspec_NoteValue_AnEmptyValueIsNotWritten(t *testing.T) {
+	compiled := loadSource(t, valueSite())
+	raw, err := json.Marshal(compiled)
+	require.NoError(t, err)
+	out := string(raw)
+
+	require.NotRegexp(t, `"As"\s*:\s*""`, out, "a noted requirement with no value writes no As")
+	require.Regexp(t, `"As"\s*:\s*"warned"`, out, "a noted requirement with a value writes it")
 }

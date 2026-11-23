@@ -117,7 +117,7 @@ type TriggerRecognized struct {
 	// whether the topic is noted at all, whatever value it carries or none:
 	// today's question exactly. Non-empty is true only for a note that
 	// carries exactly this value, and must be one some give carries.
-	As string
+	As string `json:"As,omitempty"`
 }
 
 // isTrigger marks TriggerRecognized as a Trigger.
