@@ -97,6 +97,8 @@ func validateStateConsequence(what, state string, c Consequence, entering []mach
 	switch {
 	case r.Topic == "":
 		return fmt.Errorf("%s recognizes on no topic", what)
+	case r.As != "" && isEngineTopic(r.Topic):
+		return errEngineTopicValue(what, r.Topic, r.As)
 	case string(r.Holder) != WhoItself:
 		return fmt.Errorf("%s holder %q: the holder is %q", what, r.Holder, WhoItself)
 	case string(r.About) != WhoTheOneNamed:

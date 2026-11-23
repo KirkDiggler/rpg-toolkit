@@ -678,6 +678,10 @@ type TriggerData struct {
 	// Topic is a `recognized` trigger's topic (rpg-project#928); written
 	// only for that kind.
 	Topic TopicID `json:"topic,omitempty"`
+
+	// As is a `recognized` trigger's value (rpg-project#1007); written only
+	// for that kind, and only when it asks for one.
+	As string `json:"as,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -710,7 +714,7 @@ func triggerDataFrom(t Trigger) TriggerData {
 	case TriggerInteraction:
 		return TriggerData{Kind: "interaction", Interaction: t.Interaction, States: slices.Clone(t.In)}
 	case TriggerRecognized:
-		return TriggerData{Kind: "recognized", Topic: t.Topic}
+		return TriggerData{Kind: "recognized", Topic: t.Topic, As: t.As}
 	}
 	return TriggerData{}
 }
@@ -750,7 +754,7 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 	case "interaction":
 		return TriggerInteraction{Interaction: td.Interaction, In: slices.Clone(td.States)}, nil
 	case "recognized":
-		return TriggerRecognized{Topic: td.Topic}, nil
+		return TriggerRecognized{Topic: td.Topic, As: td.As}, nil
 	case "not":
 		if td.Not == nil {
 			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
@@ -3579,6 +3583,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		savedNotes = append(savedNotes, r.Outcomes)
 	}
 	granted := grantedTopics(interactions, savedNotes, savedLines...)
+	if err := checkTopicValues(granted); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
 		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)

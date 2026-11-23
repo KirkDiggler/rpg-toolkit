@@ -130,7 +130,7 @@ type Encounter struct {
 	// rpg-project#928, #929): its interactions' outcomes and its members'
 	// lines' grants. A `recognized` requirement or pass on any other is one
 	// nobody could ever meet, and refused. Kept so a joiner's grants add to it.
-	granted map[TopicID]bool
+	granted topicGrants
 
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
@@ -938,6 +938,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		machineNotes = append(machineNotes, m.Outcomes)
 	}
 	granted := grantedTopics(interactions, machineNotes, memberLines...)
+	if err := checkTopicValues(granted); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
@@ -2827,8 +2830,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 	joinGranted := grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
-	for topic := range e.granted {
-		joinGranted[topic] = true
+	joinGranted.merge(e.granted)
+	if err := checkTopicValues(joinGranted); err != nil {
+		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 	if err := validateOptionInteractions(e.interactions, joinGranted, in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
@@ -2929,9 +2933,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	// posts are judged against them; a refused post puts them back.
 	wasGranted := e.granted
 	e.granted = grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
-	for topic := range wasGranted {
-		e.granted[topic] = true
-	}
+	e.granted.merge(wasGranted)
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
 		e.granted = wasGranted
 		return nil, nil, fmt.Errorf("join: %w", err)
