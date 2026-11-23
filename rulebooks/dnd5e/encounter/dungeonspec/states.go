@@ -174,7 +174,7 @@ const passForms = "a pass is a fact (`pass: <fact>`), or one or a list of { fact
 // `noted` of a topic something gives (topics), or a `not` of
 // one. The first defect, at its own path under at, or "" for none. The
 // bare-word spelling is the caller's to judge against its facts.
-func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string) {
+func passRefusal(at string, p *PassSpec, topics map[string]bool, values topicValues) (string, string) {
 	if p == nil {
 		return "", ""
 	}
@@ -198,6 +198,9 @@ func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string
 		case predicateNoted:
 			if !topics[pred.Noted] {
 				return path + ".noted", topicNeverGiven(pred.Noted)
+			}
+			if pred.NotedAs != "" && values != nil && !values.givesAs(pred.Noted, pred.NotedAs) {
+				return path + ".noted", errNothingGivesValue("this pass", pred.Noted, pred.NotedAs)
 			}
 		default:
 			return path, passForms
@@ -585,7 +588,7 @@ func (g *grammar) placeHolds(path string, st StateSpec, fail func(p, format stri
 		if pass.Fact != "" && !g.facts[pass.Fact] {
 			fail(path+".pass", "%q is not a fact this file sets, so nobody could ever know the pass", pass.Fact)
 		}
-		if at, refusal := passRefusal(path+".pass", pass, g.topics()); refusal != "" {
+		if at, refusal := passRefusal(path+".pass", pass, g.topics(), g.values); refusal != "" {
 			fail(at, "%s", refusal)
 		}
 	}
