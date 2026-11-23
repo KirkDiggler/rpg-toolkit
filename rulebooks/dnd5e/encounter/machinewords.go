@@ -454,10 +454,10 @@ var machineBeatWords = []BeatWord{
 		Long:  "when someone walks into {who} and its body stops them"},
 	{Word: "approached", Written: writtenOn, Scoped: true, Names: true, Picks: true, Label: "hails someone",
 		About: "the one {who} hailed",
-		Short: "when it is the carrier that hails a character (only under the conversation's hail rule)",
-		Long: "when {who} hails a character, which happens only under the conversation's hail rule: the " +
-			"character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line " +
-			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one"},
+		Short: "when someone comes within its distance in its sight " +
+			"(or, for a conversation's carrier, under that conversation's hail rule)",
+		Long: "when someone's step brings them within {whose} distance (the step's own `within`) and {who} sees them; " +
+			"or, when {who} carries a conversation that declares an approach, under that conversation's hail rule"},
 	{Word: deedPrefix, Written: writtenOn, Open: SlotDeed, Scoped: true, Label: "{id} is done",
 		Args:  []Arg{argOpen(SlotDeed, WhenDeeds...)},
 		Short: "when the deed {id} is done",

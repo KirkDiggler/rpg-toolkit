@@ -1949,6 +1949,15 @@ type StepOutput struct {
 	// steps it took. The hailing carrier's answer is in IntelDeltas, Formed
 	// and Outcome with the step's own. Empty when nobody hailed.
 	Addressed []Addressed
+
+	// Hailed is every creature that hailed the mover in this step from its
+	// OWN machine (ownhail.go, rpg-project#1139): a creature with no
+	// conversation whose `approached` step requires a `within` and whose step
+	// FIRED (a pick ran or its state changed) for a mover whose step crossed
+	// in to that distance in its sight. Nearest first, then by id. No
+	// address stands and nothing is swept later; the creature's answer is in
+	// IntelDeltas and Formed with the step's own. Empty when nobody hailed.
+	Hailed []MemberID
 }
 
 // JoinInput names who is arriving and the cell on the map they arrive at.
