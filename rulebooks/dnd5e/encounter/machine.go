@@ -522,12 +522,26 @@ func onDefaultClock(m *memberRecord) bool { return m.Clock == "" || m.Clock == w
 func (e *Encounter) relistBehavior(m *memberRecord) {
 	if m.behaviors == nil {
 		e.listeners.Set(m.ID, nil)
+		delete(e.seenWants, m.ID)
 		return
 	}
 	status, _ := m.behaviors.composer.Inspect(&behavior.InspectComposerInput{})
 	seen := map[machine.Beat]bool{}
 	var listens []machine.Listen
+	// WHAT ITS `seen` STEPS REQUIRE of the one seen (rpg-project#1126): the
+	// steps of each instance's CURRENT state. Any step that requires
+	// nothing makes the member "anyone", and it has no entry.
+	var wants seenWants
+	anyone := false
 	for _, instance := range status.Instances {
+		if i, ok := m.behaviors.byID[instance.ID]; ok {
+			transitions := m.behaviors.input.Instances[i].Instance.Recipe.States[instance.State].Transitions
+			if w, filtered := seenWantsOf(transitions); filtered {
+				wants = append(wants, w...)
+			} else if slices.ContainsFunc(transitions, func(t machine.Transition) bool { return t.On == beatSeen }) {
+				anyone = true
+			}
+		}
 		for _, listen := range instance.Listens {
 			if !seen[listen.Beat] {
 				seen[listen.Beat] = true
@@ -536,6 +550,15 @@ func (e *Encounter) relistBehavior(m *memberRecord) {
 		}
 	}
 	e.listeners.Set(m.ID, listens)
+	if anyone || len(wants) == 0 {
+		delete(e.seenWants, m.ID)
+
+		return
+	}
+	if e.seenWants == nil {
+		e.seenWants = map[MemberID]seenWants{}
+	}
+	e.seenWants[m.ID] = wants
 }
 
 // behaviorDue asks only world-timed instances. A fight-only role never arms the

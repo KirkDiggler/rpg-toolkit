@@ -337,6 +337,9 @@ func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 			if !ok || subject == l.Key {
 				continue
 			}
+			if !e.couldBeWokenBySeeing(l.Key, subject) {
+				continue
+			}
 			cell, err := e.cellOf(m)
 			if err != nil {
 				continue
