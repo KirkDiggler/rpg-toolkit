@@ -76,6 +76,7 @@ var machineFactReaders = map[string]func(env any) (any, bool){
 	string(factEnemy):      readEnemy,
 	"heard.kind":           readHeardKind,
 	string(factHeardClaim): readHeardClaim,
+	string(factStance):     readStance,
 }
 
 func vocabularyFor(r *machine.Recipe) machine.Vocabulary {
@@ -196,6 +197,32 @@ func (e *Encounter) envFor(id MemberID) *machineEnv { return &machineEnv{e: e, i
 // noise, or a voice whose words were not caught is neither.
 const factHeardClaim machine.FactName = "heard.claim"
 
+// factStance names the guard fact that reads how this creature stands to the
+// one the beat names (rpg-project#1125): [StanceHostile], [StanceNeutral],
+// [StanceAllied] or [StanceNone].
+const factStance machine.FactName = "stance"
+
+// readStance is how the creature believes it stands to the one the beat names
+// ([Encounter.BelievedStance]: what it believes, never the graph read behind
+// its back). ALWAYS KNOWN: an unknown fact makes the whole step depend and a
+// `not` of it would never fire, so a beat that names nobody and a belief that
+// cannot be read both answer "".
+func readStance(env any) (any, bool) {
+	me, ok := env.(*machineEnv)
+	if !ok {
+		return nil, false
+	}
+	ev, ok := me.event.(wakeEv)
+	if !ok || ev.Subject == "" {
+		return "", true
+	}
+	stance, err := me.e.BelievedStance(me.id, ev.Subject)
+	if err != nil {
+		return "", true
+	}
+	return string(stance), true
+}
+
 // notedPrefix names a guard fact true while this creature has noted a topic
 // about the one the beat names (rpg-project#1000): `noted:<topic>`.
 // `noted.anyone:<topic>` (the engine's `topic:<id>`) is the question
@@ -250,11 +277,15 @@ func guardWordsAt(on machine.Beat, g *machine.Guard, at []machine.Segment) (stri
 		word, known := ConditionWordOf(name)
 		here := append(slices.Clone(at), machine.Segment{Name: "fact"})
 		switch {
-		case known && word.Word == string(factHeardClaim):
+		case known && (word.Word == string(factHeardClaim) || word.Word == string(factStance)):
 			if v, ok := g.Fact.Value.(string); !ok || !slices.Contains(word.Values, v) {
-				return fmt.Sprintf("`%s` is %s, and this names %q", word.Word, strings.Join(word.Values, " or "), fmt.Sprint(g.Fact.Value)), here
+				return fmt.Sprintf("`%s` is %s, and this names %q", word.Word, joinWords(word.Values, "or"), fmt.Sprint(g.Fact.Value)), here
 			}
 			if allowed := word.allowedOn(); !beatAllowed(allowed, on) {
+				if word.Word == string(factStance) {
+					return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
+						"it is read on %s", name, on, joinWords(allowed, "and")), here
+				}
 				return fmt.Sprintf("`%s` reads what the creature heard, and `%s` is not hearing: it is read on `%s` only",
 					word.Word, on, strings.Join(allowed, "`, `")), here
 			}

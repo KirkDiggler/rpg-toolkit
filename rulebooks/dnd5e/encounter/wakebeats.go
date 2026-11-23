@@ -18,7 +18,7 @@ import (
 
 // wakebeats.go is TRIGGERS WITH SCOPE (rpg-project#766 S4, design §3 of
 // ideas/the-world-runs): a beat the record already writes — a sound heard, a
-// deed done, an enemy sighted, a fact learned, a clock's round — wakes the
+// deed done, someone sighted, a fact learned, a clock's round — wakes the
 // machines that listen for it, in the raise it landed in.
 //
 // # Landed, then matched
@@ -26,7 +26,7 @@ import (
 // The sites that write those beats land one [wakeBeat] each on
 // [Encounter.landed] — [Encounter.makeSound] (one per hearer),
 // [Encounter.landDeedAt], [Encounter.learnFact], the sight refresh (one per
-// observer that gained an opposed subject) and the raise itself (`clock`).
+// observer, for each member it gained) and the raise itself (`clock`).
 // The next raise ([Encounter.wake]) matches them against the listener index
 // in landing order and, for each, its listeners in seat order, then clears
 // them. A beat lands only when somebody listens for it, so content with no
@@ -70,7 +70,8 @@ const (
 	beatHeard machine.Beat = "heard"
 	// beatDeed is a deed done anywhere; `deed:<word>` names one word.
 	beatDeed machine.Beat = "deed"
-	// beatSeen is an opposed subject coming into the listener's sight.
+	// beatSeen is someone, whoever they are, coming into the listener's sight
+	// (rpg-project#1123): a step says what it cares about in its `when`.
 	beatSeen machine.Beat = "seen"
 	// beatBarred is a bump on the listener (barred.go, rpg-project#842): a
 	// player's attempt stopped by its body, matched on it alone in the verb
@@ -144,7 +145,7 @@ type wakeBeat struct {
 // place, which no scope admits).
 //
 // Subject is the one the beat is about, AS THIS LISTENER'S SENSES NAME THEM
-// (rpg-project#1000): the opposed member it saw (`seen`), the mover who
+// (rpg-project#1000): the member it saw (`seen`), the mover who
 // walked into it (`barred`), the one it hailed (`approached`), and on
 // `heard` the speaker of a character's line whose words it caught while
 // seeing them, and on `topic` the one the note is about (a `topic` saved with
@@ -308,8 +309,12 @@ func (e *Encounter) landFactBeat(member MemberID, at uint64) {
 	e.land(wakeBeat{Beat: beatFact, Member: member, At: at})
 }
 
-// landSightings lands one `seen` per observer that listens for it and gained
-// an opposed subject in this refresh, at the subject's cell.
+// landSightings lands one `seen` for each member an observer that listens for
+// it gained in this refresh, at that member's cell (rpg-project#1123): anyone
+// who comes into sight, enemy or not, in id order, and never the observer
+// itself. One a guard noted must not be hidden behind someone else who came
+// into view in the same refresh, so every one is news; which of them wakes the
+// machine is the step's own `when`.
 func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 	if !e.listened(beatSeen) {
 		return
@@ -329,7 +334,7 @@ func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 		sort.Slice(gained, func(i, j int) bool { return gained[i] < gained[j] })
 		for _, subject := range gained {
 			m, ok := e.members[subject]
-			if !ok || !e.opposed(l.Key, subject) {
+			if !ok || subject == l.Key {
 				continue
 			}
 			cell, err := e.cellOf(m)
@@ -337,7 +342,6 @@ func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 				continue
 			}
 			e.land(wakeBeat{Beat: beatSeen, Cell: &cell, Subject: subject, Member: l.Key, At: at})
-			break // one sighting wakes it; the rest are the same news
 		}
 	}
 }
