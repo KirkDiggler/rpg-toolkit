@@ -70,14 +70,14 @@ behaviorDefinitions:
 room:
   version: 3
   id: room-1
-  name: The Castle Gate
+  name: Two Strikes at the Gate
   coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz }
   scene:
     version: 1
     id: scene-1
-    name: The Castle Gate
+    name: Two Strikes at the Gate
     items: []
     groups: []
   room:
