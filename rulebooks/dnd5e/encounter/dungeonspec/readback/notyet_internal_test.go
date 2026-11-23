@@ -73,6 +73,7 @@ var specOf = map[string]reflect.Type{
 // not yet said. A key here is a decision, not a gap.
 var acknowledged = map[string][]string{
 	"outcome":            {"sceneMove"},
+	"give":               {"as"},
 	"root":               {"scenarios", "tables"},
 	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},

@@ -18,6 +18,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/readback"
 )
 
 const (
@@ -312,4 +313,12 @@ func TestDungeonspec_NoteValue_TheFileIsRefusedWhereItIsWrong(t *testing.T) {
 // yamlInto decodes one predicate written as a one-line mapping.
 func yamlInto(source string, into *dungeonspec.PredicateSpec) error {
 	return yaml.Unmarshal([]byte(source), into)
+}
+
+func TestDungeonspec_NoteValue_TheReadBackListsAValuedGivesValueAsNotYetSaid(t *testing.T) {
+	rb, err := readback.Of([]byte(valueSite()))
+	require.NoError(t, err)
+	require.Contains(t, rb.NotYetSaid, readback.Unsaid{
+		Path: "room.room.monsterBindings.goblin-1.options[0].failure[0].give.as", Kind: "give.as", Why: "the read-back cannot say this yet",
+	}, "a line's valued give lists its `as`, not dropped")
 }
