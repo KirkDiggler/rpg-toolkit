@@ -114,6 +114,7 @@ func TestMachineWords_ConditionsAreReadWhereTheTableSays(t *testing.T) {
 		"heard.loudness:": leafOf("heard.loudness:shout", true),
 		"heard.claim":     leafOf("heard.claim", ClaimFailed),
 		"noted:":          leafOf("noted:admitted", true),
+		"noted.as:":       leafOf("noted.as:admitted", "warned"),
 		"noted.anyone:":   leafOf("topic:admitted", true), // as the engine reads it once lowered
 	}
 	for _, c := range MachineWords().Conditions {
@@ -376,6 +377,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"cond heard.claim": {"it was a claim that {value}", "",
 			"held=it was a claim that held", "failed=it was a claim that failed"},
 		"cond noted:":        {"has noted {id} about them", "has not noted {id} about them"},
+		"cond noted.as:":     {"has noted {id} as {value} about them", "has not noted {id} as {value} about them"},
 		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
 		"cond flag:":         {"{id} is set", ""},
 		"cond within":        {"within {n} cells", ""},

@@ -633,6 +633,21 @@ func (e *Encounter) hasNotedAs(holder, subject MemberID, topic TopicID, as strin
 	return noteValueOf(held.Payload) == as
 }
 
+// notedValue is the value of the note holder holds about subject on topic, as
+// [Encounter.hasNoted] reads it now: the empty string when nothing is noted,
+// or the note carries no value (rpg-project#1007).
+func (e *Encounter) notedValue(holder, subject MemberID, topic TopicID) string {
+	if !e.hasNoted(holder, subject, topic) {
+		return ""
+	}
+	held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(subject), perception.Topic(topic))
+	if err != nil {
+		return ""
+	}
+
+	return noteValueOf(held.Payload)
+}
+
 // noteValueOf is the value a held note's payload carries: none when the
 // payload cannot be decoded.
 func noteValueOf(payload []byte) string {
@@ -890,14 +905,18 @@ func (e *Encounter) holdTopic(
 	// A DIFFERENT VALUE REPLACES IT (rpg-project#1007): the same value (two
 	// empty ones are the same) is that rule exactly; a new value writes the
 	// new payload over the held one, one note per holder, subject and topic.
-	// A replaced note is no first contact, so it lands no `topic` beat; the
-	// next slice may change that.
+	// A replaced note is news: it lands the `topic` beat as a first contact
+	// does (rpg-project#1113); the same value given again lands none.
+	replaced := false
 	reports := make([]perception.Presence, 0, len(subjects))
 	for _, s := range subjects {
 		report := perception.Presence{ID: sightMember(s), Payload: payload}
-		if held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(s), perception.Topic(topic)); err == nil &&
-			noteValueOf(held.Payload) == line.as {
-			report.Payload = held.Payload
+		if held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(s), perception.Topic(topic)); err == nil {
+			if noteValueOf(held.Payload) == line.as {
+				report.Payload = held.Payload
+			} else {
+				replaced = true
+			}
 		}
 		reports = append(reports, report)
 	}
@@ -909,8 +928,9 @@ func (e *Encounter) holdTopic(
 		return fmt.Errorf("%s holds %q: %w", holder, topic, err)
 	}
 	// A HOLDER WHO COMES TO HOLD A TOPIC MAY WAKE ON IT (rpg-project#929):
-	// only a first holding is news; a record confirmed again is not.
-	if len(reported.FirstContact) > 0 {
+	// a first holding is news, and so is a value that replaced the held one;
+	// a record confirmed again is not.
+	if len(reported.FirstContact) > 0 || replaced {
 		e.landTopicBeat(holder, line.at)
 	}
 	return e.tellRecognition(reach, holder, subjects, topic, channel, line)
