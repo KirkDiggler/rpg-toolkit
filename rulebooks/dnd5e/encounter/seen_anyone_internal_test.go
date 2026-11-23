@@ -19,6 +19,7 @@ package encounter
 import (
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"testing"
 
@@ -74,18 +75,35 @@ func saHall(t *testing.T, states map[string]machine.State, members ...MemberInpu
 // ones they name. The world has not moved on.
 func saSees(t *testing.T, enc *Encounter, sight *saSight) []MemberID {
 	t.Helper()
+	beats, _ := saSeesGained(t, enc, sight)
+
+	return beats
+}
+
+// saSeesGained is [saSees] and also the members the guard gained in the
+// refresh's own answer, in id order, whether or not a beat was landed for them.
+func saSeesGained(t *testing.T, enc *Encounter, sight *saSight) (beats, gained []MemberID) {
+	t.Helper()
 	before := len(enc.landed)
 	sight.guard = 1_000_000
-	_, _, err := enc.refreshSight(enc.rosterIDs())
+	deltas, _, err := enc.refreshSight(enc.rosterIDs())
 	require.NoError(t, err)
-	var out []MemberID
 	for _, b := range enc.landed[before:] {
 		if b.Beat == beatSeen && b.Member == soGuard {
-			out = append(out, b.Subject)
+			beats = append(beats, b.Subject)
 		}
 	}
+	if d := deltas[soGuard]; d != nil {
+		for _, p := range d.FirstContact {
+			gained = append(gained, MemberID(p.ID))
+		}
+		for _, id := range d.Reacquired {
+			gained = append(gained, MemberID(id))
+		}
+	}
+	sort.Slice(gained, func(i, j int) bool { return gained[i] < gained[j] })
 
-	return out
+	return beats, gained
 }
 
 // saWake lets the world move on: its own pass when no fight has formed, and
@@ -137,7 +155,9 @@ func TestSeenAnyoneAStrangerDoesNotMoveHim(t *testing.T) {
 	enc, _, sight := saHall(t, saCallsOut(), saPerson("bob", 4))
 	tbHold(t, enc, "barred", "zed")
 
-	require.Contains(t, saSees(t, enc, sight), MemberID("bob"), "bob came into sight")
+	beats, gained := saSeesGained(t, enc, sight)
+	require.Contains(t, gained, MemberID("bob"), "bob came into sight: he is among those the guard gained")
+	require.NotContains(t, beats, MemberID("bob"), "he noted nothing about bob, so no beat was landed for him (rpg-project#1126)")
 	require.NoError(t, enc.spendWorldAction("alice"))
 
 	require.Equal(t, "calm", stateOf(enc, soGuard), "he noted nothing about bob: he has not stepped")
@@ -147,16 +167,32 @@ func TestSeenAnyoneNotHiddenBehindAFriend(t *testing.T) {
 	enc, _, sight := saHall(t, saCallsOut(), saPerson("bob", 4), saPerson("zed", 5))
 	tbHold(t, enc, "barred", "zed")
 
-	seen := saSees(t, enc, sight)
-	require.Equal(t, []MemberID{"alice", "bob", "zed"}, seen,
-		"one seen beat for each who came into sight, in id order: zed is last, behind alice and bob")
+	beats, gained := saSeesGained(t, enc, sight)
+	require.Equal(t, []MemberID{"alice", "bob", "zed"}, gained, "all three came into sight, in id order")
+	require.Equal(t, []MemberID{"zed"}, beats,
+		"his step requires barred (rpg-project#1126): the one beat names zed, last in id order, behind alice and bob")
 	require.NoError(t, enc.spendWorldAction("alice"))
 
 	require.Equal(t, "calls-out", stateOf(enc, soGuard), "the one he barred is not hidden behind the others")
 }
 
+func TestSeenAnyoneAnOpenStepHearsOfEachOneBehindAFriend(t *testing.T) {
+	states := map[string]machine.State{
+		"calm":    {Transitions: []machine.Transition{{On: beatSeen, To: "curious", Reason: "anyone"}}},
+		"curious": {},
+	}
+	enc, _, sight := saHall(t, states, saPerson("bob", 4), saPerson("zed", 5))
+
+	require.Equal(t, []MemberID{"alice", "bob", "zed"}, saSees(t, enc, sight),
+		"a step that requires nothing: one seen beat for each who came into sight, in id order")
+}
+
 func TestSeenAnyoneANonEnemyIsSeen(t *testing.T) {
-	enc, _, sight := saHall(t, saCallsOut(), saPerson("bob", 4))
+	open := map[string]machine.State{
+		"calm":    {Transitions: []machine.Transition{{On: beatSeen, To: "curious", Reason: "anyone"}}},
+		"curious": {},
+	}
+	enc, _, sight := saHall(t, open, saPerson("bob", 4))
 	require.Equal(t, StanceNeutral, enc.stanceOf(postedGarrison, FactionParty), "precondition: the party is neutral to him")
 
 	require.Equal(t, []MemberID{"alice", "bob"}, saSees(t, enc, sight), "a neutral who comes into sight lands a seen beat naming them")
@@ -169,7 +205,9 @@ func TestSeenAnyoneEnemiesOnlyByTheWord(t *testing.T) {
 	}
 	t.Run("a neutral is no alarm", func(t *testing.T) {
 		enc, _, sight := saHall(t, states, saPerson("bob", 4))
-		require.NotEmpty(t, saSees(t, enc, sight))
+		beats, gained := saSeesGained(t, enc, sight)
+		require.Contains(t, gained, MemberID("bob"), "the neutral came into his sight")
+		require.Empty(t, beats, "his step requires an enemy (rpg-project#1126): no beat was landed for a neutral")
 		require.NoError(t, enc.spendWorldAction("alice"))
 		require.Equal(t, "calm", stateOf(enc, soGuard))
 	})

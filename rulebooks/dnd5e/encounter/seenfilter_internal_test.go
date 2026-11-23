@@ -16,6 +16,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -268,18 +269,19 @@ const (
 	sfGHostile = MemberID("g-hostile")
 	sfGAny     = MemberID("g-any")
 	sfGFresh   = MemberID("g-fresh")
+	sfGEither  = MemberID("g-either")
 )
 
-var sfGuards = []MemberID{sfGNote, sfGHostile, sfGAny, sfGFresh}
+var sfGuards = []MemberID{sfGNote, sfGHostile, sfGAny, sfGFresh, sfGEither}
 
-// sfScene is four guards who each see only when the script lets them, beside
+// sfScene is five guards who each see only when the script lets them, beside
 // alice, bob, zed and a raider.
 func sfScene(t *testing.T) (*Encounter, soSight) {
 	t.Helper()
-	whens := []*machine.Guard{sfBarred(), sfHostile(), nil, sfNot(sfNoted())}
+	whens := []*machine.Guard{sfBarred(), sfHostile(), nil, sfNot(sfNoted()), sfAny(sfHostile(), sfBarred())}
 	var members []MemberInput
 	for i, id := range sfGuards {
-		g := soListener(t, id, float64(6+i), 4, sfGuardRecipe(t, whens[i]), nil)
+		g := soListener(t, id, float64(5+i), 4, sfGuardRecipe(t, whens[i]), nil)
 		members = append(members, g)
 	}
 	members = append(members, saPerson("bob", 3), saPerson("zed", 4), saRaider("rex", 5))
@@ -306,9 +308,70 @@ func sfHold(t *testing.T, enc *Encounter, holder MemberID, as string, subjects .
 		recognitionLine{speaker: "alice", spokenTo: holder, as: as}))
 }
 
-// sfRun plays the one scripted run and returns the guards' states, the run's
-// data marshalled and how many `seen` beats it landed.
-func sfRun(t *testing.T) (map[MemberID]string, string, int) {
+// sfEntry is one entry of a run's saved log, as its decoded payload says it:
+// declined is an observe on `seen` where no step fired, which the engine
+// records only when it asks (rpg-project#1126).
+type sfEntry struct {
+	sig      string
+	declined bool
+	config   bool // the creature's behavior_config entry, written when it is first asked
+}
+
+// sfRunResult is what one scripted run leaves behind.
+type sfRunResult struct {
+	states map[MemberID]string
+	rest   string // EncounterData without its log, marshalled
+	log    []sfEntry
+	landed int
+}
+
+// sfReadLog decodes a run's marshalled EncounterData: its entries by payload
+// (the ids and sequence numbers differ run to run), and the rest of the data.
+func sfReadLog(t *testing.T, raw []byte) (rest string, entries []sfEntry) {
+	t.Helper()
+	var data map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &data))
+	var log struct {
+		Entries []struct {
+			Audience json.RawMessage `json:"audience"`
+			Tags     json.RawMessage `json:"tags"`
+			Payload  []byte          `json:"payload"`
+		} `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal(data["log"], &log))
+	for _, e := range log.Entries {
+		var p struct {
+			Beat      string `json:"beat"`
+			Operation string `json:"operation"`
+			On        string `json:"on"`
+			Outcomes  []struct {
+				Step struct {
+					Fired bool `json:"fired"`
+				} `json:"step"`
+			} `json:"outcomes"`
+		}
+		declined := json.Unmarshal(e.Payload, &p) == nil && p.Beat == "behavior_decision" &&
+			p.Operation == "observe" && p.On == string(beatSeen)
+		for _, o := range p.Outcomes {
+			if o.Step.Fired {
+				declined = false
+			}
+		}
+		entries = append(entries, sfEntry{
+			sig:      string(e.Audience) + "|" + string(e.Tags) + "|" + string(e.Payload),
+			declined: declined,
+			config:   p.Beat == "behavior_config",
+		})
+	}
+	delete(data, "log")
+	out, err := json.Marshal(data)
+	require.NoError(t, err)
+
+	return string(out), entries
+}
+
+// sfRun plays the one scripted run.
+func sfRun(t *testing.T) sfRunResult {
 	t.Helper()
 	enc, sight := sfScene(t)
 	landed := 0
@@ -331,6 +394,7 @@ func sfRun(t *testing.T) (map[MemberID]string, string, int) {
 	look(0)                                  // 2 and out of it
 	sfHold(t, enc, sfGNote, "barred", "bob") // 3 notes are given
 	sfHold(t, enc, sfGHostile, "warned", "zed")
+	sfHold(t, enc, sfGEither, "barred", "bob")
 	look(far)                                // 4 back in view
 	look(0)                                  // 5 out again
 	sfHold(t, enc, sfGNote, "warned", "bob") // 6 a note changes its value
@@ -345,18 +409,69 @@ func sfRun(t *testing.T) (map[MemberID]string, string, int) {
 	}
 	raw, err := json.Marshal(enc.ToData())
 	require.NoError(t, err)
+	rest, entries := sfReadLog(t, raw)
 
-	return states, string(raw), landed
+	return sfRunResult{states: states, rest: rest, log: entries, landed: landed}
 }
 
+// TestSeenFilterTheSamePlayBothWays: the filter's promise is about play. The
+// logs are compared by decoded payload with the entries that say only "he was
+// asked and no step fired" left out of both; the unfiltered run's extras are
+// exactly those, and the filtered run has none the unfiltered lacks.
 func TestSeenFilterTheSamePlayBothWays(t *testing.T) {
-	onStates, onData, onLanded := sfRun(t)
+	on := sfRun(t)
 	sfOff(t)
-	offStates, offData, offLanded := sfRun(t)
+	off := sfRun(t)
 
-	require.Equal(t, offStates, onStates, "the guards end in the same states")
-	require.Equal(t, offData, onData, "and the two runs' records are equal entry for entry (EncounterData, marshalled)")
-	require.Less(t, onLanded, offLanded, "with the filter fewer seen beats were landed: %d against %d", onLanded, offLanded)
+	require.Equal(t, off.states, on.states, "the guards end in the same states")
+	require.Equal(t, off.rest, on.rest, "and the rest of EncounterData is equal")
+	require.Less(t, on.landed, off.landed, "with the filter fewer seen beats were landed: %d against %d", on.landed, off.landed)
+
+	kept := func(r sfRunResult) (out []string) {
+		for _, e := range r.log {
+			if !e.declined && !e.config {
+				out = append(out, e.sig)
+			}
+		}
+
+		return out
+	}
+	require.NotEmpty(t, kept(on))
+	require.Equal(t, kept(off), kept(on), "the logs are equal, in order, without the declined observes and the config entries")
+	configs := func(r sfRunResult) (out []string) {
+		for _, e := range r.log {
+			if e.config {
+				out = append(out, e.sig)
+			}
+		}
+		slices.Sort(out)
+
+		return out
+	}
+	require.Equal(t, configs(off), configs(on),
+		"each creature's behavior_config entry is written when it is first asked, so it may move: the same entries, not the same place")
+
+	count := map[string]int{}
+	for _, e := range off.log {
+		count[e.sig]++
+	}
+	for _, e := range on.log {
+		count[e.sig]--
+	}
+	extra := 0
+	declined := map[string]bool{}
+	for _, e := range off.log {
+		declined[e.sig] = e.declined
+	}
+	for sig, n := range count {
+		require.GreaterOrEqual(t, n, 0, "the filtered run has an entry the unfiltered run lacks: %s", sig)
+		if n > 0 {
+			require.True(t, declined[sig], "an entry only the unfiltered run has must be a declined seen observe: %s", sig)
+			extra += n
+		}
+	}
+	require.Equal(t, len(off.log)-len(on.log), extra)
+	require.Positive(t, extra, "the filter saved log entries")
 }
 
 // TestSeenFilterTheStateAtTheSightingDecides pins THE LISTENING RULE, not an
