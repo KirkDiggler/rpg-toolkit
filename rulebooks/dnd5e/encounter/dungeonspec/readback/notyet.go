@@ -42,7 +42,7 @@ var saidKeys = map[string][]string{
 	"jail":               {"words", "rounds", "escaped"},
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
-	"give":               {"topic", "to", "about", "heard_by"},
+	"give":               {"topic", "as", "to", "about", "heard_by"},
 	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure", "use"},
 	"conversation":       {"lines"},
 	"checkApproach":      {"ability", "tool", "dc"},
@@ -181,6 +181,12 @@ func (b *builder) notYetSaid() []Unsaid {
 	each(at(root, "behaviorDefinitions"), "behaviorDefinitions", func(n *yaml.Node, p string) {
 		check(n, p, "behaviorDefinition")
 		recipe(at(n, "recipe"), p+".recipe", "routineRecipe") // its bag is said (routines.go)
+		each(at(n, "outcomes"), p+".outcomes", func(list *yaml.Node, op string) {
+			each(list, op, func(c *yaml.Node, cp string) {
+				check(c, cp, "outcome")
+				give(c, cp)
+			})
+		})
 		each(at(n, "table"), p+".table", func(rows *yaml.Node, kp string) {
 			each(rows, kp, func(r *yaml.Node, rp string) {
 				check(r, rp, "tableRow")

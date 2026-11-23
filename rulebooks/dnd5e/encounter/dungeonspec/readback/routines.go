@@ -243,12 +243,12 @@ func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who st
 			continue
 		}
 		topic := c.Give.Topic
-		conns := noteGiveEdges(noteGive{topic: topic, about: encounter.WhoTheOneNamed,
+		conns := noteGiveEdges(noteGive{topic: topic, as: c.Give.As, about: encounter.WhoTheOneNamed,
 			takers: []noteTaker{{word: c.Give.To, creatures: runners}},
 			cause:  Connection{Kind: ConnState, ID: state, Role: "enters"}})
-		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), quote(topic), strings.Join(subjects, " or "))
+		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), topicWords(topic, c.Give.As), strings.Join(subjects, " or "))
 		out = append(out, b.fstmt(KindRoutineOutcome, about, fmt.Sprintf("behaviorDefinitions.%s.outcomes.%s[%d]", def, state, i), sentence,
-			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), quote(topic), strings.Join(subjects, " or ")), site: "the routine " + quote(def)}, conns...))
+			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), topicWords(topic, c.Give.As), strings.Join(subjects, " or ")), site: "the routine " + quote(def)}, conns...))
 	}
 	return out
 }

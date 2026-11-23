@@ -167,9 +167,11 @@ type Connection struct {
 	// difficulty of a check on a `method` connection; zero means none.
 	Value int `json:"value,omitempty"`
 
-	// Is, Op, Not and At belong to a [ConnCondition] connection only.
+	// Op, Not and At belong to a [ConnCondition] connection only.
 
 	// Is is the value a condition compares, as text: "failed", "true", "3".
+	// On a `topic` connection it is the value a note carries, given or
+	// asked (rpg-project#1007), empty for a note with no value.
 	Is string `json:"is,omitempty"`
 	// Op is the comparison where it is not equality ("gte"; "lte" for
 	// `within` and `regions`, at most); the plain words for each are the
