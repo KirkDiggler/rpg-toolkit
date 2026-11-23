@@ -1,0 +1,165 @@
+# KNOWN ON SIGHT (rpg-project#1123): a small walk site, cut from the two-strikes
+# site, for a note that wakes him and a sighting that wakes him again. One Guard
+# Captain in a hall, two characters, a gate wall with a door to a yard. Nothing
+# has to be done first and nothing is rolled.
+#   1. Bob is merely rude: "Mind your tongue." He notes bob as warned and stays.
+#   2. Alice insults him: "Out. Out of my hall." He notes alice as barred, and
+#      the note itself wakes him: he walks to his spot beside the door.
+#   3. Alice has lost every line. Bob still has the question.
+#   4. Alice walks out and steps aside in the yard, behind the gate wall, where
+#      he does not see her. She steps back where he sees her: seeing her wakes
+#      him, "I said out."
+#   5. Bob does the same. He says nothing.
+#   6. Alice does it again. He says it again.
+version: 5
+key: known-on-sight-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  guard-captain:
+    base: dnd5e:monsters:human
+    name: Guard Captain
+    hitDice: 10d8
+    armor: dnd5e:armor:breastplate
+    abilities: { str: 15, dex: 14, con: 14, cha: 14 }
+    proficiency: 3
+    actions: [dnd5e:weapons:longsword, dnd5e:weapons:javelin]
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: neutral }
+
+behaviorDefinitions:
+  captain-policy:
+    recipe:
+      ref: site:behaviors:captain-policy
+      initial: in-hall
+      states:
+        in-hall:
+          transitions:
+            - on: topic
+              when: { fact: { name: noted.as:standing, op: eq, value: barred } }
+              to: at-the-door
+              reason: he barred someone
+        at-the-door:
+          transitions:
+            - on: seen
+              when: { fact: { name: noted.as:standing, op: eq, value: barred } }
+              to: calls-out
+              reason: the one he barred is back in his sight
+            - on: time
+              do:
+                - pick: at-the-door
+            - on: turn
+              do:
+                - pick: at-the-door
+        calls-out:
+          transitions:
+            - on: time
+              to: at-the-door
+              do:
+                - pick: calls-out
+              reason: he has said it
+            - on: turn
+              to: at-the-door
+              do:
+                - pick: calls-out
+              reason: he has said it
+    table:
+      at-the-door:
+        - when: { enemy: none }
+          toward: { at: { q: -4, r: 6 } }
+      calls-out:
+        - say: I said out.
+
+room:
+  version: 3
+  id: room-1
+  name: Known on Sight
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: Known on Sight
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-5, 2]] }
+          - { r: 4, q: [[-6, 2]] }
+          - { r: 5, q: [[-6, 1]] }
+          - { r: 6, q: [[-7, 1]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -3, r: 4 }
+    monsterDeclarations:
+      - id: captain
+        ref: dnd5e:monsters:guard-captain
+        startingCell: { location: { q: -1, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      captain:
+        faction: garrison
+        options:
+          - id: rude
+            say: Bit of a dump, this hall.
+            requires:
+              not: { noted: standing }
+            success:
+              - say: Mind your tongue.
+                give: { topic: standing, as: warned, to: spoken_to, about: speaker }
+          - id: insult
+            say: You are the Mad King's dog, and you always were.
+            requires:
+              not: { noted: { topic: standing, as: barred } }
+            success:
+              - say: Out. Out of my hall.
+                give: { topic: standing, as: barred, to: spoken_to, about: speaker }
+          - id: the-way-in
+            say: Where will the feast be, captain?
+            requires:
+              not: { noted: { topic: standing, as: barred } }
+            success:
+              - say: In the great hall. You’re expected.
+        behaviors:
+          - id: policy
+            use: captain-policy
+        behaviorState: policy
