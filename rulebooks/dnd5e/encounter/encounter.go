@@ -315,6 +315,11 @@ type Encounter struct {
 	// persisted. The default recipe listens for nothing but time, which the
 	// heap answers, so it is empty until a recipe listens (S4).
 	listeners machine.Listeners[MemberID]
+	// seenWants is what each member's current `seen` steps require of the one
+	// seen, kept beside what it listens for (rpg-project#1126). Derived, never
+	// saved: rebuilt wherever the listens are, a load included. A member
+	// with no entry is woken for anyone.
+	seenWants map[MemberID]seenWants
 
 	// participation answers who is down and who counts as present. Required at
 	// both constructors and never defaulted; see [Participation].
