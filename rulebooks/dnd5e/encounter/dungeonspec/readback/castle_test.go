@@ -527,7 +527,9 @@ func (s *CastleSuite) TestTheHailIsTheEngines() {
 	s.Contains(who, "in `jailed`, Guard (gate-1), Guard (gate-2) and Guard Captain (captain) (by `come-quietly`")
 	s.Contains(who, "in `admitted`, nobody")
 	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]").Sentence
-	s.Contains(wake, "when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule")
+	s.Contains(wake, "when someone's step brings them within Guard Captain (captain)'s distance (the step's own `within`) and "+
+		"Guard Captain (captain) sees them; or, when Guard Captain (captain) carries a conversation that declares an approach, "+
+		"under that conversation's hail rule")
 }
 
 // TestTheDoorSaysAllItsHolders: a door with several posts says that one
