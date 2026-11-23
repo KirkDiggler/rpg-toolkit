@@ -243,12 +243,21 @@ func (b *builder) stateOutcomes(def, state string, recipe machine.Recipe, who st
 			continue
 		}
 		topic := c.Give.Topic
-		conns := noteGiveEdges(noteGive{topic: topic, as: c.Give.As, about: encounter.WhoTheOneNamed,
+		conns := noteGiveEdges(noteGive{topic: topic, as: c.Give.As, about: c.Give.About,
 			takers: []noteTaker{{word: c.Give.To, creatures: runners}},
 			cause:  Connection{Kind: ConnState, ID: state, Role: "enters"}})
-		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), topicWords(topic, c.Give.As), strings.Join(subjects, " or "))
+		whom := strings.Join(subjects, " or ")
+		if c.Give.About != encounter.WhoTheOneNamed {
+			// A group the one named belongs to: say the word's own label, then who the one is.
+			label := c.Give.About
+			if w, ok := encounter.WhoWordAt(encounter.WhoInStateGiveAbout, c.Give.About); ok {
+				label = w.Label
+			}
+			whom = fmt.Sprintf("%s (the one the beat names is %s)", label, whom)
+		}
+		sentence := fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), topicWords(topic, c.Give.As), whom)
 		out = append(out, b.fstmt(KindRoutineOutcome, about, fmt.Sprintf("behaviorDefinitions.%s.outcomes.%s[%d]", def, state, i), sentence,
-			foldInfo{state: state, text: fmt.Sprintf("Entering %s, it notes %s about %s.", quote(state), topicWords(topic, c.Give.As), strings.Join(subjects, " or ")), site: "the routine " + quote(def)}, conns...))
+			foldInfo{state: state, text: sentence, site: "the routine " + quote(def)}, conns...))
 	}
 	return out
 }

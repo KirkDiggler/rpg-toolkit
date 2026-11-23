@@ -219,7 +219,7 @@ func TestDungeonspec_AStatesOutcomesAreRefusedWhereTheyAreWrong(t *testing.T) {
 		{
 			name: "a subject that is not the one the beat names", states: outcomesStates,
 			outcomes: giveWith("itself", "speaker", ""), path: at + ".give.about",
-			sentence: "the subjects are `the_one_named`, the one the beat names",
+			sentence: "the subjects are `the_one_named`, the one the beat names, or `party_in_sight`, the party of the one the beat names that it sees, or `the_gone`, the party of the one the beat names that it saw and does not see now",
 		},
 		{
 			name: "heard_by", states: outcomesStates,
