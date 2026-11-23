@@ -123,6 +123,7 @@ var conditionSamples = map[string]struct {
 	"noted:":          {leafGuard("noted:admitted", machine.OpEq, true), "noted:admitted", "when"},
 	"noted.as:":       {leafGuard("noted.as:admitted", machine.OpEq, "warned"), "noted.as:admitted", "when"},
 	"noted.anyone:":   {leafGuard("topic:admitted", machine.OpEq, true), "noted.anyone:admitted", "when"},
+	"stance":          {leafGuard("stance", machine.OpEq, "hostile"), "stance", "when"},
 	"flag:":           {&machine.Guard{Flag: "lit"}, "flag:lit", "when"},
 	"within":          {&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}, "within", "when"},
 	"regions":         {&machine.Guard{Scope: &machine.ScopeLeaf{Regions: 1}}, "regions", "when"},

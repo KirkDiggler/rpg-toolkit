@@ -116,6 +116,7 @@ func TestMachineWords_ConditionsAreReadWhereTheTableSays(t *testing.T) {
 		"noted:":          leafOf("noted:admitted", true),
 		"noted.as:":       leafOf("noted.as:admitted", "warned"),
 		"noted.anyone:":   leafOf("topic:admitted", true), // as the engine reads it once lowered
+		"stance":          leafOf("stance", string(StanceHostile)),
 	}
 	for _, c := range MachineWords().Conditions {
 		if !c.Fact {
@@ -359,7 +360,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"beat turn":        {"its turn in a fight", ""},
 		"beat heard":       {"hears something", ""},
 		"beat deed":        {"a deed is done", ""},
-		"beat seen":        {"sees someone opposed", ""},
+		"beat seen":        {"sees someone", ""},
 		"beat fact":        {"learns a fact", "learns {id}"},
 		"beat topic":       {"notes a topic about someone", "notes {id} about someone"},
 		"beat clock:world": {"a round of world time", ""},
@@ -380,18 +381,20 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"cond noted.as:":     {"has noted {id} as {value} about them", "has not noted {id} as {value} about them"},
 		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
 		"cond flag:":         {"{id} is set", ""},
-		"cond within":        {"within {n} cells", ""},
-		"cond regions":       {"within {n} rooms", ""},
-		"cond rounds":        {"{op} {n} rounds since it marked the moment", ""},
-		"cond all":           {"all of these", ""},
-		"cond any":           {"any of these", ""},
-		"cond not":           {"not this", ""},
-		"act to":             {"changes to {id}"},
-		"act pick":           {"acts from the {id} list"},
-		"act wake_in":        {"waits {n} rounds"},
-		"act set":            {"sets {id} to {value}"},
-		"act clear":          {"forgets {id}"},
-		"act anchor":         {"marks the moment"},
+		"cond stance": {"is {value} to it", "is not {value} to it", "hostile=is its enemy", "neutral=is neutral to it",
+			"allied=is its ally", "none=is on no side"},
+		"cond within":  {"within {n} cells", ""},
+		"cond regions": {"within {n} rooms", ""},
+		"cond rounds":  {"{op} {n} rounds since it marked the moment", ""},
+		"cond all":     {"all of these", ""},
+		"cond any":     {"any of these", ""},
+		"cond not":     {"not this", ""},
+		"act to":       {"changes to {id}"},
+		"act pick":     {"acts from the {id} list"},
+		"act wake_in":  {"waits {n} rounds"},
+		"act set":      {"sets {id} to {value}"},
+		"act clear":    {"forgets {id}"},
+		"act anchor":   {"marks the moment"},
 	}, got)
 }
 
