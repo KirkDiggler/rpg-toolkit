@@ -7,7 +7,7 @@ One line per entry. Every line ends with a link.
 ## Shipped
 
 - `seen` lands for each member who comes into a listener's sight, in id order, the hostile check and the stop after the first gone (`landSightings`); the `stance` fact word, its reader, refusals and table row; the `seen` row's new words — branch `feat/seen-is-anyone`, [issue](https://github.com/KirkDiggler/rpg-project/issues/1125).
-- Not shipped: the read-back's sentence for `stance`, blocked by a reported gap — [issue](https://github.com/KirkDiggler/rpg-project/issues/1125).
+- The read-back's sentence for `stance`: one `case` in `guardWordsAt` (`dungeonspec/readback/routinewords.go`), filling the row's `Long` with the beat's `about` and the value's label, plus a `not` twin test — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1125#issuecomment-7094221956).
 
 ## Decided
 
@@ -24,6 +24,9 @@ One line per entry. Every line ends with a link.
 - Whole module suite before the change: all packages ok (new tests skipped). At the head: all ok but `TestStanceWords_AStepOnSeenSaysTheOneSawIsItsEnemy`, the gap's test — [issue](https://github.com/KirkDiggler/rpg-project/issues/1125).
 - Existing tests changed, all of the allowed kinds: `TestMachineWords_FixedAndRequiredArePinned` (gains `stance.op=eq`), `TestMachineWords_ConditionsAreReadWhereTheTableSays` (a sample for `stance`), `TestMachineWords_LabelsArePinned` (the `seen` label and the `stance` row), `TestEveryConditionWordIsAConnection` via its samples in `readback/guardwords_internal_test.go` (a `stance` sample) — [issue](https://github.com/KirkDiggler/rpg-project/issues/1125).
 - The read-back says a `stance` leaf through its default branch ("the creature running it's `stance` is exactly hostile"), because `guardWordsAt` in `dungeonspec/readback/routinewords.go` has no case for it — [issue](https://github.com/KirkDiggler/rpg-project/issues/1125).
+
+- Gap 1: the read-back had no case for `stance`; ruled: add the case here — [gap](https://github.com/KirkDiggler/rpg-project/issues/1125#issuecomment-7094214052), [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1125#issuecomment-7094221956).
+- Gap 2: the committed test expected "the one Goblin saw", but a routine is shared, so it says "the creature running it"; ruled: the code's sentence stands, the test's expected words change (the committed read-back test and its `NOT (...)` twin) — [gap](https://github.com/KirkDiggler/rpg-project/issues/1125#issuecomment-7094239784), [Amendment 2](https://github.com/KirkDiggler/rpg-project/issues/1125#issuecomment-7094259937).
 
 ## Mistaken
 

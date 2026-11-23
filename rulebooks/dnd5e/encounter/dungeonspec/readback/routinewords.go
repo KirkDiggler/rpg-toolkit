@@ -110,6 +110,15 @@ func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not 
 			say()
 		case word.Word == "heard.claim" && g.Fact.Op == "eq":
 			add(fill(word.Long, "who", who, "value", val), []Connection{self})
+		case word.Word == "stance" && g.Fact.Op == "eq":
+			// A STANCE ASKED (rpg-project#1125): the one the beat names, and
+			// the value's own label from the words table (the value itself
+			// when the row has none for it). A stance is not a note: no edges.
+			label, ok := word.ValueLabels[val]
+			if !ok {
+				label = val
+			}
+			add(fill(word.Long, "about", aboutWords(on, who), "value", label), []Connection{self})
 		case word.Word == "noted:" && isBoolTest(g.Fact.Op, val):
 			// WHOM IT ASKS ABOUT AND ITS POLARITY (rpg-project#1001): a note
 			// asked false, or under an odd number of nots, is negated.

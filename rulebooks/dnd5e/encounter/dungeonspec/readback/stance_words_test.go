@@ -28,10 +28,31 @@ func TestStanceWords_AStepOnSeenSaysTheOneSawIsItsEnemy(t *testing.T) {
 	}
 	require.Condition(t, func() bool {
 		for _, s := range sentences {
-			if strings.Contains(s, "the one Goblin saw is its enemy") {
+			if strings.Contains(s, "the one the creature running it saw is its enemy") {
 				return true
 			}
 		}
 		return false
-	}, "some statement says the one the goblin saw is its enemy: %v", sentences)
+	}, "some statement says the one the creature running it saw is its enemy: %v", sentences)
+}
+
+func TestStanceWords_AStepOnSeenUnderNotSaysTheNotOfThatSentence(t *testing.T) {
+	site := strings.ReplaceAll(valueSite(), "on: heard", "on: seen")
+	site = strings.ReplaceAll(site, "{ fact: { name: heard.claim, op: eq, value: failed } }",
+		"{ not: { fact: { name: stance, op: eq, value: hostile } } }")
+	rb, err := readback.Of([]byte(site))
+	require.NoError(t, err, "a step on seen may ask the stance under a not")
+
+	var sentences []string
+	for _, st := range rb.Statements() {
+		sentences = append(sentences, st.Sentence)
+	}
+	require.Condition(t, func() bool {
+		for _, s := range sentences {
+			if strings.Contains(s, "NOT (the one the creature running it saw is its enemy)") {
+				return true
+			}
+		}
+		return false
+	}, "some statement says the not of the stance sentence: %v", sentences)
 }
