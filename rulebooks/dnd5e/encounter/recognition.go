@@ -129,8 +129,6 @@ func (t TriggerRecognized) isTrigger() {}
 // rpg-project#925); on a line's row only, Tells or [RelocateGrant]
 // (passage.go, rpg-project#958).
 type Consequence struct {
-	SceneMove *SceneMove `json:"sceneMove,omitzero"`
-
 	// Recognize is: holders come to hold a topic about subjects.
 	Recognize *Recognition `json:"recognize,omitzero"`
 
@@ -245,15 +243,6 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
-			if c.SceneMove != nil {
-				if c.Relocate != nil || c.Tells != "" || c.Arrest != nil || c.Jail != nil || c.Recognize != nil || c.ApplyStatus != nil {
-					return fmt.Errorf("%s mixes scene movement with another consequence", what)
-				}
-				if err := c.SceneMove.validate(); err != nil {
-					return fmt.Errorf("%s: %w", what, err)
-				}
-				continue
-			}
 			if c.Relocate != nil {
 				return fmt.Errorf("%s relocates: a relocate moves the speaker on a line's row; an interaction's outcome uses `jail`", what)
 			}
@@ -343,12 +332,6 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 			if c.Arrest != nil {
 				a := cloneArrest(*c.Arrest)
 				c.Arrest = &a
-			}
-			if c.SceneMove != nil {
-				move := *c.SceneMove
-				move.Guards = slices.Clone(move.Guards)
-				move.Anchors = slices.Clone(move.Anchors)
-				c.SceneMove = &move
 			}
 			if c.Jail != nil {
 				j := *c.Jail
@@ -753,8 +736,6 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 	for _, c := range r.input.Outcomes[line.state] {
 		var err error
 		switch {
-		case c.SceneMove != nil:
-			err = e.applySceneMove(*c.SceneMove, line)
 		case c.Arrest != nil:
 			err = e.applyArrest(r, *c.Arrest, line)
 		case c.Jail != nil:

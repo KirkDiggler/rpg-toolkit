@@ -703,9 +703,6 @@ func stateOutcomesOf(
 			case c.Jail != nil:
 				add(itemAt, "a jail follows a conversation entering a state, never a machine's: "+gives)
 				continue
-			case c.SceneMove != nil:
-				add(itemAt, "a scene move follows a conversation entering a state, never a machine's: "+gives)
-				continue
 			case c.Give == nil:
 				add(itemAt, gives)
 				continue

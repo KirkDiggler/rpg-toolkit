@@ -376,8 +376,6 @@ func TestStateOutcomesAreRefused(t *testing.T) {
 			`state outcome "wary" consequence 0 arrests: an arrest follows a conversation entering a state, never a machine's`},
 		{"a jail", soRecipe(t), one(Consequence{Jail: &Jail{}}),
 			`state outcome "wary" consequence 0 jails: a jail follows a conversation entering a state, never a machine's`},
-		{"a scene move", soRecipe(t), one(Consequence{SceneMove: &SceneMove{}}),
-			`state outcome "wary" consequence 0 moves the scene: a scene move follows a conversation entering a state, never a machine's`},
 		{"no kind", soRecipe(t), one(Consequence{}),
 			`state outcome "wary" consequence 0 is of no kind: the one kind is recognize`},
 		{"no topic", soRecipe(t), with(func(r *Recognition) { r.Topic = "" }),

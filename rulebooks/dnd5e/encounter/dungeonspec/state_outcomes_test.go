@@ -202,11 +202,6 @@ func TestDungeonspec_AStatesOutcomesAreRefusedWhereTheyAreWrong(t *testing.T) {
 			sentence: "a jail follows a conversation entering a state, never a machine's",
 		},
 		{
-			name: "a scene move", states: outcomesStates,
-			outcomes: "    outcomes:\n      back-to-gate:\n        - sceneMove: { leave: gone }\n", path: at,
-			sentence: "a scene move follows a conversation entering a state, never a machine's",
-		},
-		{
 			name: "no kind", states: outcomesStates,
 			outcomes: "    outcomes:\n      back-to-gate:\n        - {}\n", path: at,
 			sentence: "a state's consequence is `give: { topic, to: itself, about: the_one_named }`",
@@ -244,6 +239,13 @@ func TestDungeonspec_AStatesOutcomesAreRefusedWhereTheyAreWrong(t *testing.T) {
 			requireRefusedAt(t, refusals(t, outcomesSiteWith(tc.states, tc.outcomes, "")), tc.path, tc.sentence)
 		})
 	}
+
+	// `sceneMove` is retired: the decoder refuses it at its line, before any
+	// state's outcome is checked, so it is not a row of the table above.
+	t.Run("a scene move is retired", func(t *testing.T) {
+		requireLoadRefused(t, outcomesSiteWith(outcomesStates,
+			"    outcomes:\n      back-to-gate:\n        - sceneMove: { leave: gone }\n", ""), sceneMoveRetired)
+	})
 
 	t.Run("a sequence has none", func(t *testing.T) {
 		raw := string(readFixture(t, "testdata/behavior-patrol-consumer.yaml"))
