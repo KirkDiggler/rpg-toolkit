@@ -340,7 +340,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	topic := string(r.Topic)
 	holder := t.name
 	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the topic %s, and notes it about %s.",
-		lead, holder, quote(topic), subjectsWords(r.About, holder))
+		lead, holder, topicWords(topic, r.As), subjectsWords(r.About, holder))
 	conv, _ := optionInteraction(o)
 	var heard []Connection
 	// A line said to one creature: every other carrier may hear it. A
@@ -351,7 +351,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 		except = []string{t.id}
 	}
 	s += " " + b.heardWords(r, conv, except, &heard)
-	give := noteGive{topic: topic, about: string(r.About), cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, path)}}
+	give := noteGive{topic: topic, as: r.As, about: string(r.About), cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, path)}}
 	if spoken := t.spokenTo(); len(spoken) > 0 {
 		give.takers = append(give.takers, noteTaker{word: string(encounter.RecognitionSpokenTo), creatures: spoken})
 	}
@@ -359,7 +359,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 		give.takers = append(give.takers, noteTaker{word: string(r.HeardBy), creatures: idsOf(heard)})
 	}
 	conns := noteGiveEdges(give)
-	f.text = fmt.Sprintf("{self} notes %s about %s", quote(topic), shortSubjects(r.About)) + shortHeard(r, conv)
+	f.text = fmt.Sprintf("{self} notes %s about %s", topicWords(topic, r.As), shortSubjects(r.About)) + shortHeard(r, conv)
 	return b.fstmt(KindLineGrant, t.about, path, s, f, conns...)
 }
 

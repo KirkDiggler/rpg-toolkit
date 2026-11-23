@@ -90,7 +90,8 @@
 //
 // Every statement that gives a topic or reads one says who, through one
 // function (noteedges.go), in the wire's own fields. A give carries
-// {topic, <topic>, grants}; {who, <word>, about, at: <topic>}, whom it is
+// {topic, <topic>, grants, is: <value>} (`is` only when the note carries a
+// value, rpg-project#1007); {who, <word>, about, at: <topic>}, whom it is
 // about; {who, <word>, takes, is: <way>, at: <topic>} for each taker word,
 // the rule, with its way (`judgement` or `heard`, the engine's words); and
 // {creature, <id>, may-note, is: <way>, at: <topic>} for each creature that
@@ -99,9 +100,12 @@
 // gave it follows: {option, <id>, on, is: said|win|miss} or {conversation,
 // <id>, enters, is: <state>} or {state, <state>, enters} (a routine's machine
 // entering the state, rpg-project#989). A read carries {topic, <topic>, asks} (or
-// wakes-on), negated when asked false; {who, <word>, about, at: <topic>};
+// wakes-on), with `is: <value>` when it asks for a value (`noted: { topic,
+// as }`, a step's `noted.as:<topic>`), negated when asked false; {who, <word>, about, at: <topic>};
 // and {creature, <id>, whose, at: <topic>} when it reads one creature's
-// notes. The words, their labels and their ways are the engine's who-words
+// notes. A sentence that names a topic says its value after it, "`standing`
+// as `warned`"; with no value every sentence and connection is as it was.
+// The words, their labels and their ways are the engine's who-words
 // list ([encounter.WhoWords]).
 //
 // # What a machine does and remembers (rpg-project#1001)

@@ -34,7 +34,9 @@ type noteTaker struct {
 // noteGive is one topic given: whom it is about, who takes it, and what
 // gave it.
 type noteGive struct {
-	topic  string
+	topic string
+	// as is the value the note carries (rpg-project#1007), empty for none.
+	as     string
 	about  string
 	takers []noteTaker
 	cause  Connection
@@ -58,7 +60,7 @@ func way(word string) string {
 // and what gave it. THE ONE PLACE a give's note edges are made.
 func noteGiveEdges(g noteGive) []Connection {
 	out := []Connection{
-		{Kind: "topic", ID: g.topic, Role: "grants"},
+		{Kind: "topic", ID: g.topic, Role: "grants", Is: g.as},
 		{Kind: ConnWho, ID: g.about, Role: "about", At: g.topic},
 	}
 	for _, t := range g.takers {
@@ -76,16 +78,27 @@ func noteGiveEdges(g noteGive) []Connection {
 }
 
 // noteAskEdges is every connection one read of a topic carries: the topic
-// edge (role as the reader has always read it, negated under a not), whom
-// it asks about, and whose note it is, for each creature named. THE ONE
-// PLACE a read's note edges are made.
-func noteAskEdges(topic, role string, negated bool, about string, whose ...string) []Connection {
+// edge (role as the reader has always read it, negated under a not, and the
+// value it asks for in Is, empty when it asks whatever the value), whom it
+// asks about, and whose note it is, for each creature named. THE ONE PLACE
+// a read's note edges are made.
+func noteAskEdges(topic, as, role string, negated bool, about string, whose ...string) []Connection {
 	out := []Connection{
-		{Kind: "topic", ID: topic, Role: role, Not: negated},
+		{Kind: "topic", ID: topic, Role: role, Is: as, Not: negated},
 		{Kind: ConnWho, ID: about, Role: "about", At: topic},
 	}
 	for _, w := range whose {
 		out = append(out, Connection{Kind: "creature", ID: w, Role: RoleWhose, At: topic})
 	}
 	return out
+}
+
+// topicWords says a topic in a sentence, with the value a note carries after
+// it when it has one: "`standing`", "`standing` as `warned`"
+// (rpg-project#1007).
+func topicWords(topic, as string) string {
+	if as == "" {
+		return quote(topic)
+	}
+	return quote(topic) + " as " + quote(as)
 }

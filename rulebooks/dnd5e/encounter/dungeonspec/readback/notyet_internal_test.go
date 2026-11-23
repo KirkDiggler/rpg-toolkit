@@ -73,7 +73,6 @@ var specOf = map[string]reflect.Type{
 // not yet said. A key here is a decision, not a gap.
 var acknowledged = map[string][]string{
 	"outcome":            {"sceneMove"},
-	"give":               {"as"},
 	"root":               {"scenarios", "tables"},
 	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},
@@ -184,4 +183,27 @@ func (s *NotYetSuite) TestAnUnknownKeyAtEveryLevelIsListed() {
 		want[p] = true
 	}
 	s.Equal(want, listed, "every injected key is listed at its path, and the castle lists nothing else")
+}
+
+// TestAMadeUpKeyUnderAStatesGiveIsListed: the walk reaches a behaviour
+// definition's `outcomes` as it reaches a conversation's (rpg-project#1115):
+// each entry an outcome, its `give` a give, so a key the dialect grows there
+// is listed at its path.
+func (s *NotYetSuite) TestAMadeUpKeyUnderAStatesGiveIsListed() {
+	source := `
+behaviorDefinitions:
+  captain-policy:
+    recipe: { ref: x, initial: a, states: { a: {} } }
+    outcomes:
+      back-to-gate:
+        - give: { topic: standing, to: itself, about: the_one_named, zz-unknown: 1 }
+          zz-outcome: 1
+`
+	b := &builder{doc: newDocument([]byte(source))}
+	listed := map[string]bool{}
+	for _, u := range b.notYetSaid() {
+		listed[u.Path] = true
+	}
+	s.True(listed["behaviorDefinitions.captain-policy.outcomes.back-to-gate[0].give.zz-unknown"], "listed under the give: %v", listed)
+	s.True(listed["behaviorDefinitions.captain-policy.outcomes.back-to-gate[0].zz-outcome"], "listed under the outcome: %v", listed)
 }

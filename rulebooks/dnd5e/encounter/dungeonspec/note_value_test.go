@@ -315,10 +315,11 @@ func yamlInto(source string, into *dungeonspec.PredicateSpec) error {
 	return yaml.Unmarshal([]byte(source), into)
 }
 
-func TestDungeonspec_NoteValue_TheReadBackListsAValuedGivesValueAsNotYetSaid(t *testing.T) {
+func TestDungeonspec_NoteValue_TheReadBackSaysAValuedGivesValueAndListsNothingUnsaid(t *testing.T) {
 	rb, err := readback.Of([]byte(valueSite()))
 	require.NoError(t, err)
-	require.Contains(t, rb.NotYetSaid, readback.Unsaid{
-		Path: "room.room.monsterBindings.goblin-1.options[0].failure[0].give.as", Kind: "give.as", Why: "the read-back cannot say this yet",
-	}, "a line's valued give lists its `as`, not dropped")
+	for _, un := range rb.NotYetSaid {
+		require.NotContains(t, un.Path, "give.as", "a line's valued give says its `as`: %v", un)
+	}
+	require.Contains(t, rb.Text(), "is given the topic `standing` as `warned`", "the value is said, not dropped")
 }
