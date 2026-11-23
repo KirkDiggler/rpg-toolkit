@@ -15,6 +15,7 @@ Slice [rpg-project#1140](https://github.com/KirkDiggler/rpg-project/issues/1140)
 - "Fired" is a pick that resolved (`reactionPicked`) or a changed state across every attached instance, read before and after the wake — [Design 2](https://github.com/KirkDiggler/rpg-project/issues/1140).
 - The sight refresh after a hailer's answer is done exactly as `hail` does it (only when a pick or a blocking turn happened) — [Design 1](https://github.com/KirkDiggler/rpg-project/issues/1140).
 - Existing tests changed: `TestCastleSuite/TestTheHailIsTheEngines` (pins the row's Long) and the `hail-site` goldens `hail-site.folded.txt`, `hail-site.readback.json`, `hail-site.readback.txt` regenerated with `-update` (they print the row's Short and Long; the diff is those lines only). Goldens are fixtures, not tests; I took them to be the same allowed kind and say so — [Allowed edits](https://github.com/KirkDiggler/rpg-project/issues/1140).
+- The pass is bounded by the listener index: it returns at once when nobody listens for `approached`, walks `listeners.For(approached)` not every member, and asks `carriesAnApproach` before reading a machine; `TestOwnHailNobodyListeningIsNeverAsked` pins it — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1140#issuecomment-7117220384).
 
 ## Found
 

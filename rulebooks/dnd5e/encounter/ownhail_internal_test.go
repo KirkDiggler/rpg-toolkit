@@ -326,3 +326,13 @@ func TestOwnHailTheWordsSayBothWays(t *testing.T) {
 		"or, when {who} carries a conversation that declares an approach, under that conversation's hail rule", approached.Long)
 	require.Equal(t, "the one {who} hailed", approached.About)
 }
+
+func TestOwnHailNobodyListeningIsNeverAsked(t *testing.T) {
+	states := map[string]machine.State{"post": {Transitions: []machine.Transition{pickTime}}}
+	enc := ohHall(t, ohAt(3), ohGuardIn(t, ohGuard, ohAt(6), states))
+	require.False(t, enc.listened(beatApproached), "precondition: nobody listens for approached")
+
+	out := ohStep(t, enc, "alice", ohAt(4))
+	require.Empty(t, out.Hailed)
+	require.Zero(t, ohHails(t, enc, ohGuard))
+}

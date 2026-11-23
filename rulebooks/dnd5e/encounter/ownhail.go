@@ -117,6 +117,11 @@ func behaviorStatesOf(m *memberRecord) string {
 // ownHailers is who hails the mover for a step from one cell to another:
 // every member the doc's conditions admit, nearest first, then by id.
 func (e *Encounter) ownHailers(mover MemberID, from, to spatial.Position) ([]MemberID, error) {
+	// BOUNDED BY THE LISTENER INDEX: only members whose current state has an
+	// `approached` step are asked, and nobody at all when none does.
+	if !e.listened(beatApproached) {
+		return nil, nil
+	}
 	moverFights, err := e.inFight(mover)
 	if err != nil || moverFights {
 		return nil, err
@@ -126,12 +131,14 @@ func (e *Encounter) ownHailers(mover MemberID, from, to spatial.Position) ([]Mem
 		distance float64
 	}
 	var near []candidate
-	for id, m := range e.members {
-		if id == mover {
+	for _, l := range e.listeners.For(beatApproached) {
+		id := l.Key
+		m, ok := e.members[id]
+		if id == mover || !ok || e.carriesAnApproach(m) {
 			continue
 		}
 		within, ok := ownHailWithin(m)
-		if !ok || e.carriesAnApproach(m) {
+		if !ok {
 			continue
 		}
 		at, placed := e.canvas.GetEntityPosition(string(id))
