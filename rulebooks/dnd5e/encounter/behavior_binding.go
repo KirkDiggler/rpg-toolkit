@@ -55,6 +55,7 @@ func BehaviorVocabulary(in *BehaviorVocabularyInput) (*BehaviorVocabularyOutput,
 		}
 		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineTopic(string(id))}})
 		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineNoted(string(id))}})
+		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineNotedAs(string(id))}})
 	}
 	return &BehaviorVocabularyOutput{Vocabulary: v}, nil
 }

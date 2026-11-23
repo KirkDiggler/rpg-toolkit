@@ -206,18 +206,26 @@ func TestNoteValueAPostsPassAsksForAValue(t *testing.T) {
 	})
 }
 
-// TestNoteValueAReplacedValueLandsNoTopicBeat pins that only a FIRST note
-// lands the `topic` beat on a listening holder; a value that replaces one
-// lands none. The next slice may change this (rpg-project#1007).
-func TestNoteValueAReplacedValueLandsNoTopicBeat(t *testing.T) {
+// nvTopicBeatHall is a hall whose guard listens on the `topic` beat: it steps
+// calm -> first -> second, one step for each topic beat it hears.
+func nvTopicBeatHall(t *testing.T) *Encounter {
+	t.Helper()
 	held := &machine.Guard{Fact: &machine.FactLeaf{Name: MachineTopic(string(nvTopic)), Op: machine.OpEq, Value: true}}
-	g := nvGuard(t, nvLine("warn", nvTopic, "warned"), nvLine("bar", nvTopic, "barred"))
+	g := nvGuard(t, nvLine("warn", nvTopic, "warned"), nvLine("bar", nvTopic, "barred"), nvLine("warn-again", nvTopic, "warned"))
 	g.Behaviors.Instances[0].Instance.Recipe = *recipe(t, "calm", map[string]machine.State{
 		"calm":   {Transitions: []machine.Transition{{On: beatTopic, When: held, To: "first", Reason: "a topic"}}},
 		"first":  {Transitions: []machine.Transition{{On: beatTopic, When: held, To: "second", Reason: "another topic"}}},
 		"second": {},
 	})
-	enc := soHall(t, everyoneSeesTheWholeMap{}, g)
+
+	return soHall(t, everyoneSeesTheWholeMap{}, g)
+}
+
+// TestNoteValueAReplacedValueLandsTheTopicBeat pins that a value that
+// REPLACES the held one is news: the `topic` beat lands on a listening holder
+// as it does for a first note (rpg-project#1007, slice rpg-project#1113).
+func TestNoteValueAReplacedValueLandsTheTopicBeat(t *testing.T) {
+	enc := nvTopicBeatHall(t)
 
 	nvSay(t, enc, "warn")
 	require.NoError(t, enc.spendWorldAction("alice"))
@@ -227,7 +235,23 @@ func TestNoteValueAReplacedValueLandsNoTopicBeat(t *testing.T) {
 	require.NoError(t, enc.spendWorldAction("alice"))
 	got, _ := nvHeld(t, enc, nvTopic)
 	require.Equal(t, "barred", got, "the value did change")
-	require.Equal(t, "first", stateOf(enc, soGuard), "but a replaced value lands no beat of its own")
+	require.Equal(t, "second", stateOf(enc, soGuard), "and a replaced value lands the topic beat: he has stepped again")
+}
+
+// TestNoteValueTheSameValueGivenAgainLandsNoTopicBeat pins that confirming a
+// note with the value it already has is no news.
+func TestNoteValueTheSameValueGivenAgainLandsNoTopicBeat(t *testing.T) {
+	enc := nvTopicBeatHall(t)
+
+	nvSay(t, enc, "warn")
+	require.NoError(t, enc.spendWorldAction("alice"))
+	require.Equal(t, "first", stateOf(enc, soGuard), "precondition: the first note landed the beat")
+
+	nvSay(t, enc, "warn-again")
+	require.NoError(t, enc.spendWorldAction("alice"))
+	got, _ := nvHeld(t, enc, nvTopic)
+	require.Equal(t, "warned", got, "the value is the same")
+	require.Equal(t, "first", stateOf(enc, soGuard), "so the same value given again lands no beat")
 }
 
 // TestNoteValueAFirstLieNeverCountsAsTheSecond pins the order (F6): in one

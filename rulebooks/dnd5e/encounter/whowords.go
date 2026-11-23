@@ -56,6 +56,7 @@ const (
 	WhoInPass        = "pass"
 	WhoInNoted       = "noted:"
 	WhoInNotedAnyone = "noted.anyone:"
+	WhoInNotedAs     = "noted.as:"
 	// WhoInStateGiveTo and WhoInStateGiveAbout are a machine state's note:
 	// who comes to hold it and whom it is about (rpg-project#989).
 	WhoInStateGiveTo    = "state.give.to"
@@ -103,6 +104,7 @@ var whoWords = []WhoWord{
 	{Word: WhoTheSpeaker, Role: WhoRead, Label: "the speaker", Allowed: WhoInRequires},
 	{Word: WhoTheWalker, Role: WhoRead, Label: "the walker", Allowed: WhoInPass},
 	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNoted},
+	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNotedAs},
 	{Word: WhoAnyone, Role: WhoRead, Label: "anyone", Allowed: WhoInNotedAnyone},
 	// WHO RECEIVES A STATUS EFFECT (rpg-project#990). `speaker` here is
 	// UNCONDITIONAL — the speaker receives it whether or not anyone sees
