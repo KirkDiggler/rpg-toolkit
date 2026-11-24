@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
@@ -82,6 +84,44 @@ func useRing(ctx context.Context, item *items.Item, holder string, roller dice.R
 			return healing.Resolve(ctx, *definition.Effect.Healing, source, roller)
 		},
 	})
+}
+
+// payRing uses the ring at the rulebook's gate: the holder's bonus action and
+// the ring's own use are checked together and spent together, in one payment.
+// Nothing is taken and given back. The healing resolves only after the payment.
+func payRing(ctx context.Context, item *items.Item, holder string, economy *combat.ActionEconomy, roller dice.Roller) (
+	*dndevents.RollCalculation, error,
+) {
+	offers, err := item.Offers(items.OffersInput{HolderID: holder})
+	if err != nil {
+		return nil, err
+	}
+	var offer *items.Offer
+	for i := range offers.Grants {
+		if offers.Grants[i].ID == windGrant {
+			offer = &offers.Grants[i]
+		}
+	}
+	if offer == nil {
+		return nil, fmt.Errorf("%w: %q holds no %s offer from this ring", items.ErrUnavailable, holder, windGrant)
+	}
+	abilityRef, itemRef := offer.Grant.Ref, offer.Source.ItemRef
+	definition, err := features.DescribeFromRef(&features.DescribeFromRefInput{
+		Ref:        offer.Grant.Ref,
+		Parameters: offer.Grant.Parameters,
+		Giver: dndevents.RollSource{
+			Ref: &itemRef, Name: offer.Source.Name, Label: "Ring level", SourceID: offer.Source.ItemID,
+		},
+		Pools: map[coreResources.ResourceKey]int{coreResources.ResourceKey(offer.Grant.Pool): offer.Grant.Uses},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := combat.Pay(combat.WithPools(economy, item.Budget(holder)), definition.Cost); err != nil {
+		return nil, err
+	}
+	source := dndevents.RollSource{Ref: &abilityRef, Name: offer.Source.Name, SourceID: offer.Source.ItemID}
+	return healing.Resolve(ctx, *definition.Effect.Healing, source, roller)
 }
 
 type fixedRoller struct {

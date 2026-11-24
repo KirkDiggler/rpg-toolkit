@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 func Example_itemComposition() {
@@ -20,12 +21,14 @@ func Example_itemComposition() {
 	if err := i.Attach(ctx, items.AttachInput{Bus: bus, HolderID: "rook"}); err != nil {
 		panic(err)
 	}
-	result, err := useRing(ctx, i, "rook", &fixedRoller{face: 6})
+	economy := combat.NewActionEconomy()
+	result, err := payRing(ctx, i, "rook", economy, &fixedRoller{face: 6})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("source: %s; healing calculation: %d\n", result.Source.ItemID, result.Result.Total)
+	fmt.Printf("source: %s; healing calculation: %d\n", i.GetID(), result.Total)
 	fmt.Printf("charges after use: %d\n", i.Data().Pools[chargePool])
+	fmt.Printf("bonus actions left: %d\n", economy.BonusActionsRemaining)
 	if err := i.Detach(ctx); err != nil {
 		panic(err)
 	}
@@ -47,6 +50,7 @@ func Example_itemComposition() {
 	// Output:
 	// source: ring-17; healing calculation: 9
 	// charges after use: 0
+	// bonus actions left: 0
 	// charges after transfer: 0
 	// charges after old holder rests: 0
 	// charges after current holder rests: 1
