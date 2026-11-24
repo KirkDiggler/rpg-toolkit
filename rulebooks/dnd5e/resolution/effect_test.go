@@ -89,6 +89,22 @@ func (s *ActivationTestSuite) resolveEffect(
 		append([]Participant{{Character: data}}, extra...), s.effectCost(definition, activationFighterID))
 }
 
+// resolveSecondWindFromItsDescription resolves this fighter's Second Wind the
+// one way it is used: its description built into an action, its cost paid at
+// the door, a fixed d10 of 6, the fighter alone in the fight.
+func (s *ActivationTestSuite) resolveSecondWindFromItsDescription(data *character.Data) (*Output, error) {
+	definition := s.secondWindDescription(data)
+	machine, err := NewAction(&ActionInput{
+		Definition: *definition, AttackerID: activationFighterID, Roller: fixedRoller{face: 6},
+	})
+	s.Require().NoError(err)
+
+	return s.resolveOnBus(events.NewEventBus(), machine,
+		s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}}),
+		[]Participant{{Character: data}}, s.effectCost(definition, activationFighterID))
+}
+
 func (s *ActivationTestSuite) wolfParticipant() Participant {
 	return Participant{Monster: monsters.NewWolf(wolfID).ToData()}
 }
@@ -133,45 +149,51 @@ func (s *ActivationTestSuite) TestAnEffectIsCappedAtTheMaximum() {
 	s.Equal(10, dirty(out, activationFighterID).HitPoints)
 }
 
-// IT AGREES WITH THE OLD WAY. The feature announces its own heal; the
-// description resolved through the engine must announce the same one, at a
-// level where a fixed +1 would be seen.
-func (s *ActivationTestSuite) TestAnEffectAnnouncesTheHealTheFeatureAnnounces() {
-	for _, level := range []int{1, 3} {
-		s.Run(fmt.Sprintf("fighter level %d", level), func() {
-			viaFeature, err := s.run(
-				&ActivationInput{
-					MemberID: activationFighterID, Ability: refs.Features.SecondWind(), Roller: fixedRoller{face: 6},
-				},
-				s.effectWorld(),
-				[]Participant{{Character: s.fighterAt(level, 4, 40)}, s.wolfParticipant()},
-			)
-			s.Require().NoError(err)
-			old, ok := viaFeature.Outcome.(ActivationOutcome)
-			s.Require().True(ok)
-			s.Require().Len(old.Effects, 1)
-
-			data := s.fighterAt(level, 4, 40)
+// IT HEALS THE FIGURES THE FEATURE ONCE ANNOUNCED. A fixed d10 of 6 and a
+// fighter level, at a level where a fixed +1 would be seen: 7 at level 1, 9 at
+// level 3.
+func (s *ActivationTestSuite) TestAnEffectAnnouncesTheHealForTheFighterLevel() {
+	for _, tc := range []struct{ level, heal int }{{1, 7}, {3, 9}} {
+		s.Run(fmt.Sprintf("fighter level %d", tc.level), func() {
+			data := s.fighterAt(tc.level, 4, 40)
 			definition := s.secondWindDescription(data)
-			viaEffect, err := s.resolveEffect(data, definition, events.NewEventBus(), s.wolfParticipant())
-			s.Require().NoError(err)
-			got, ok := viaEffect.Outcome.(ActivationOutcome)
-			s.Require().True(ok)
 
-			s.Equal(6+level, got.Effects[0].Requested, "1d10 at a fixed 6, plus the fighter level")
-			// ONE KNOWN DIFFERENCE, reported as a gap: the description's level
-			// modifier names its owner as its source id; the feature's own leaves
-			// it empty. Everything else — dice trace, amounts, endpoints — is equal.
-			components := got.Effects[0].Calculation.Components
-			for i := range components {
-				if components[i].Modifier != nil {
-					s.Equal(activationFighterID, components[i].Source.SourceID)
-					components[i].Source.SourceID = ""
-				}
-			}
-			s.Equal(old.Effects, got.Effects, "the same heal, calculation and all")
+			out, err := s.resolveEffect(data, definition, events.NewEventBus(), s.wolfParticipant())
+			s.Require().NoError(err)
+			got, ok := out.Outcome.(ActivationOutcome)
+			s.Require().True(ok)
+			s.Require().Len(got.Effects, 1)
+
+			s.Equal(tc.heal, got.Effects[0].Requested, "1d10 at a fixed 6, plus the fighter level")
+			s.Equal(tc.heal, got.Effects[0].Calculation.Total)
+			s.Equal(4+tc.heal, got.Effects[0].After)
 		})
 	}
+}
+
+// THE FEATURE PATH REFUSES IT. Second Wind is used from its description; asking
+// the feature to activate itself is refused with the rulebook's sentence,
+// nothing is spent and nobody is healed.
+func (s *ActivationTestSuite) TestTheFeaturePathRefusesSecondWind() {
+	data := s.fighterAt(1, 4, 12)
+	bus := events.NewEventBus()
+	healed := s.healingsOn(bus)
+	machine, err := NewActivation(&ActivationInput{
+		MemberID: activationFighterID, Ability: refs.Features.SecondWind(), Roller: fixedRoller{face: 6},
+	})
+	s.Require().NoError(err)
+
+	out, err := s.resolveOnBus(bus, machine, s.effectWorld(),
+		[]Participant{{Character: data}, s.wolfParticipant()}, nil)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(),
+		"this ability is used from its description: build the action with Definition and pay its cost at the gate")
+	s.Nil(out, "nothing comes back to save: nothing was spent")
+	s.Zero(*healed, "nobody was healed")
+	s.Equal(4, data.HitPoints, "the sheet handed over is untouched")
+	s.Equal(1, data.Resources[resources.SecondWind].Current, "the pool is untouched")
+	s.Equal(1, data.ActionEconomy.BonusActionsRemaining, "the bonus action is untouched")
 }
 
 // REFUSED AT THE DOOR: nothing spent, nobody healed.

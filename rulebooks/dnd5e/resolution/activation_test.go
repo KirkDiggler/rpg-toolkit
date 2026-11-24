@@ -410,24 +410,20 @@ func (s *ActivationTestSuite) TestDashAppendsCapacityAfterBusEffects() {
 // trace, fighter-level modifier, authoritative total — not a flattened
 // projection of it. No process-global randomness is touched to get here.
 func (s *ActivationTestSuite) TestSecondWindActivationCapturesTheCompleteCalculation() {
-	out, err := s.run(
-		&ActivationInput{
-			MemberID: activationFighterID, Ability: refs.Features.SecondWind(),
-			Roller: fixedRoller{face: 6},
-		},
-		s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}}),
-		[]Participant{{Character: s.fighter(activationFighterID, 8, 10)}},
-	)
+	out, err := s.resolveSecondWindFromItsDescription(s.fighter(activationFighterID, 8, 10))
 
 	s.Require().NoError(err)
 	outcome, ok := out.Outcome.(ActivationOutcome)
 	s.Require().True(ok)
+	// The description names its owner on the level modifier; the feature's own
+	// left it empty. The one assertion that differs, and only for that reason.
+	calculation := secondWindCalculation()
+	calculation.Components[1].Source.SourceID = activationFighterID
 	s.Equal([]ActivationEffect{{
 		Kind: EffectHealingApplied, TargetID: activationFighterID,
 		Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
 		Amount: 2, Requested: 7, Before: 8, After: 10,
-		Calculation: secondWindCalculation(),
+		Calculation: calculation,
 	}}, outcome.Effects)
 }
 
@@ -435,24 +431,20 @@ func (s *ActivationTestSuite) TestSecondWindActivationCapturesTheCompleteCalcula
 // endpoints must not disappear just because the target was full, and the
 // calculation survives the clamp alongside them.
 func (s *ActivationTestSuite) TestSecondWindCapturesZeroAppliedWithoutDroppingRollFacts() {
-	out, err := s.run(
-		&ActivationInput{
-			MemberID: activationFighterID, Ability: refs.Features.SecondWind(),
-			Roller: fixedRoller{face: 6},
-		},
-		s.world(encounter.MemberInput{ID: activationFighterID, Kind: encounter.KindPlayer,
-			Position: spatial.Position{X: 1, Y: 1}}),
-		[]Participant{{Character: s.fighter(activationFighterID, 10, 10)}},
-	)
+	out, err := s.resolveSecondWindFromItsDescription(s.fighter(activationFighterID, 10, 10))
 
 	s.Require().NoError(err)
 	outcome, ok := out.Outcome.(ActivationOutcome)
 	s.Require().True(ok)
+	// The description names its owner on the level modifier; the feature's own
+	// left it empty. The one assertion that differs, and only for that reason.
+	calculation := secondWindCalculation()
+	calculation.Components[1].Source.SourceID = activationFighterID
 	s.Equal([]ActivationEffect{{
 		Kind: EffectHealingApplied, TargetID: activationFighterID,
 		Ref: refs.Features.SecondWind().String(), Name: "Second Wind",
 		Amount: 0, Requested: 7, Before: 10, After: 10,
-		Calculation: secondWindCalculation(),
+		Calculation: calculation,
 	}}, outcome.Effects)
 }
 
