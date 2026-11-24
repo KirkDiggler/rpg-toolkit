@@ -33,10 +33,9 @@ const (
 	// Used by: Short rest healing
 	HitDice coreResources.ResourceKey = "hit_dice"
 
-	// SecondWind is the fighter's Second Wind feature pool, owned privately by
-	// the SecondWind feature object rather than by Character.resources. The
-	// feature reports it through its non-mutating Status surface so a projection
-	// never has to serialize the feature's persistence JSON to read uses.
+	// SecondWind is the fighter's Second Wind pool, owned by the character in
+	// Character.resources like Rage's charges. The SecondWind feature spends
+	// from it and reports it through its non-mutating Status surface.
 	// Recovered on short rest. Used by: Second Wind.
 	SecondWind coreResources.ResourceKey = "second_wind"
 

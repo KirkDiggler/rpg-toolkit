@@ -645,8 +645,8 @@ func (c *Character) featureResourceInfo(f features.Feature) (current, max int) {
 		r := c.GetResource(resources.RageCharges)
 		return r.Current(), r.Maximum()
 	case refs.Features.SecondWind().ID:
-		// SecondWind manages its own resource internally
-		return 0, 0
+		r := c.GetResource(resources.SecondWind)
+		return r.Current(), r.Maximum()
 	case refs.Features.FlurryOfBlows().ID, refs.Features.PatientDefense().ID, refs.Features.StepOfTheWind().ID:
 		r := c.GetResource(resources.Ki)
 		return r.Current(), r.Maximum()

@@ -58,18 +58,6 @@ func (s *LoaderTestSuite) TestPrivateResourceLoadsRejectInvalidBounds() {
 		data any
 	}{
 		{
-			name: "second wind negative current",
-			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: -1, MaxUses: 1},
-		},
-		{
-			name: "second wind negative maximum",
-			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: 0, MaxUses: -1},
-		},
-		{
-			name: "second wind current above maximum",
-			data: SecondWindData{Ref: refs.Features.SecondWind(), Uses: 2, MaxUses: 1},
-		},
-		{
 			name: "action surge negative current",
 			data: ActionSurgeData{Ref: refs.Features.ActionSurge(), Uses: -1, MaxUses: 1},
 		},

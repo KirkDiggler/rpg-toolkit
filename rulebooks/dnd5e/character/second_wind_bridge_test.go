@@ -6,12 +6,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // countingBridgeRoller both pins the face and proves the injected roller is the
@@ -86,8 +89,11 @@ func (s *SecondWindBridgeTestSuite) TestActivateAbilityCarriesRollerIntoSecondWi
 	secondWind, ok := output.Feature.(*features.SecondWind)
 	s.Require().True(ok, "expected a SecondWind feature")
 	s.char.features = append(s.char.features, secondWind)
-	s.Require().NoError(secondWind.Apply(s.ctx, s.bus))
-	defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
+	// The use is counted in the character's shared pool, which the sheet must carry.
+	s.char.AddResource(resources.SecondWind, combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+		ID: string(resources.SecondWind), Maximum: 1, CharacterID: s.char.GetID(),
+		ResetType: coreResources.ResetShortRest,
+	}))
 
 	var received *dnd5eEvents.HealingReceivedEvent
 	_, err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(

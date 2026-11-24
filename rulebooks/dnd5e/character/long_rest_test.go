@@ -6,7 +6,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -359,8 +358,6 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 		ID:          "second-wind-rest",
 		Name:        "Second Wind",
 		CharacterID: "rest-fighter",
-		Uses:        0,
-		MaxUses:     1,
 	})
 	require.NoError(t, err)
 
@@ -385,8 +382,9 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 		MaxHitPoints:   36,
 		DeathSaveState: &saves.DeathSaveState{Successes: 1, Failures: 2},
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
-			shortRestPool:     {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
-			resources.HitDice: {Current: 0, Maximum: 4, ResetType: coreResources.ResetLongRest},
+			shortRestPool:        {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.HitDice:    {Current: 0, Maximum: 4, ResetType: coreResources.ResetLongRest},
+			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
 		},
 		Features: []json.RawMessage{secondWind},
 	}
@@ -408,26 +406,9 @@ func TestLongRestPersistsCompleteRecoveryOnAttachedSheet(t *testing.T) {
 	require.Equal(t, 2, got.Resources[resources.HitDice].Current,
 		"a level-four character recovers half its hit dice, not all four")
 
-	var restoredSecondWind features.SecondWindData
-	require.NoError(t, json.Unmarshal(featureByRef(t, got.Features, refs.Features.SecondWind()), &restoredSecondWind))
-	require.Equal(t, 1, restoredSecondWind.Uses)
-	require.Equal(t, 1, restoredSecondWind.MaxUses)
+	require.Equal(t, 1, got.Resources[resources.SecondWind].Current, "the shared Second Wind pool refills")
+	require.Equal(t, 1, got.Resources[resources.SecondWind].Maximum)
 
-}
-
-func featureByRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
-	t.Helper()
-	for _, raw := range blobs {
-		var envelope struct {
-			Ref core.Ref `json:"ref"`
-		}
-		require.NoError(t, json.Unmarshal(raw, &envelope))
-		if envelope.Ref.Equals(want) {
-			return raw
-		}
-	}
-	t.Fatalf("feature %s not found", want.String())
-	return nil
 }
 
 // restErr drops a long rest's report, for tests that only ask whether it

@@ -410,17 +410,6 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBef
 		blob func() json.RawMessage
 	}{
 		{
-			name: "second wind negative uses",
-			blob: func() json.RawMessage {
-				raw, err := json.Marshal(features.SecondWindData{
-					Ref: refs.Features.SecondWind(), ID: "second_wind", Name: "Second Wind",
-					CharacterID: "fighter-private", Uses: -1, MaxUses: 1,
-				})
-				s.Require().NoError(err)
-				return raw
-			},
-		},
-		{
 			name: "action surge uses above maximum",
 			blob: func() json.RawMessage {
 				raw, err := json.Marshal(features.ActionSurgeData{
@@ -443,8 +432,8 @@ func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBef
 }
 
 func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource() {
-	raw, err := json.Marshal(features.SecondWindData{
-		Ref: refs.Features.SecondWind(), ID: "second_wind", Name: "Second Wind",
+	raw, err := json.Marshal(features.ActionSurgeData{
+		Ref: refs.Features.ActionSurge(), ID: "action_surge", Name: "Action Surge",
 		CharacterID: "fighter-private-lenient", Uses: 2, MaxUses: 1,
 	})
 	s.Require().NoError(err)
@@ -589,8 +578,8 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 // names itself directly, so Attach scopes its lifecycle with Feature.Ref and
 // does not infer identity from its persistence bytes.
 func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
-	secondWind, err := json.Marshal(features.SecondWindData{
-		Ref: refs.Features.SecondWind(), ID: "scoped-second-wind", Name: "Second Wind",
+	secondWind, err := json.Marshal(features.ActionSurgeData{
+		Ref: refs.Features.ActionSurge(), ID: "scoped-action-surge", Name: "Action Surge",
 		CharacterID: "scoped-fighter", Uses: 0, MaxUses: 1,
 	})
 	s.Require().NoError(err)
@@ -602,9 +591,9 @@ func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal([]core.Ref{*refs.Features.SecondWind()}, bus.record.asked,
+	s.Require().Equal([]core.Ref{*refs.Features.ActionSurge()}, bus.record.asked,
 		"the feature attaches, and no reaction the sheet does not store")
-	s.Require().Contains(bus.record.byRef[*refs.Features.SecondWind()], events.Topic("dnd5e.rest"))
+	s.Require().Contains(bus.record.byRef[*refs.Features.ActionSurge()], events.Topic("dnd5e.rest"))
 }
 
 // The sheet keeper's own hooks are not laundered into an effect's name: they
