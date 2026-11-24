@@ -74,6 +74,13 @@ type Cost struct {
 	//
 	// Never marshalled: a pause's price never refreshes a turn.
 	Turn *Turn `json:"-"`
+
+	// Budget is a second budget the payer does not own, such as an item's uses.
+	// The pools it owns are paid from it; every other part of the cost is the
+	// payer's. Nil means the payer pays everything, as before.
+	//
+	// Never marshalled: a pause's price never names a budget.
+	Budget combat.PoolSource `json:"-"`
 }
 
 // reactionCost is the one reaction price table: one reaction, plus one point
@@ -201,7 +208,9 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 		}
 	}
 
-	if err := combat.Pay(ch, cost.Profile); err != nil {
+	// One payment: the budget pays the pools it owns, the character the rest,
+	// and the gate checks every part before it spends any.
+	if err := combat.Pay(combat.WithPools(ch, cost.Budget), cost.Profile); err != nil {
 		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
 	}
 
@@ -234,6 +243,9 @@ func payForMachine(ctx context.Context, cost *Cost, machine Machine, cast *Parti
 	spell, ok := machine.(*castMachine)
 	if !ok || cost == nil {
 		return payAtTheDoor(ctx, cost, cast)
+	}
+	if cost.Budget != nil {
+		return fmt.Errorf("%w: a spell's cost cannot name a second budget", ErrBadCost)
 	}
 	if cost.PayerID != spell.casterID {
 		return fmt.Errorf("%w: spell payer must be its caster", ErrBadCost)
