@@ -109,7 +109,7 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().False(got.DeathSaveState.Stabilized)
 	s.Require().False(got.DeathSaveState.Dead)
 
-	s.Require().Len(got.Resources, 2)
+	s.Require().Len(got.Resources, 3)
 	s.Require().Equal(3, got.Resources[resources.HitDice].Current,
 		"one spent die plus half of four recovers to three")
 	s.Require().Equal(4, got.Resources[resources.HitDice].Maximum)
@@ -124,10 +124,8 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Contains(refilled, "dnd5e:features:second_wind", "the root's answer is carried through")
 
 	s.Require().Len(got.Features, 2)
-	var secondWind features.SecondWindData
-	s.Require().NoError(json.Unmarshal(featureWithRef(s.T(), got.Features, refs.Features.SecondWind()), &secondWind))
-	s.Require().Equal(1, secondWind.Uses)
-	s.Require().Equal(1, secondWind.MaxUses)
+	s.Require().Equal(1, got.Resources[resources.SecondWind].Current, "second wind's uses are the shared pool's")
+	s.Require().Equal(1, got.Resources[resources.SecondWind].Maximum)
 
 	var actionSurge features.ActionSurgeData
 	s.Require().NoError(json.Unmarshal(featureWithRef(s.T(), got.Features, refs.Features.ActionSurge()), &actionSurge))
@@ -297,7 +295,7 @@ func (s *LongRestTestSuite) TestHeldSurfaceAttachErrorLeavesNoRegistrations() {
 func (s *LongRestTestSuite) fighter() *character.Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: "fighter-second-wind", Name: "Second Wind",
-		CharacterID: longRestFighterID, Uses: 0, MaxUses: 1,
+		CharacterID: longRestFighterID,
 	})
 	s.Require().NoError(err)
 	actionSurge, err := json.Marshal(features.ActionSurgeData{
@@ -329,8 +327,9 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 		},
 		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: "longsword"},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
-			resources.HitDice: {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
-			fighterRestPool:   {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.HitDice:    {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
+			fighterRestPool:      {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
 		},
 		Features:   []json.RawMessage{secondWind, actionSurge},
 		Conditions: []json.RawMessage{opportunity, prone},

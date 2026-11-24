@@ -145,7 +145,7 @@ func (s *ActivationTestSuite) barbarian(charges int) *character.Data {
 func (s *ActivationTestSuite) fighter(id string, hitPoints, maxHitPoints int) *character.Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		CharacterID: id, Uses: 1, MaxUses: 1,
+		CharacterID: id,
 	})
 	s.Require().NoError(err)
 
@@ -156,7 +156,9 @@ func (s *ActivationTestSuite) fighter(id string, hitPoints, maxHitPoints int) *c
 	data.ClassID = classes.Fighter
 	data.HitPoints = hitPoints
 	data.MaxHitPoints = maxHitPoints
-	data.Resources = nil
+	data.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
+		resources.SecondWind: {Current: 1, Maximum: 1, ResetType: coreResources.ResetShortRest},
+	}
 	data.Features = []json.RawMessage{secondWind}
 	return data
 }
