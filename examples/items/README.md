@@ -44,11 +44,15 @@ Config: definition + instance identity + optional saved Data + consumer validati
 ```
 
 The item package contains **no D&D imports, dice or HP mutation**. The test
-consumer supplies Second Wind's meaning through `ValidateGrant` and the pure
-resolver in [`fixture_test.go`](fixture_test.go), using real `healing.Resolve`.
-The item owns identity, pools, attachment, selection and accounting—not the rule.
-The fixture's grant ref is `example:abilities:second_wind`: its parameter contract
-belongs to this prototype consumer, not to the production feature persistence loader.
+consumer's `ValidateGrant` and pure resolver in [`fixture_test.go`](fixture_test.go)
+ask the rulebook's named ability, `features.ValidateParameters` and
+`features.DescribeFromRef` in
+[`second_wind_named_ability.go`](../../rulebooks/dnd5e/features/second_wind_named_ability.go),
+the same functions a fighter's class feature asks, then resolve the healing with real
+`healing.Resolve`. The item owns identity, pools, attachment, selection and
+accounting—not the rule.
+The ring's grant ref is the production `refs.Features.SecondWind()`; its parameters
+are the rulebook's `features.SecondWindParameters` (`{"level": n}`).
 
 ## Candidate API
 
