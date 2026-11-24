@@ -11,7 +11,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -66,35 +66,22 @@ func (s *SecondWindPoolSuite) TestUsingSecondWindSpendsThePoolAndHealsAsBefore()
 	markSaved(s.char)
 	s.startFight(1)
 
-	var received *dnd5eEvents.HealingReceivedEvent
-	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
-		s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			received = &event
-			return nil
-		})
+	// Used from its description: the cost is paid at the gate and the healing
+	// declaration is resolved (rpg-project#1149).
+	resolved, err := useSecondWindFromItsDescription(s.ctx, s.T(), s.char, &countingBridgeRoller{face: 6})
 	s.Require().NoError(err)
-
-	out, err := s.char.ActivateAbility(s.ctx, &ActivateAbilityInput{
-		AbilityRef: refs.Features.SecondWind(),
-		Roller:     &countingBridgeRoller{face: 6},
-	})
-	s.Require().NoError(err)
-	s.Require().True(out.Success, "second wind activates: %s", out.Error)
 
 	current, maximum, ok := s.char.ResourceStatus(resources.SecondWind)
 	s.Require().True(ok)
 	s.Equal(0, current, "the use is spent from the shared pool")
 	s.Equal(1, maximum)
 	s.Equal(0, s.char.actionEconomy.BonusActionsRemaining, "it takes the bonus action")
-	s.Require().NotNil(received, "the same healing event is announced")
-	s.Equal(7, received.Amount, "a face of 6 plus fighter level 1")
+	s.Equal(7, resolved.Total, "a face of 6 plus fighter level 1")
 }
 
 func (s *SecondWindPoolSuite) TestASecondUseIsRefusedLikeASpentRage() {
 	s.startFight(1)
-	_, err := s.char.ActivateAbility(s.ctx, &ActivateAbilityInput{
-		AbilityRef: refs.Features.SecondWind(), Roller: &countingBridgeRoller{face: 3},
-	})
+	_, err := useSecondWindFromItsDescription(s.ctx, s.T(), s.char, &countingBridgeRoller{face: 3})
 	s.Require().NoError(err)
 
 	// The same refusal a spent Rage gives for its pool.
@@ -103,12 +90,15 @@ func (s *SecondWindPoolSuite) TestASecondUseIsRefusedLikeASpentRage() {
 	s.Equal(rpgerr.CodeResourceExhausted, rpgerr.GetCode(refusal), "got %v", refusal)
 	s.Contains(refusal.Error(), "no second wind uses remaining")
 
-	// A fresh turn gives the bonus action back; the pool still refuses.
+	// A fresh turn gives the bonus action back; the gate still refuses the
+	// payment, and refuses it without spending anything.
 	s.startFight(2)
-	out, err := s.char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.SecondWind()})
+	definition, ok, err := s.char.AbilityDefinition(*refs.Features.SecondWind())
 	s.Require().NoError(err)
-	s.False(out.Success)
-	s.Contains(out.Error, "no second wind uses remaining")
+	s.Require().True(ok)
+	payErr := combat.Pay(s.char, definition.Cost)
+	s.Require().Error(payErr)
+	s.Equal(1, s.char.actionEconomy.BonusActionsRemaining, "the refused payment takes no bonus action")
 	current, _, _ := s.char.ResourceStatus(resources.SecondWind)
 	s.Equal(0, current)
 }

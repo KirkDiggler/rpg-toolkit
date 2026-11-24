@@ -2,7 +2,6 @@ package features
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -116,7 +114,7 @@ func (s *SecondWindTestSuite) TestDeadOwnerIsRejectedBeforeRollOrSpend() {
 	)
 	s.Require().NoError(err)
 
-	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: roller})
+	err = s.secondWind.CanActivate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: roller})
 
 	s.Require().Error(err)
 	s.Equal(rpgerr.CodeInvalidState, rpgerr.GetCode(err))
@@ -134,200 +132,14 @@ func (s *SecondWindTestSuite) TestCanActivate() {
 	err := s.secondWind.CanActivate(s.ctx, owner, FeatureInput{})
 	s.NoError(err)
 
-	// Use second wind
-	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+	// Use second wind from its description
+	_, err = useSecondWindFromItsDescription(s.ctx, s.T(), s.secondWind, owner, &fixedSecondWindRoller{face: 6})
 	s.NoError(err)
 
 	// Should not be able to activate with no uses
 	err = s.secondWind.CanActivate(s.ctx, owner, FeatureInput{})
 	s.Error(err)
 	s.Contains(err.Error(), "no second wind uses remaining")
-}
-
-func (s *SecondWindTestSuite) TestActivatePublishesHealingEvent() {
-	owner := fighterOwner(3)
-
-	// Track if healing event was published
-	var receivedEvent *dnd5eEvents.HealingReceivedEvent
-	topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.NoError(err)
-
-	// Activate second wind with no scoped roller: the production default rolls.
-	err = s.secondWind.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
-	s.NoError(err)
-
-	// Check that event was published
-	s.NotNil(receivedEvent)
-	s.Equal("fighter-1", receivedEvent.TargetID)
-	s.Equal("second_wind", receivedEvent.Source)
-	s.True(receivedEvent.SourceRef.Equals(refs.Features.SecondWind()))
-	s.Equal("Second Wind", receivedEvent.SourceName)
-
-	// The sourced calculation owns the requested healing: 1d10 + level (3).
-	s.Require().NotNil(receivedEvent.Calculation, "Second Wind publishes a roll calculation")
-	s.Equal(receivedEvent.Calculation.Total, receivedEvent.Amount)
-	s.Require().Len(receivedEvent.Calculation.Components, 2)
-
-	trace := receivedEvent.Calculation.Components[0].Dice
-	s.Require().NotNil(trace)
-	s.Equal("1d10", trace.Notation)
-	s.Equal(10, trace.DieSize)
-	s.GreaterOrEqual(trace.Subtotal, 1, "the d10 subtotal should be at least 1")
-	s.LessOrEqual(trace.Subtotal, 10, "the d10 subtotal should be at most 10")
-	s.Equal(trace.Subtotal, receivedEvent.Calculation.Components[0].Dice.Subtotal)
-	for _, face := range trace.OriginalRolls {
-		s.GreaterOrEqual(face, 1)
-		s.LessOrEqual(face, 10)
-	}
-
-	s.Require().NotNil(receivedEvent.Calculation.Components[1].Modifier)
-	s.Equal(3, *receivedEvent.Calculation.Components[1].Modifier,
-		"Modifier should be fighter level")
-	s.Equal(trace.Subtotal+3, receivedEvent.Calculation.Total)
-}
-
-func (s *SecondWindTestSuite) TestActivatePublishesSourcedRollCalculation() {
-	owner := fighterOwner(1)
-	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
-	roller := &fixedSecondWindRoller{face: 6}
-
-	var receivedEvent *dnd5eEvents.HealingReceivedEvent
-	topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.Require().NoError(err)
-
-	err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: roller})
-	s.Require().NoError(err)
-
-	s.Require().NotNil(receivedEvent)
-	s.Equal("fighter-1", receivedEvent.TargetID)
-	s.Equal(0, owner.resources[resources.SecondWind], "the spend is taken from the owner's shared pool")
-
-	// One calculation, carrying the exact scoped roll and the sourced modifier.
-	s.Require().NotNil(receivedEvent.Calculation)
-	calculation := receivedEvent.Calculation
-	s.Equal(7, calculation.Total)
-	s.Equal(7, receivedEvent.Amount, "the calculation total owns the requested healing")
-	s.Require().Len(calculation.Components, 2)
-
-	dice := calculation.Components[0]
-	s.True(dice.Source.Ref.Equals(refs.Features.SecondWind()))
-	s.Equal("Second Wind", dice.Source.Name)
-	s.Require().NotNil(dice.Dice)
-	s.Equal("1d10", dice.Dice.Notation)
-	s.Equal(10, dice.Dice.DieSize)
-	s.Equal([]int{6}, dice.Dice.OriginalRolls)
-	s.Equal([]int{6}, dice.Dice.FinalRolls)
-	s.Empty(dice.Dice.Rerolls)
-	s.Empty(dice.Dice.KeptIndices)
-	s.Equal(6, dice.Dice.Subtotal)
-	s.Nil(dice.Modifier)
-
-	modifier := calculation.Components[1]
-	s.True(modifier.Source.Ref.Equals(refs.Classes.Fighter()))
-	s.Equal("Fighter", modifier.Source.Name)
-	s.Equal("Fighter level", modifier.Source.Label)
-	s.Require().NotNil(modifier.Modifier)
-	s.Equal(1, *modifier.Modifier)
-	s.Nil(modifier.Dice)
-
-	// The roll-bearing scalar path is retired for Second Wind: the calculation
-	// is the only representation of the roll.
-	s.Zero(receivedEvent.Roll)
-	s.Zero(receivedEvent.Modifier)
-}
-
-// TestActivatePublishesOwnRefsNotSharedSingletons proves the published healing
-// event never carries the package-singleton refs: the event graph is mutable
-// and published to strangers, so a receiver mutating a published ref must not
-// corrupt refs.Features.SecondWind() or refs.Classes.Fighter() for everyone else.
-func (s *SecondWindTestSuite) TestActivatePublishesOwnRefsNotSharedSingletons() {
-	owner := fighterOwner(1)
-	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
-
-	var receivedEvent *dnd5eEvents.HealingReceivedEvent
-	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
-		s.ctx,
-		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			receivedEvent = &event
-			return nil
-		},
-	)
-	s.Require().NoError(err)
-
-	err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: &fixedSecondWindRoller{face: 6}})
-	s.Require().NoError(err)
-	s.Require().NotNil(receivedEvent)
-	s.Require().NotNil(receivedEvent.SourceRef, "Second Wind publishes a source ref")
-	s.Require().NotNil(receivedEvent.Calculation)
-	s.Require().Len(receivedEvent.Calculation.Components, 2)
-
-	// The published refs are fresh copies, not the shared singletons.
-	s.Require().NotSame(refs.Features.SecondWind(), receivedEvent.SourceRef,
-		"the top-level SourceRef must be a fresh copy")
-	s.Require().NotSame(refs.Features.SecondWind(), receivedEvent.Calculation.Components[0].Source.Ref,
-		"the dice component source ref must be a fresh copy")
-	s.Require().NotSame(refs.Classes.Fighter(), receivedEvent.Calculation.Components[1].Source.Ref,
-		"the modifier component source ref must be a fresh copy")
-
-	// A hostile receiver scribbles on every published ref in the event graph.
-	receivedEvent.SourceRef.ID = "corrupted"
-	receivedEvent.Calculation.Components[0].Source.Ref.ID = "corrupted"
-	receivedEvent.Calculation.Components[1].Source.Ref.ID = "corrupted"
-
-	s.Equal("second_wind", refs.Features.SecondWind().ID,
-		"mutating the published top-level SourceRef must not corrupt the shared ref")
-	s.Equal("fighter", refs.Classes.Fighter().ID,
-		"mutating the published modifier source ref must not corrupt the shared ref")
-	s.Equal(core.Ref{Module: refs.Module, Type: refs.TypeFeatures, ID: "second_wind"},
-		*refs.Features.SecondWind(), "the singleton keeps its full identity")
-	s.Equal(core.Ref{Module: refs.Module, Type: refs.TypeClasses, ID: "fighter"},
-		*refs.Classes.Fighter(), "the singleton keeps its full identity")
-}
-
-func (s *SecondWindTestSuite) TestHealingScalesWithLevel() {
-	testCases := []struct {
-		level            int
-		expectedModifier int
-	}{
-		{1, 1},
-		{3, 3},
-		{5, 5},
-		{10, 10},
-		{20, 20},
-	}
-
-	for _, tc := range testCases {
-		s.Run(fmt.Sprintf("Level %d", tc.level), func() {
-			sw := newSecondWindForTest("test-sw", "fighter-1")
-			owner := fighterOwner(tc.level)
-
-			var receivedEvent *dnd5eEvents.HealingReceivedEvent
-			topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-			_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-				receivedEvent = &event
-				return nil
-			})
-			s.NoError(err)
-
-			err = sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
-			s.NoError(err)
-
-			s.Require().NotNil(receivedEvent)
-			s.Require().NotNil(receivedEvent.Calculation)
-			s.Require().Len(receivedEvent.Calculation.Components, 2)
-			s.Require().NotNil(receivedEvent.Calculation.Components[1].Modifier)
-			s.Equal(tc.expectedModifier, *receivedEvent.Calculation.Components[1].Modifier,
-				"Level %d should have modifier %d", tc.level, tc.expectedModifier)
-		})
-	}
 }
 
 func (s *SecondWindTestSuite) TestLoadJSON() {
@@ -376,26 +188,6 @@ func fighterOwner(level int) *StubEntity {
 		levels:    map[classes.Class]int{classes.Fighter: level},
 		resources: map[coreResources.ResourceKey]int{resources.SecondWind: 1},
 	}
-}
-
-// TestSecondWindHealsFromTheOwnersLevelAtActivation: a fighter advanced to
-// level 2 heals 1d10 + 2 — the level is asked of the owner when Second Wind is
-// used, so the same feature reads the new level with nothing rewritten.
-func (s *SecondWindTestSuite) TestSecondWindHealsFromTheOwnersLevelAtActivation() {
-	owner := fighterOwner(1)
-	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
-	var healed []int
-	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(s.ctx,
-		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			healed = append(healed, event.Amount)
-			return nil
-		})
-	s.Require().NoError(err)
-
-	owner.levels[classes.Fighter] = 2
-	s.Require().NoError(sw.Activate(s.ctx, owner, FeatureInput{Bus: s.bus, Roller: &fixedSecondWindRoller{face: 6}}))
-
-	s.Equal([]int{6 + 2}, healed)
 }
 
 // TestSecondWindRefusesAnOwnerWithNoFighterLevels: an owner that cannot answer
