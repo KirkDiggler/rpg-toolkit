@@ -248,10 +248,14 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 		cost    *resolution.Cost
 	)
 	if described {
+		var targets []string
+		if in.Target != "" {
+			targets = []string{in.Target}
+		}
 		machine, err = resolution.NewAction(&resolution.ActionInput{
 			AttackerID: in.Member,
 			Definition: *definition,
-			TargetID:   in.Target,
+			TargetIDs:  targets,
 			Roller:     roller,
 		})
 		// The price is the description's own, priced the way a swing is: the
