@@ -224,41 +224,23 @@ func (s *FighterEncounterSuite) TestSecondWind_HealsCharacter() {
 		s.T().Log("║  FIGHTER SECOND WIND: Basic Healing                              ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// Create Second Wind feature
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		var err error
 
-		// Subscribe to healing event
-		var healingEvent *dnd5eEvents.HealingReceivedEvent
-		topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-		_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			healingEvent = &event
-			return nil
-		})
+		// Used from its description: the cost is paid at the gate and the
+		// healing declaration resolves to 1d10 + fighter level.
+		calculation, err := useSecondWindFromItsDescription(
+			s.ctx, s.T(), secondWind, s.fighter, &fixedD10Roller{face: 6})
 		s.Require().NoError(err)
 
-		// Activate Second Wind
-		err = secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{
-			Bus: s.bus,
-		})
-		s.Require().NoError(err)
-
-		// Verify healing event was published
-		s.Require().NotNil(healingEvent, "Should publish HealingReceivedEvent")
-		s.Equal(s.fighter.GetID(), healingEvent.TargetID)
-		s.Require().NotNil(healingEvent.Calculation, "Second Wind publishes a sourced calculation")
-		s.Equal(healingEvent.Calculation.Total, healingEvent.Amount)
-		s.Require().Len(healingEvent.Calculation.Components, 2)
-		trace := healingEvent.Calculation.Components[0].Dice
+		s.Equal(6+1, calculation.Total, "a face of 6 plus fighter level 1")
+		s.Require().Len(calculation.Components, 2)
+		trace := calculation.Components[0].Dice
 		s.Require().NotNil(trace)
 		s.Equal("1d10", trace.Notation)
-		s.GreaterOrEqual(trace.Subtotal, 1, "Rolled at least 1")
-		s.LessOrEqual(trace.Subtotal, 10, "Rolled at most 10")
-		s.Require().NotNil(healingEvent.Calculation.Components[1].Modifier)
-		s.Equal(1, *healingEvent.Calculation.Components[1].Modifier, "Modifier should be fighter level (1)")
-		s.Equal(trace.Subtotal+1, healingEvent.Amount)
+		s.Require().NotNil(calculation.Components[1].Modifier)
+		s.Equal(1, *calculation.Components[1].Modifier, "Modifier should be fighter level (1)")
 
-		s.T().Logf("✓ Second Wind healed for %d (rolled %d + 1 level)", healingEvent.Amount, trace.Subtotal)
+		s.T().Logf("✓ Second Wind heals %d (rolled %d + 1 level)", calculation.Total, trace.Subtotal)
 	})
 }
 
@@ -271,13 +253,13 @@ func (s *FighterEncounterSuite) TestSecondWind_OncePerShortRest() {
 		secondWind := s.createSecondWind(s.fighter.GetID())
 
 		// First use should succeed
-		err := secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
+		_, err := useSecondWindFromItsDescription(s.ctx, s.T(), secondWind, s.fighter, &fixedD10Roller{face: 6})
 		s.Require().NoError(err)
 
-		// Second use should fail
-		err = secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
+		// Second use should fail at the gate
+		_, err = useSecondWindFromItsDescription(s.ctx, s.T(), secondWind, s.fighter, &fixedD10Roller{face: 6})
 		s.Require().Error(err)
-		s.Contains(err.Error(), "no second wind uses remaining")
+		s.Equal(0, s.fighter.pool[resources.SecondWind], "the refused payment spends nothing more")
 
 		s.T().Log("✓ Second Wind correctly limited to once per short rest")
 	})
@@ -292,7 +274,7 @@ func (s *FighterEncounterSuite) TestSecondWind_ResetsOnShortRest() {
 		secondWind := s.createSecondWind(s.fighter.GetID())
 
 		// Use Second Wind
-		err := secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
+		_, err := useSecondWindFromItsDescription(s.ctx, s.T(), secondWind, s.fighter, &fixedD10Roller{face: 6})
 		s.Require().NoError(err)
 
 		// Verify it's exhausted
@@ -317,32 +299,21 @@ func (s *FighterEncounterSuite) TestSecondWind_ScalesWithLevel() {
 		s.T().Log("║  FIGHTER SECOND WIND: Level Scaling                              ║")
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
-		// The level is asked of the fighter when Second Wind is used: the same
-		// fighter advanced to 5 heals 1d10 + 5, with nothing rewritten.
+		// The level is asked of the fighter when the description is built: the
+		// same fighter advanced to 5 heals 1d10 + 5, with nothing rewritten.
 		s.fighter.level = 5
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		var err error
 
-		var healingEvent *dnd5eEvents.HealingReceivedEvent
-		topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
-		_, err = topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			healingEvent = &event
-			return nil
-		})
+		calculation, err := useSecondWindFromItsDescription(
+			s.ctx, s.T(), secondWind, s.fighter, &fixedD10Roller{face: 6})
 		s.Require().NoError(err)
 
-		err = secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
-		s.Require().NoError(err)
+		s.Require().Len(calculation.Components, 2)
+		s.Require().NotNil(calculation.Components[1].Modifier)
+		s.Equal(5, *calculation.Components[1].Modifier, "Modifier should be fighter level (5)")
+		s.Equal(6+5, calculation.Total, "Total should be 1d10 + 5")
 
-		s.Require().NotNil(healingEvent)
-		s.Require().NotNil(healingEvent.Calculation)
-		s.Require().Len(healingEvent.Calculation.Components, 2)
-		s.Require().NotNil(healingEvent.Calculation.Components[1].Modifier)
-		s.Equal(5, *healingEvent.Calculation.Components[1].Modifier, "Modifier should be fighter level (5)")
-		s.Equal(healingEvent.Calculation.Total, healingEvent.Amount, "Total should be 1d10 + 5")
-
-		s.T().Logf("✓ Second Wind at level 5 healed for %d (rolled %d + 5)",
-			healingEvent.Amount, healingEvent.Calculation.Components[0].Dice.Subtotal)
+		s.T().Logf("✓ Second Wind at level 5 heals %d", calculation.Total)
 	})
 }
 

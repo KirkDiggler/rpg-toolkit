@@ -9,7 +9,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -83,9 +82,10 @@ func (s *SecondWind) Description() string {
 
 // Definition describes Second Wind as data, with this owner's numbers: a bonus
 // action and one point of the shared pool, to heal the user 1d10 plus the
-// owner's fighter level. Nothing runs it yet; Activate still does the work and
-// a test holds the two together. An owner with no fighter level is refused as
-// Activate refuses it.
+// owner's fighter level. This is the one way to use it: the resolver pays the
+// cost at the gate and resolves the healing, and [SecondWind.Activate] refuses.
+// An owner with no fighter level is refused, as [SecondWind.CanActivate] refuses
+// it.
 func (s *SecondWind) Definition(owner core.Entity) (*actions.Definition, error) {
 	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
 	if err != nil {
@@ -154,93 +154,11 @@ func (s *SecondWind) CanActivate(_ context.Context, owner core.Entity, _ Feature
 	return nil
 }
 
-// Activate implements core.Action[FeatureInput]. CanActivate has already
-// refused an owner with no fighter levels; the level is asked again here, at
-// the moment it is used, before the use is spent.
-func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-	// Check if we can activate
-	if err := s.CanActivate(ctx, owner, input); err != nil {
-		return err
-	}
-	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
-	if err != nil {
-		return err
-	}
-
-	// Consume a use from the owner's shared pool
-	accessor, ok := owner.(coreResources.ResourceAccessor)
-	if !ok {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
-	}
-	if err := accessor.UseResource(resources.SecondWind, 1); err != nil {
-		return rpgerr.Wrapf(err, "failed to use second wind")
-	}
-
-	// Roll healing: 1d10 + fighter level, authored as one sourced calculation.
-	// The interaction-scoped roller comes from the input; nil retains the
-	// production default for direct non-resolution callers.
-	pool, err := dice.ParseNotation("1d10")
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to parse healing dice")
-	}
-
-	result := pool.RollContext(ctx, input.Roller)
-	if result.Error() != nil {
-		return rpgerr.Wrapf(result.Error(), "failed to roll healing dice")
-	}
-
-	faces := append([]int(nil), result.Rolls()[0]...)
-	modifier := level // Fighter level is the modifier
-	// The published event graph is mutable and handed to strangers: publish
-	// fresh copies of the identity refs, never the package singletons, so a
-	// receiver mutating a published ref cannot corrupt refs.Features.SecondWind()
-	// or refs.Classes.Fighter() for everyone else.
-	sourceRef := *refs.Features.SecondWind()
-	diceSourceRef := *refs.Features.SecondWind()
-	modifierSourceRef := *refs.Classes.Fighter()
-	calculation := &dnd5eEvents.RollCalculation{
-		Components: []dnd5eEvents.RollComponent{
-			{
-				Source: dnd5eEvents.RollSource{
-					Ref: &diceSourceRef, Name: "Second Wind", SourceID: owner.GetID(),
-				},
-				Dice: &dnd5eEvents.DiceTrace{
-					Notation:      "1d10",
-					DieSize:       10,
-					OriginalRolls: faces,
-					FinalRolls:    append([]int(nil), faces...),
-					Subtotal:      result.Total(),
-				},
-			},
-			{
-				Source: dnd5eEvents.RollSource{
-					Ref:   &modifierSourceRef,
-					Name:  "Fighter",
-					Label: "Fighter level",
-				},
-				Modifier: &modifier,
-			},
-		},
-		Total: result.Total() + modifier,
-	}
-
-	// Publish healing received event with the sourced calculation.
-	if input.Bus != nil {
-		topic := dnd5eEvents.HealingReceivedTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-			TargetID:    owner.GetID(),
-			Amount:      calculation.Total,
-			Calculation: calculation,
-			Source:      sourceRef.ID,
-			SourceRef:   &sourceRef,
-			SourceName:  "Second Wind",
-		})
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to publish healing event")
-		}
-	}
-
-	return nil
+// Activate implements core.Action[FeatureInput] by refusing: Second Wind is
+// used from its description. Build the action with [SecondWind.Definition] and
+// pay its cost at the gate; nothing here spends, rolls or announces.
+func (s *SecondWind) Activate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+	return rpgerr.Wrapf(ErrUsedFromItsDescription, "second wind")
 }
 
 // loadJSON loads Second Wind state from JSON. Old "uses" and "max_uses" keys

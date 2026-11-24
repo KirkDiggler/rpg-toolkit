@@ -414,7 +414,18 @@ func (c *Character) activateCombatAbility(
 
 // activateFeature directly manages action economy for feature activation.
 // Features manage their own resources while Character manages slot consumption.
+//
+// A feature that carries a description is not activated here: it is used from
+// its description, so it is refused before the turn is touched.
 func (c *Character) activateFeature(f features.Feature, input *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
+	if _, described := f.(features.Described); described {
+		return &ActivateAbilityOutput{
+			Success:   false,
+			Error:     features.ErrUsedFromItsDescription.Error(),
+			Abilities: c.buildAvailableAbilities(),
+		}, nil
+	}
+
 	if !c.canUseAbilityByActionType(f.ActionType()) {
 		reason := c.actionTypeExhaustedReason(f.ActionType())
 		return &ActivateAbilityOutput{

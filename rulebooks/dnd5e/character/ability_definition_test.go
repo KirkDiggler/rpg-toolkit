@@ -12,9 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
@@ -76,40 +74,4 @@ func (s *AbilityDefinitionSuite) TestAFeatureWithNoDescriptionIsNotAnError() {
 	s.Require().NoError(err)
 	s.False(ok, "Rage carries no description yet")
 	s.Nil(definition)
-}
-
-// The description and Activate are two statements of one rule. For the same
-// face, what the description's declaration resolves to is what Activate
-// announces.
-func (s *AbilityDefinitionSuite) TestTheDescriptionAndActivateAgreeForAFixedRoll() {
-	s.char.hitPoints = 8
-	s.char.maxHitPoints = 20
-	markSaved(s.char)
-	_, err := s.char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
-	s.Require().NoError(err)
-
-	definition, ok, err := s.char.AbilityDefinition(*refs.Features.SecondWind())
-	s.Require().NoError(err)
-	s.Require().True(ok)
-	resolved, err := healing.Resolve(s.ctx, *definition.Effect.Healing,
-		dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind", SourceID: s.char.id},
-		&countingBridgeRoller{face: 6})
-	s.Require().NoError(err)
-
-	var received *dnd5eEvents.HealingReceivedEvent
-	_, err = dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(
-		s.ctx, func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			received = &event
-			return nil
-		})
-	s.Require().NoError(err)
-	out, err := s.char.ActivateAbility(s.ctx, &ActivateAbilityInput{
-		AbilityRef: refs.Features.SecondWind(), Roller: &countingBridgeRoller{face: 6},
-	})
-	s.Require().NoError(err)
-	s.Require().True(out.Success, "second wind activates: %s", out.Error)
-
-	s.Require().NotNil(received)
-	s.Equal(7, received.Amount)
-	s.Equal(received.Amount, resolved.Total)
 }

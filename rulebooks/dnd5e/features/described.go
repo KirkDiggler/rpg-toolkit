@@ -4,6 +4,8 @@
 package features
 
 import (
+	"errors"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 )
@@ -14,5 +16,11 @@ import (
 type Described interface {
 	Definition(owner core.Entity) (*actions.Definition, error)
 }
+
+// ErrUsedFromItsDescription is what a feature that carries a description
+// answers when asked to activate itself: it is used from its description, not
+// from its own code.
+var ErrUsedFromItsDescription = errors.New(
+	"this ability is used from its description: build the action with Definition and pay its cost at the gate")
 
 var _ Described = (*SecondWind)(nil)
