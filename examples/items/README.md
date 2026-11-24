@@ -54,6 +54,13 @@ accounting—not the rule.
 The ring's grant ref is the production `refs.Features.SecondWind()`; its parameters
 are the rulebook's `features.SecondWindParameters` (`{"level": n}`).
 
+## The ring pays at the gate
+
+The runnable example's ring is used at the D&D rulebook's gate through
+`Item.Budget`: the holder's bonus action and the ring's own use are checked and
+spent in one payment, so nothing is taken and given back. `items.Use` remains as
+the earlier experiment; the Rage example still uses it.
+
 ## Candidate API
 
 - **`New(Config)`** creates or strictly restores an item. `Definition` is plain
@@ -72,6 +79,10 @@ are the rulebook's `features.SecondWindParameters` (`{"level": n}`).
   resolver, then returns its typed result and budget facts. A single generic
   operation keeps rulebook result types out of Item without `any` results or a
   JSON round-trip. Item and Config themselves are not generic.
+- **`Item.Budget(holderID)`** returns the item's own pools as a budget for one
+  holder, with the shape of the rulebook's `combat.PoolSource` (`HasPool`,
+  `PoolLeft`, `SpendPool`) and no rulebook import. A detached item, or one held
+  by someone else, has nothing left to pay with.
 - **`Item.Data()`** returns a detached snapshot of identity, definition ref and
   remaining pool counts. No projected offer, bus, attachment or runtime closure
   is saved. The generated effects recipe has one state and no mutable bag.

@@ -8,7 +8,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.8.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.230.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.231.0
 	github.com/stretchr/testify v1.11.1
 )
 
