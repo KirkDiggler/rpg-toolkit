@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
@@ -94,10 +95,14 @@ func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
 	fighter.MaxHitPoints = maxHP
 	feature, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		CharacterID: id, Uses: 1, MaxUses: 1,
+		CharacterID: id,
 	})
 	require.NoError(t, err)
 	fighter.Features = []json.RawMessage{feature}
+	// The uses are the character's shared pool (rulebook v0.227.0).
+	fighter.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
+		resources.SecondWind: {Current: 1, Maximum: 1, ResetType: coreResources.ResetShortRest},
+	}
 	return fighter
 }
 

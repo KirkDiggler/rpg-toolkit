@@ -556,10 +556,8 @@ func (s *JoinLongRestTestSuite) assertCompleteRest(got *character.Data) {
 		got.Resources[resources.HitDice], "half the maximum hit dice recover without exceeding maximum")
 	s.Equal(character.RecoverableResourceData{Current: 2, Maximum: 2, ResetType: coreResources.ResetShortRest},
 		got.Resources[joinRestPool], "character-owned rest resources refill")
-	var secondWind features.SecondWindData
-	s.Require().NoError(json.Unmarshal(effectWithRef(s.T(), got.Features, refs.Features.SecondWind()), &secondWind))
-	s.Equal(1, secondWind.Uses, "feature-owned resources hear the normal rest event")
-	s.Equal(1, secondWind.MaxUses)
+	s.Equal(character.RecoverableResourceData{Current: 1, Maximum: 1, ResetType: coreResources.ResetShortRest},
+		got.Resources[resources.SecondWind], "Second Wind's shared pool refills on the normal rest event")
 
 	var opportunity conditions.OpportunityAttackConditionData
 	s.Require().NoError(json.Unmarshal(
@@ -574,7 +572,7 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 	t.Helper()
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
-		CharacterID: id, Uses: 0, MaxUses: 1,
+		CharacterID: id,
 	})
 	if err != nil {
 		t.Fatalf("build Second Wind: %v", err)
@@ -603,8 +601,9 @@ func spentJoinFighter(t *testing.T, id string) *character.Data {
 			Successes: 1, Failures: 2, Stabilized: true, Dead: true,
 		},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
-			resources.HitDice: {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
-			joinRestPool:      {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.HitDice:    {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
+			joinRestPool:         {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
 		},
 		Features:   []json.RawMessage{secondWind},
 		Conditions: []json.RawMessage{opportunity, prone},
