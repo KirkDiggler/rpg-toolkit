@@ -27,6 +27,10 @@ type Definition struct {
 	Attack      *AttackProfile       `json:"attack,omitempty"`
 	Cast        *CastProfile         `json:"cast,omitempty"`
 
+	// Effect is the body of an action that does something to someone without
+	// a weapon and without a spell: Second Wind's healing of its user.
+	Effect *EffectProfile `json:"effect,omitempty"`
+
 	// Sequence is the script arm: several component actions the same actor
 	// performs under one declaration, which is the SRD's Multiattack. The
 	// components are ordinary definitions on the same actor, so a sequence
@@ -53,6 +57,9 @@ func (d Definition) Validate() error {
 	if d.Sequence != nil {
 		populated++
 	}
+	if d.Effect != nil {
+		populated++
+	}
 	if populated != 1 {
 		return fmt.Errorf("action must populate exactly one profile")
 	}
@@ -69,6 +76,11 @@ func (d Definition) Validate() error {
 	if d.Cast != nil {
 		if err := d.Cast.Validate(); err != nil {
 			return fmt.Errorf("cast profile is invalid: %w", err)
+		}
+	}
+	if d.Effect != nil {
+		if err := d.Effect.Validate(); err != nil {
+			return fmt.Errorf("effect profile is invalid: %w", err)
 		}
 	}
 	if d.Sequence != nil {
@@ -101,6 +113,10 @@ func (d Definition) Clone() Definition {
 	if d.Cast != nil {
 		cast := d.Cast.Clone()
 		clone.Cast = &cast
+	}
+	if d.Effect != nil {
+		effect := d.Effect.Clone()
+		clone.Effect = &effect
 	}
 	if d.Sequence != nil {
 		sequence := d.Sequence.Clone()
