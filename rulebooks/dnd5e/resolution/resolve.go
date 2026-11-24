@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -129,6 +130,15 @@ type Input struct {
 	// "The door pays" in this package's doc.
 	Cost *Cost
 
+	// Budget is a second budget for the cost of THIS interaction, one the
+	// payer does not own, such as an item's uses. The pools it owns are paid
+	// from it; every other part of Cost is the payer's. Nil means the payer
+	// pays everything, as before. It is the host's live thing for this call,
+	// like Live, and is never part of a Cost, which is data. Only the opening
+	// payment can use it; a spell's cost and a monster payer refuse it, and a
+	// budget with no Cost is refused by Validate.
+	Budget combat.PoolSource
+
 	// Capabilities is every capability the encounter asks of its host,
 	// handed to the world exactly as supplied. [encounter.Capabilities] is
 	// the one list; resolution copies, defaults and swaps none of it.
@@ -175,6 +185,11 @@ func (in *Input) Validate() error {
 	// host thinks is in play.
 	if !isNil(in.Live) && in.Site != nil {
 		return fmt.Errorf("%w: a lent world and a site piece to load it with", ErrBadWorld)
+	}
+
+	// A budget pays part of a cost; with no cost it would be silently ignored.
+	if in.Budget != nil && in.Cost == nil {
+		return fmt.Errorf("%w: a budget was named with no cost to pay", ErrBadCost)
 	}
 
 	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
@@ -413,7 +428,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}
 
 	// Costed casts also validate classification and record same-turn history.
-	if payErr := payForMachine(ctx, in.Cost, in.Machine, cast); payErr != nil {
+	if payErr := payForMachine(ctx, in.Cost, in.Budget, in.Machine, cast); payErr != nil {
 		return nil, errors.Join(payErr, surf.teardown(ctx))
 	}
 

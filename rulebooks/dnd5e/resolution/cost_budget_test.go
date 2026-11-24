@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -86,15 +87,23 @@ func wizardData(a *ActivationTestSuite) *character.Data {
 	return data
 }
 
+// resolveRing resolves the description through the door with the budget on
+// the Input, as a host names it, never on the Cost.
 func resolveRing(a *ActivationTestSuite, data *character.Data, definition *combatActions.Definition,
-	cost *Cost, extra ...Participant,
+	cost *Cost, budget combat.PoolSource, extra ...Participant,
 ) (*Output, error) {
 	machine, err := NewAction(&ActionInput{
 		Definition: *definition, AttackerID: activationFighterID, Roller: fixedRoller{face: 6},
 	})
 	a.Require().NoError(err)
-	return a.resolveOnBus(events.NewEventBus(), machine, a.effectWorld(),
-		append([]Participant{{Character: data}}, extra...), cost)
+	return resolveOn(a.ctx, &Input{
+		Cost:         cost,
+		Budget:       budget,
+		World:        a.effectWorld(),
+		Participants: append([]Participant{{Character: data}}, extra...),
+		Machine:      machine,
+		Capabilities: budgetCapabilities(),
+	}, newSurface(events.NewEventBus()))
 }
 
 func TestCostBudget(t *testing.T) {
@@ -104,9 +113,8 @@ func TestCostBudget(t *testing.T) {
 		budget := &ringBudget{charges: 1}
 		definition := ringDescription(t)
 		cost := a.effectCost(definition, activationFighterID)
-		cost.Budget = budget
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, budget, a.wolfParticipant())
 
 		a.Require().NoError(err)
 		sheet := dirty(out, activationFighterID)
@@ -125,9 +133,8 @@ func TestCostBudget(t *testing.T) {
 		budget := &ringBudget{charges: 1}
 		definition := ringDescription(t)
 		cost := a.effectCost(definition, activationFighterID)
-		cost.Budget = budget
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, budget, a.wolfParticipant())
 
 		a.Require().ErrorIs(err, ErrCannotPay)
 		a.Nil(out, "nobody was healed")
@@ -142,9 +149,8 @@ func TestCostBudget(t *testing.T) {
 		definition := ringDescription(t)
 		empty := &ringBudget{}
 		cost := a.effectCost(definition, activationFighterID)
-		cost.Budget = empty
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, empty, a.wolfParticipant())
 
 		a.Require().ErrorIs(err, ErrCannotPay)
 		a.Contains(err.Error(), "charges")
@@ -155,8 +161,7 @@ func TestCostBudget(t *testing.T) {
 		// The same saved data, a budget of 1: it succeeds.
 		full := &ringBudget{charges: 1}
 		cost = a.effectCost(definition, activationFighterID)
-		cost.Budget = full
-		out, err = resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err = resolveRing(a, data, definition, cost, full, a.wolfParticipant())
 		a.Require().NoError(err)
 		a.Equal(11, dirty(out, activationFighterID).HitPoints)
 		a.Zero(full.charges)
@@ -168,7 +173,7 @@ func TestCostBudget(t *testing.T) {
 		definition := ringDescription(t)
 		cost := a.effectCost(definition, activationFighterID)
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, nil, a.wolfParticipant())
 
 		a.Require().ErrorIs(err, ErrCannotPay)
 		a.Contains(err.Error(), "charges: 1 needed, 0 left")
@@ -181,9 +186,8 @@ func TestCostBudget(t *testing.T) {
 		definition := a.secondWindDescription(data)
 		budget := &ringBudget{charges: 1}
 		cost := a.effectCost(definition, activationFighterID)
-		cost.Budget = budget
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, budget, a.wolfParticipant())
 
 		a.Require().NoError(err)
 		sheet := dirty(out, activationFighterID)
@@ -198,9 +202,8 @@ func TestCostBudget(t *testing.T) {
 		definition := ringDescription(t)
 		budget := &ringBudget{charges: 1}
 		cost := a.effectCost(definition, wolfID)
-		cost.Budget = budget
 
-		out, err := resolveRing(a, data, definition, cost, a.wolfParticipant())
+		out, err := resolveRing(a, data, definition, cost, budget, a.wolfParticipant())
 
 		a.Require().ErrorIs(err, ErrNoPayer)
 		a.Contains(err.Error(), "one reaction and nothing else")
@@ -208,6 +211,23 @@ func TestCostBudget(t *testing.T) {
 		a.Equal(1, budget.charges)
 		a.Zero(budget.spends)
 	})
+}
+
+func TestCostBudgetWithNoCostIsRefusedByValidate(t *testing.T) {
+	a := budgetFixtures(t)
+	machine, err := NewAction(&ActionInput{
+		Definition: *ringDescription(t), AttackerID: activationFighterID, Roller: fixedRoller{face: 6},
+	})
+	a.Require().NoError(err)
+	in := &Input{
+		Budget: &ringBudget{charges: 1}, World: a.effectWorld(), Machine: machine,
+		Participants: []Participant{{Character: wizardData(a)}}, Capabilities: budgetCapabilities(),
+	}
+
+	err = in.Validate()
+
+	a.Require().ErrorIs(err, ErrBadCost)
+	a.Contains(err.Error(), "a budget was named with no cost to pay")
 }
 
 func TestCostBudgetOnASpellIsRefusedBeforePayment(t *testing.T) {
@@ -230,15 +250,16 @@ func TestCostBudgetOnASpellIsRefusedBeforePayment(t *testing.T) {
 		World:        f.world(),
 		Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}},
 		Machine:      machine,
+		Budget:       budget,
 		Cost: &Cost{
 			SpellTurn: "scene/round-1/bard", PayerID: bardID, Profile: definition.Cost,
-			Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed}, Budget: budget,
+			Turn: &Turn{Number: mockeryTurn, Speed: mockerySpeed},
 		},
 		Capabilities: budgetCapabilities(),
 	})
 
 	s.Require().ErrorIs(err, ErrBadCost)
-	s.Contains(err.Error(), "a spell's cost cannot name a second budget")
+	s.Contains(err.Error(), "a spell's cost cannot be paid from a second budget")
 	s.Nil(out, "nothing was paid")
 	s.Equal(1, budget.charges)
 	s.Zero(budget.spends)
