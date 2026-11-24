@@ -110,40 +110,14 @@ func createRage() *Rage {
 	}
 }
 
-// secondWindConfig is the config structure for second wind feature. It takes
-// no level: activation asks the owner its fighter level.
-type secondWindConfig struct {
-	Uses int `json:"uses"` // Number of uses (default 1)
-}
-
-// createSecondWind creates a second wind feature from config
-func createSecondWind(config json.RawMessage, characterID string) (*SecondWind, error) {
-	var cfg secondWindConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse second wind config")
-		}
-	}
-
-	// Default uses to 1 (restores on short rest)
-	uses := cfg.Uses
-	if uses == 0 {
-		uses = 1
-	}
-
-	// Create recoverable resource for tracking uses
-	resource := combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-		ID:          refs.Features.SecondWind().ID,
-		Maximum:     uses,
-		CharacterID: characterID,
-		ResetType:   coreResources.ResetShortRest,
-	})
-
+// createSecondWind creates a second wind feature. The grant's {"uses": n}
+// config is read where the character's pool is built, not here: the feature
+// keeps no counter, so config is accepted and ignored.
+func createSecondWind(_ json.RawMessage, characterID string) (*SecondWind, error) {
 	return &SecondWind{
 		id:          refs.Features.SecondWind().ID,
 		name:        "Second Wind",
 		characterID: characterID,
-		resource:    resource,
 	}, nil
 }
 

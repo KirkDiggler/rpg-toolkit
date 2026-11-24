@@ -149,9 +149,9 @@ func TestTheBardsEquipmentProjectsToo(t *testing.T) {
 // featureResourceCatalog answers "which class does this feature's pool belong
 // to". ownerResourceAllowed answers "which pools may this class carry IN ITS
 // OWN MAP" — and that second question does not apply to a feature-private
-// pool. Second Wind and Action Surge own their resources inside the feature
-// object and reach the view through mergeResources' feature rows, bypassing
-// the owner gate entirely; Rage, Ki and Inspiration live on the Character and
+// pool. Action Surge owns its resource inside the feature object and reaches
+// the view through mergeResources' feature rows, bypassing the owner gate
+// entirely; Rage, Second Wind, Ki and Inspiration live on the Character and
 // go through it.
 //
 // So the table names which half each pool is in, because that distinction was
@@ -163,13 +163,13 @@ func TestEveryFeatureWithAPoolIsInBothCatalogsItBelongsIn(t *testing.T) {
 		ownerOwned bool
 	}{
 		{refs.Features.Rage(), true},
+		{refs.Features.SecondWind(), true},
 		{refs.Features.FlurryOfBlows(), true},
 		{refs.Features.PatientDefense(), true},
 		{refs.Features.StepOfTheWind(), true},
 		{refs.Features.BardicInspiration(), true},
 		// Feature-private: the feature holds the resource, the Character's own
 		// map never carries it, and the owner gate is not asked.
-		{refs.Features.SecondWind(), false},
 		{refs.Features.ActionSurge(), false},
 	} {
 		class, key, known := featureResourceCatalog(*tc.feature)

@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -45,7 +46,7 @@ func createTestFighterCharacter(t *testing.T, bus events.EventBus) *Character {
 	t.Helper()
 
 	// Load SecondWind feature from JSON
-	swData := json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"second_wind"},"id":"second-wind-1","name":"Second Wind","level":3,"character_id":"fighter-1","uses":1,"max_uses":1}`)
+	swData := json.RawMessage(`{"ref":{"module":"dnd5e","type":"features","id":"second_wind"},"id":"second-wind-1","name":"Second Wind","level":3,"character_id":"fighter-1"}`)
 	sw, err := features.LoadJSON(swData)
 	if err != nil {
 		t.Fatalf("failed to load second wind: %v", err)
@@ -69,7 +70,12 @@ func createTestFighterCharacter(t *testing.T, bus events.EventBus) *Character {
 		maxHitPoints: 28,
 		skills:       make(map[skills.Skill]shared.ProficiencyLevel),
 		savingThrows: make(map[abilities.Ability]shared.ProficiencyLevel),
-		resources:    make(map[coreResources.ResourceKey]*combat.RecoverableResource),
+		resources: map[coreResources.ResourceKey]*combat.RecoverableResource{
+			resources.SecondWind: combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID: string(resources.SecondWind), Maximum: 1, CharacterID: "fighter-1",
+				ResetType: coreResources.ResetShortRest,
+			}),
+		},
 		combatAbilities: []combatabilities.CombatAbility{
 			combatabilities.NewAttack("attack-1"),
 			combatabilities.NewDash("dash-1"),

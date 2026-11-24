@@ -17,6 +17,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	mock_dice "github.com/KirkDiggler/rpg-toolkit/dice/mock"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -27,6 +28,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -67,6 +69,24 @@ type mockFighterCharacter struct {
 	// through the cast, in place of the owner handle it used to be given.
 	hasShield bool
 	reactions int
+
+	// pool is the sheet's shared resource pools, as the Character holds them:
+	// Second Wind's uses are counted here.
+	pool map[coreResources.ResourceKey]int
+}
+
+// IsResourceAvailable implements coreResources.ResourceAccessor.
+func (m *mockFighterCharacter) IsResourceAvailable(key coreResources.ResourceKey) bool {
+	return m.pool[key] > 0
+}
+
+// UseResource implements coreResources.ResourceAccessor.
+func (m *mockFighterCharacter) UseResource(key coreResources.ResourceKey, amount int) error {
+	if m.pool[key] < amount {
+		return rpgerr.Newf(rpgerr.CodeResourceExhausted, "resource %s exhausted", key)
+	}
+	m.pool[key] -= amount
+	return nil
 }
 
 func (m *mockFighterCharacter) GetID() string            { return m.id }
@@ -167,6 +187,7 @@ func (s *FighterEncounterSuite) createLevel1Fighter() *mockFighterCharacter {
 			abilities.INT: 10, abilities.WIS: 12, abilities.CHA: 10,
 		},
 		conditions: []dnd5eEvents.ConditionBehavior{},
+		pool:       map[coreResources.ResourceKey]int{resources.SecondWind: 1},
 	}
 }
 
@@ -205,9 +226,7 @@ func (s *FighterEncounterSuite) TestSecondWind_HealsCharacter() {
 
 		// Create Second Wind feature
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		err := secondWind.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
+		var err error
 
 		// Subscribe to healing event
 		var healingEvent *dnd5eEvents.HealingReceivedEvent
@@ -250,12 +269,9 @@ func (s *FighterEncounterSuite) TestSecondWind_OncePerShortRest() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		err := secondWind.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
 
 		// First use should succeed
-		err = secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
+		err := secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
 		s.Require().NoError(err)
 
 		// Second use should fail
@@ -274,25 +290,18 @@ func (s *FighterEncounterSuite) TestSecondWind_ResetsOnShortRest() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		err := secondWind.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
 
 		// Use Second Wind
-		err = secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
+		err := secondWind.Activate(s.ctx, s.fighter, features.FeatureInput{Bus: s.bus})
 		s.Require().NoError(err)
 
 		// Verify it's exhausted
 		err = secondWind.CanActivate(s.ctx, s.fighter, features.FeatureInput{})
 		s.Require().Error(err)
 
-		// Publish short rest event
-		restTopic := dnd5eEvents.RestTopic.On(s.bus)
-		err = restTopic.Publish(s.ctx, dnd5eEvents.RestEvent{
-			RestType:    coreResources.ResetShortRest,
-			CharacterID: s.fighter.GetID(),
-		})
-		s.Require().NoError(err)
+		// A short rest refills the sheet's shared pool (the Character's own
+		// rest verb does this; the mock sheet stands in for it).
+		s.fighter.pool[resources.SecondWind] = 1
 
 		// Should be able to use again
 		err = secondWind.CanActivate(s.ctx, s.fighter, features.FeatureInput{})
@@ -312,9 +321,7 @@ func (s *FighterEncounterSuite) TestSecondWind_ScalesWithLevel() {
 		// fighter advanced to 5 heals 1d10 + 5, with nothing rewritten.
 		s.fighter.level = 5
 		secondWind := s.createSecondWind(s.fighter.GetID())
-		err := secondWind.Apply(s.ctx, s.bus)
-		s.Require().NoError(err)
-		defer func() { _ = secondWind.Remove(s.ctx, s.bus) }()
+		var err error
 
 		var healingEvent *dnd5eEvents.HealingReceivedEvent
 		topic := dnd5eEvents.HealingReceivedTopic.On(s.bus)
