@@ -1,0 +1,109 @@
+# A SECOND WIND (rpg-project#1147): a small walk site, cut from the guard-hails
+# site, for the first ability that is paid for at the door. One weak hostile
+# creature in a hall and a fighter who has been hurt.
+#   1. The fighter is in a fight with the Sparring Guard and has been hurt.
+#   2. On the fighter's turn they use Second Wind: hit points rise by the d10
+#      plus their fighter level, capped at their maximum. The bonus action is
+#      spent.
+#   3. The Second Wind row is no longer available this turn, and using it is
+#      refused.
+#   4. The fight ends. After a short rest Second Wind is available again.
+version: 5
+key: second-wind-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  sparring-guard:
+    base: dnd5e:monsters:human
+    name: Sparring Guard
+    hitDice: 2d8
+    actions: [dnd5e:weapons:dagger]
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: hostile }
+
+behaviorDefinitions:
+  sparring-policy:
+    recipe:
+      ref: site:behaviors:sparring-policy
+      initial: fighting
+      states:
+        fighting:
+          transitions:
+            - { on: time, do: [{ pick: time }] }
+            - { on: turn, do: [{ pick: time }] }
+    table:
+      time:
+        - { when: { enemy: reach }, attack: enemy }
+
+room:
+  version: 3
+  id: room-1
+  name: A Second Wind
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: A Second Wind
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-5, 2]] }
+          - { r: 4, q: [[-6, 2]] }
+          - { r: 5, q: [[-6, 1]] }
+          - { r: 6, q: [[-7, 1]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -3, r: 4 }
+    monsterDeclarations:
+      - id: guard
+        ref: dnd5e:monsters:sparring-guard
+        startingCell: { location: { q: -2, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      guard:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: sparring-policy
+        behaviorState: policy

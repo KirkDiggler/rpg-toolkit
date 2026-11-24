@@ -464,3 +464,99 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		"the dissolved in-memory fight must not reach the persisted session")
 	require.Empty(t, stream.published, "nothing unpersisted is delivered")
 }
+
+// TestSecondWindThroughTheDoorIsOneContinuousAnswer is the before-and-after
+// comparison for rpg-project#1147: it was written against the activate.go that
+// charged nothing at the door and passes there unchanged, so it records what
+// the caller and the story get for a fixed roll (the scene's d10 is its
+// maximum face). A fighter at 10 of 30 heals 10 + level 3.
+func TestSecondWindThroughTheDoorIsOneContinuousAnswer(t *testing.T) {
+	scene := newActivationEventScene(t,
+		secondWindFighter(t, "alice", 10, 30), armedFighter("bob"))
+	ref := refs.Features.SecondWind().String()
+	// The launch's first-admission rest filled her up; she is hurt after it.
+	scene.characters.byID["alice"].HitPoints = 10
+
+	id := activationSelector(t, scene.mgr, "alice", ref)
+	out, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
+		Session: "sess", Member: "alice", DeclarationID: id,
+	})
+	require.NoError(t, err)
+	require.Equal(t, &session.ActivateOutput{
+		Ability:  ref,
+		Saved:    out.Saved,
+		Delivery: out.Delivery,
+	}, out, "identity only: no granted capacity")
+	require.Equal(t, session.SaveReport{Written: []string{"character:alice"}}.Failed, out.Saved.Failed)
+	require.NotEmpty(t, out.Saved.Written, "the sheet was written")
+	require.Empty(t, out.Delivery.Failed)
+
+	told := activationEvents(t, scene.since(t, "alice"))
+	var activated activatedBeat
+	told[0].decode(t, &activated)
+	require.Equal(t, activatedBeat{
+		Actor:   "alice",
+		Ability: session.SpellRef{Ref: ref, Name: "Second Wind"},
+	}, activated)
+	result := resultOf(t, told[1])
+	require.Equal(t, encounter.ResultHealingApplied, result.Kind)
+	require.Equal(t, "alice", result.Actor)
+	require.Equal(t, "alice", result.Target)
+	require.Equal(t, ref, result.Ref)
+	require.Equal(t, "Second Wind", result.Name)
+	require.Equal(t, 13, *result.Amount)
+	require.Equal(t, 13, *result.Requested)
+	require.Equal(t, 10, *result.Before)
+	require.Equal(t, 23, *result.After)
+	require.NotNil(t, result.Calculation)
+	require.Equal(t, 13, result.Calculation.Total)
+
+	stored := storedSheet(t, scene.characters, "alice")
+	require.Equal(t, 23, stored.HitPoints)
+	require.Zero(t, stored.Resources[resources.SecondWind].Current, "the use is spent from the shared pool")
+	require.NotNil(t, stored.ActionEconomy, "in a fight the economy is kept")
+	require.Zero(t, stored.ActionEconomy.BonusActionsRemaining, "the bonus action is spent")
+}
+
+// TestSecondWindSpentIsRefusedAndNothingIsSpent pins what a second use gets:
+// the row says unavailable and the old selector is refused, with nobody
+// healed and nothing more spent.
+func TestSecondWindSpentIsRefusedAndNothingIsSpent(t *testing.T) {
+	scene := newActivationEventScene(t,
+		secondWindFighter(t, "alice", 10, 30), armedFighter("bob"))
+	ref := refs.Features.SecondWind().String()
+	// The launch's first-admission rest filled her up; she is hurt after it.
+	scene.characters.byID["alice"].HitPoints = 10
+	id := activationSelector(t, scene.mgr, "alice", ref)
+	_, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
+		Session: "sess", Member: "alice", DeclarationID: id,
+	})
+	require.NoError(t, err)
+	before := storedSheet(t, scene.characters, "alice")
+	healed := before.HitPoints
+	marks := storyLengths(t, scene.mgr, "alice", "bob", "skeleton")
+
+	panel, err := scene.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	var row *session.Declaration
+	for i, d := range panel.Declarations {
+		if d.Verb == session.VerbActivate && d.Ability != nil && d.Ability.Ref == ref {
+			row = &panel.Declarations[i]
+		}
+	}
+	require.NotNil(t, row)
+	require.False(t, row.Available, "the row is unavailable after one use in the turn")
+	require.NotNil(t, row.Why)
+
+	out, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
+		Session: "sess", Member: "alice", DeclarationID: id,
+	})
+	require.Nil(t, out)
+	require.Error(t, err)
+	t.Logf("second use refused with: %v (stale=%v cannotAfford=%v)", err,
+		errors.Is(err, session.ErrStaleDeclaration), errors.Is(err, session.ErrCannotAfford))
+	after := storedSheet(t, scene.characters, "alice")
+	require.Equal(t, healed, after.HitPoints, "nobody is healed")
+	require.Equal(t, before.Resources, after.Resources, "nothing more is spent")
+	require.Equal(t, marks, storyLengths(t, scene.mgr, "alice", "bob", "skeleton"), "no beat is told")
+}
