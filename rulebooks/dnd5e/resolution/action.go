@@ -152,6 +152,9 @@ func NewAction(in *ActionInput) (Machine, error) {
 	if in.Definition.Sequence != nil {
 		return newSequence(in, targetIDs)
 	}
+	if in.Definition.Effect != nil {
+		return newEffect(in, targetIDs)
+	}
 	return nil, fmt.Errorf("%w: definition %q has no supported profile", ErrBadAction, in.Definition.Ref.String())
 }
 
