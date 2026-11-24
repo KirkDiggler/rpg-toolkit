@@ -13,7 +13,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -77,6 +79,39 @@ func (s *SecondWind) Name() string { return s.name }
 // Description returns what activating this feature does, in the player's voice.
 func (s *SecondWind) Description() string {
 	return "Spend a use to regain 1d10 hit points plus your fighter level."
+}
+
+// Definition describes Second Wind as data, with this owner's numbers: a bonus
+// action and one point of the shared pool, to heal the user 1d10 plus the
+// owner's fighter level. Nothing runs it yet; Activate still does the work and
+// a test holds the two together. An owner with no fighter level is refused as
+// Activate refuses it.
+func (s *SecondWind) Definition(owner core.Entity) (*actions.Definition, error) {
+	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
+	if err != nil {
+		return nil, err
+	}
+	return &actions.Definition{
+		Ref:         *refs.Features.SecondWind(),
+		Name:        "Second Wind",
+		Description: s.Description(),
+		Cost: &dnd5eCombat.SpendProfile{
+			Slots: map[combat.ActionType]int{combat.ActionBonus: 1},
+			Pools: map[coreResources.ResourceKey]int{resources.SecondWind: 1},
+		},
+		Effect: &actions.EffectProfile{
+			To: actions.EffectSelf,
+			Healing: &healing.Declaration{
+				Dice: "1d10",
+				Modifiers: []healing.Modifier{{
+					Source: dnd5eEvents.RollSource{
+						Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level", SourceID: owner.GetID(),
+					},
+					Amount: level,
+				}},
+			},
+		},
+	}, nil
 }
 
 // GetID implements core.Entity
