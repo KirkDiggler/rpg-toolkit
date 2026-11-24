@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -255,12 +256,10 @@ func (s *RestSuite) TestARestEndsConcentrationAndClosesItsArea() {
 // rester — all on the rester's own beat, carried as the rulebook answered.
 func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
 	bob := withHitDice(secondWindFighter(s.T(), "bob", 10, 28), 1)
-	feature := map[string]interface{}{}
-	s.Require().NoError(json.Unmarshal(bob.Features[0], &feature))
-	feature["uses"] = 0
-	raw, err := json.Marshal(feature)
-	s.Require().NoError(err)
-	bob.Features[0] = raw
+	// Spent: the uses are the shared pool (rulebook v0.227.0), not a feature key.
+	bob.Resources[resources.SecondWind] = character.RecoverableResourceData{
+		Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest,
+	}
 	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.FogCloud().String(), Name: "Fog Cloud", Turns: 10})
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
