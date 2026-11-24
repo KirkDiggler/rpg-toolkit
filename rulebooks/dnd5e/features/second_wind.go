@@ -14,7 +14,6 @@ import (
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -91,27 +90,20 @@ func (s *SecondWind) Definition(owner core.Entity) (*actions.Definition, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &actions.Definition{
-		Ref:         *refs.Features.SecondWind(),
-		Name:        "Second Wind",
-		Description: s.Description(),
-		Cost: &dnd5eCombat.SpendProfile{
-			Slots: map[combat.ActionType]int{combat.ActionBonus: 1},
-			Pools: map[coreResources.ResourceKey]int{resources.SecondWind: 1},
+	parameters := fmt.Sprintf(`{"level": %d}`, level)
+	definition, err := DescribeFromRef(&DescribeFromRefInput{
+		Ref:        *refs.Features.SecondWind(),
+		Parameters: json.RawMessage(parameters),
+		Giver: dnd5eEvents.RollSource{
+			Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level", SourceID: owner.GetID(),
 		},
-		Effect: &actions.EffectProfile{
-			To: actions.EffectSelf,
-			Healing: &healing.Declaration{
-				Dice: "1d10",
-				Modifiers: []healing.Modifier{{
-					Source: dnd5eEvents.RollSource{
-						Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level", SourceID: owner.GetID(),
-					},
-					Amount: level,
-				}},
-			},
-		},
-	}, nil
+		Pools: map[coreResources.ResourceKey]int{resources.SecondWind: 1},
+	})
+	if err != nil {
+		return nil, err
+	}
+	definition.Description = s.Description()
+	return definition, nil
 }
 
 // GetID implements core.Entity
