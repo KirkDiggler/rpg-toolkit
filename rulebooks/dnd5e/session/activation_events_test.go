@@ -194,6 +194,9 @@ func TestSecondWindActivationEventsReachTheFullRoster(t *testing.T) {
 					{
 						Source: session.RollSource{
 							Ref: refs.Classes.Fighter().String(), Name: "Fighter", Label: "Fighter level",
+							// The description names its owner on the level
+							// modifier (rulebook v0.228.0), as the dice do.
+							SourceID: "alice",
 						},
 						Modifier: &modifier,
 					},
@@ -559,4 +562,30 @@ func TestSecondWindSpentIsRefusedAndNothingIsSpent(t *testing.T) {
 	require.Equal(t, healed, after.HitPoints, "nobody is healed")
 	require.Equal(t, before.Resources, after.Resources, "nothing more is spent")
 	require.Equal(t, marks, storyLengths(t, scene.mgr, "alice", "bob", "skeleton"), "no beat is told")
+}
+
+// TestSecondWindWentThroughTheDoor tells the two paths apart: after one use the
+// bonus action is spent, the shared pool reads 0 of 1, and the recorded heal's
+// level modifier names its owner, which only the description's path produces.
+func TestSecondWindWentThroughTheDoor(t *testing.T) {
+	scene := newActivationEventScene(t,
+		secondWindFighter(t, "alice", 10, 30), armedFighter("bob"))
+	scene.characters.byID["alice"].HitPoints = 10
+	ref := refs.Features.SecondWind().String()
+	_, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
+		Session: "sess", Member: "alice", DeclarationID: activationSelector(t, scene.mgr, "alice", ref),
+	})
+	require.NoError(t, err)
+
+	stored := storedSheet(t, scene.characters, "alice")
+	require.NotNil(t, stored.ActionEconomy)
+	require.Zero(t, stored.ActionEconomy.BonusActionsRemaining, "the bonus action is spent")
+	require.Equal(t, 0, stored.Resources[resources.SecondWind].Current)
+	require.Equal(t, 1, stored.Resources[resources.SecondWind].Maximum, "the pool reads 0 of 1")
+
+	result := resultOf(t, activationEvents(t, scene.since(t, "alice"))[1])
+	require.NotNil(t, result.Calculation)
+	require.Len(t, result.Calculation.Components, 2)
+	require.Equal(t, "alice", result.Calculation.Components[1].Source.SourceID,
+		"the level modifier names its owner: the description's path")
 }
