@@ -134,6 +134,7 @@ func TestCompileRefusals(t *testing.T) {
 		{"same use twice", "c", `{` + ok + `,"lets":[{"use":"second wind","with":{"level":1}},{"use":"second wind","with":{"level":2}}]}`, []string{`"c"`, "use", "second wind", "more than once"}},
 		{"cost zero", "c", `{` + ok + `,"charges":{"max":1},"lets":[{"use":"second wind","with":{"level":1},"cost":{"charges":0}}]}`, []string{`"c"`, "cost", "charges"}},
 		{"cost without charges", "c", `{` + ok + `,"lets":[{"use":"second wind","with":{"level":1},"cost":{"charges":1}}]}`, []string{`"c"`, "cost", "charges"}},
+		{"cost above max", "c", `{` + ok + `,"charges":{"max":1},"lets":[{"use":"second wind","with":{"level":1},"cost":{"charges":2}}]}`, []string{`"c"`, "lets[0]", "cost.charges is 2", "at most 1"}},
 		{"cost names another", "c", `{` + ok + `,"charges":{"max":1},"lets":[{"use":"second wind","with":{"level":1},"cost":{"gold":1}}]}`, []string{`"c"`, "cost", "gold"}},
 		{"id with space", "a b", block("cloak"), []string{`"a b"`, "id"}},
 		{"empty id", "", block("cloak"), []string{"id"}},
@@ -191,4 +192,9 @@ func TestCompileAcceptsAWholeNumberAndPassesPlainWords(t *testing.T) {
 	d := mustCompile(t, "Cloak_7", `{"name":"X","slot":"helm","charges":{"max":1000},"lets":[{"use":"second wind","with":{"level":3},"cost":{"charges":1}}]}`)
 	assert.Equal(t, 1000, d.Pools["charges"].Maximum)
 	assert.Equal(t, "Cloak_7", d.Ref.ID)
+}
+
+func TestCompileCostEqualToMaxPasses(t *testing.T) {
+	d := mustCompile(t, "x", `{"name":"X","slot":"cloak","charges":{"max":3},"lets":[{"use":"second wind","with":{"level":1},"cost":{"charges":3}}]}`)
+	assert.Equal(t, 3, d.Grants["second-wind"].Uses)
 }

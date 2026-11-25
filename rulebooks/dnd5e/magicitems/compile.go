@@ -101,7 +101,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 		}
 		d.Pools = map[string]Pool{chargesPool: pool}
 	}
-	if d.Grants, err = c.lets(top, d.Pools != nil); err != nil {
+	if d.Grants, err = c.lets(top, d.Pools[chargesPool].Maximum); err != nil {
 		return nil, err
 	}
 	if err := d.Validate(); err != nil {
@@ -228,7 +228,7 @@ func (c *compiler) charges(raw json.RawMessage) (Pool, error) {
 	return pool, nil
 }
 
-func (c *compiler) lets(top map[string]json.RawMessage, hasCharges bool) (map[string]Grant, error) {
+func (c *compiler) lets(top map[string]json.RawMessage, held int) (map[string]Grant, error) {
 	raw, ok := top[wordLets]
 	if !ok {
 		return nil, c.refuse("the item has no `lets`; it is a non-empty list of what the item lets its wearer use")
@@ -243,7 +243,7 @@ func (c *compiler) lets(top map[string]json.RawMessage, hasCharges bool) (map[st
 	grants := make(map[string]Grant, len(entries))
 	for i, entry := range entries {
 		where := fmt.Sprintf("lets[%d]", i)
-		name, grant, err := c.entry(entry, where, hasCharges)
+		name, grant, err := c.entry(entry, where, held)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +255,7 @@ func (c *compiler) lets(top map[string]json.RawMessage, hasCharges bool) (map[st
 	return grants, nil
 }
 
-func (c *compiler) entry(raw json.RawMessage, where string, hasCharges bool) (string, Grant, error) {
+func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, Grant, error) {
 	obj, err := c.object(raw, where)
 	if err != nil {
 		return "", Grant{}, err
@@ -295,7 +295,7 @@ func (c *compiler) entry(raw json.RawMessage, where string, hasCharges bool) (st
 		if !ok {
 			return "", Grant{}, c.refuse("%s `cost` names no `charges`; it is `charges`, a whole number of at least 1", where)
 		}
-		if !hasCharges {
+		if held == 0 {
 			return "", Grant{}, c.refuse("%s `cost` is paid in `charges`, but the item declares no `charges`", where)
 		}
 		uses, err := c.whole(chargesRaw, where+" cost.charges")
@@ -304,6 +304,9 @@ func (c *compiler) entry(raw json.RawMessage, where string, hasCharges bool) (st
 		}
 		if uses < 1 {
 			return "", Grant{}, c.refuse("%s `cost.charges` is %d; it is a whole number of at least 1", where, uses)
+		}
+		if uses > held {
+			return "", Grant{}, c.refuse("%s cost.charges is %d; the item holds at most %d", where, uses, held)
 		}
 		grant.Pool = chargesPool
 		grant.Uses = uses
