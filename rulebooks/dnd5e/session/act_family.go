@@ -65,6 +65,11 @@ var recordOnly = map[string]bool{
 	// version — words, option, skill and the roll with its arithmetic — and
 	// nobody else is ever told it; the beat is the record's.
 	encounter.BeatSpoke: true,
+	// What a looter took off a body (rpg-project#850): told to the looter
+	// alone, as their own record of the take. A line on the screen for it
+	// needs a typed piece on the wire and waits for the take verb; it is never
+	// an undecoded piece on the act stream.
+	encounter.BeatTaken: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a
