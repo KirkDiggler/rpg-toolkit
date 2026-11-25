@@ -1109,6 +1109,20 @@ type MemberInput struct {
 	// names a record rather than a door ([IntelRecord]).
 	Holds []IntelID
 
+	// Equipment is the custom items this member has equipped, each as its
+	// author wrote it, carried unread ([ItemGrant], rpg-project#850).
+	// Optional; omitted means none.
+	//
+	// KEPT, NEVER READ, IN THIS VERSION. Construction refuses a grant with no
+	// id, a block that is not a JSON object, or one id twice on one member
+	// (ErrBadMember), and keeps the rest on the member's record so the next
+	// slice's verbs can read it. It SURVIVES a save ([MemberData.Equipment])
+	// because, unlike [MemberInput.Holds], it is not a seed the journal
+	// replays: it is a fact about the member, and nothing else holds it. It
+	// is not a holding (a holding is something in a pair of hands) and no
+	// atlas, percept, beat or output says it.
+	Equipment []ItemGrant
+
 	// Faction is the faction this member belongs to (rpg-project#375).
 	// Optional: EMPTY MEANS THE DEFAULT FOR THE KIND — a player is in
 	// [FactionParty], a monster in [FactionMonsters], and a world NPC in no
@@ -1748,6 +1762,10 @@ type memberRecord struct {
 	// default faction persists byte-identically to one from before factions
 	// existed. [Encounter.factionOf] resolves it on every read.
 	Faction FactionID
+
+	// Equipment is [MemberInput.Equipment], deep-copied and persisted
+	// ([MemberData.Equipment]). Never read by a verb in this version.
+	Equipment []ItemGrant
 }
 
 // factionOf resolves a member's faction: the one named, or the kind's default

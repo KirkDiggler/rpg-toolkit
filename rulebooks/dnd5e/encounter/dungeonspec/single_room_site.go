@@ -349,6 +349,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	declared := intelRecords(s.Intel, concealments, add)
 	g.intelIDs, g.regionIDs = declared, regionIDsOf(s)
 	g.statusIDs = statusesDeclared(s.Statuses, add)
+	items := customItemsDeclared(s.CustomItems, add)
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref
@@ -378,6 +379,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		// named once, below, and asking a second question about its contents
 		// would send an author looking for a second problem.
 		bindingHolds(g, at, m.id, b.Holds, declared)
+		bindingEquipment(g, at, m.id, b.Equipment, items)
 		// AND THE TABLE IT NAMES, which is [bindingHolds]' shape one noun
 		// over (rpg-toolkit#1897): a name that names nothing is refused at
 		// the author's own path, naming this creature and the id it wrote.
@@ -400,7 +402,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	// neither is about the cast: a prop binding is about a placed thing, and
 	// an `arrives:` predicate may name a `{ stance }`, which is judged
 	// against the whole table [grammar.dispositions] just built.
-	propBindingValues(gp, g, declared)
+	propBindingValues(gp, g, declared, items)
 	singleRoomArrivals(gp, g)
 	// THE ENDINGS AND THE BINDINGS, last of the gameplay keys and in
 	// [Validate]'s order: an ending's `when` may name a `{ stance }` or a
