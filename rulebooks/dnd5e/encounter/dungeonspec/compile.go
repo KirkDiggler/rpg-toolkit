@@ -341,6 +341,14 @@ type MonsterPlacement struct {
 	// Faction's reason. A `{ down }` names the placement id, which is the
 	// member id the host spawns that placement under.
 	Arrives encounter.Trigger `json:"Arrives,omitempty"`
+
+	// Equipment is the custom items this monster has equipped
+	// ([RoomMonsterBinding.Equipment], rpg-project#850), each as its author
+	// wrote it, carried unread — for a host to hand to
+	// [encounter.MemberInput.Equipment] when it spawns the sheet. Nil when it
+	// has none, and omitted from the committed pictures when empty, so every
+	// dungeon authored before items existed pictures byte-identically.
+	Equipment []encounter.ItemGrant `json:"Equipment,omitempty"`
 }
 
 // Load decodes, validates and compiles a dungeon in one call.

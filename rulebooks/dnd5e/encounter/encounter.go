@@ -947,6 +947,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 	for _, m := range in.Members {
+		if err := validateEquipment(fmt.Sprintf("member %q", m.ID), m.Equipment); err != nil {
+			return nil, fmt.Errorf("newencounter: %w: %w", err, ErrBadMember)
+		}
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
@@ -1146,6 +1149,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			Temper:             mi.Temper,
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
+			Equipment:          cloneEquipment(mi.Equipment),
 		}
 		if err = e.useBehaviors(member, mi.Behaviors, nil, mi.BlockingStates); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)

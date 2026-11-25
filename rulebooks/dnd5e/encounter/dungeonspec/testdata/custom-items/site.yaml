@@ -1,0 +1,77 @@
+version: 5
+key: custom-items-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+factions:
+  - { id: garrison }
+dispositions:
+  - { between: [garrison, party], stance: neutral }
+
+# THE CUSTOM-ITEMS SITE (rpg-project#850), a copy of world-builder-v4-raider-letter.yaml
+# cut down to the three words: one item, a creature wearing it, a prop that is one.
+# It lives in its own directory so the content-picture net (testdata/*.yaml) does not
+# take it: no picture is committed for it.
+#
+# THE THREE WORDS (rpg-project#850): the items, who has one equipped, which prop is one.
+customItems:
+  lieutenants-cloak:
+    name: Lieutenant's cloak
+    slot: cloak
+    charges: { max: 1, refills: { on: [short rest, long rest] } }
+    lets:
+      - use: second wind
+        with: { level: 1 }
+        cost: { charges: 1 }
+
+room:
+  version: 3
+  id: room-1
+  name: The Cloak Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: The Cloak Room
+    items:
+      - id: cloak-on-the-peg
+        kind: prop
+        assetRef: dnd5e:props:scroll
+        label: The Lieutenant's Cloak
+        transform: {x: -1.5, y: 0, z: 0.75, rotationY: 0}
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: The Cloak Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: -2
+            q: [[0, 2]]
+          - r: -1
+            q: [[-1, 2]]
+          - r: 0
+            q: [[-2, 2]]
+          - r: 1
+            q: [[-2, 1]]
+          - r: 2
+            q: [[-2, 0]]
+    # The cloak hangs on a peg: scenery that blocks nothing, and an item (not holdable).
+    propDeclarations:
+      cloak-on-the-peg:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsterDeclarations:
+      - {id: lieutenant, ref: 'dnd5e:monsters:skeleton-captain', startingCell: { location: { q: 2, r: -1 } }}
+    monsterBindings:
+      lieutenant:
+        faction: garrison
+        equipment: [lieutenants-cloak]
+    propBindings:
+      cloak-on-the-peg:
+        item: lieutenants-cloak
