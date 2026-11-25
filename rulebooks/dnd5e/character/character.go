@@ -647,6 +647,7 @@ func (c *Character) recoverOnRest(rest coreResources.ResetType) {
 		}
 		resource.RestoreToFull()
 	}
+	c.restoreItemPools(rest)
 }
 
 // LongRestOutput is what a long rest did.

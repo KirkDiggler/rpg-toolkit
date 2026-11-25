@@ -367,6 +367,8 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		})
 	}
 
+	result = append(result, c.wornItemAbilities()...)
+
 	return result
 }
 
