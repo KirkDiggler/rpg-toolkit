@@ -188,6 +188,19 @@ type CheckContentInput struct {
 // the site would launch.
 type CheckContentOutput struct {
 	Refusals []StatusRefusal
+
+	// Items is every custom item the rules refuse, in item id order.
+	Items []ItemRefusal
+}
+
+// ItemRefusal is one custom item a site can give that the rules refuse.
+type ItemRefusal struct {
+	// ItemID is the item's id under the site's `customItems:`.
+	ItemID string
+	// Path is where the item is set in the site file: `customItems.<id>`.
+	Path string
+	// Message is the rules' refusal, which names the item and the word.
+	Message string
 }
 
 // CheckContent is the content check: what [Manager.Launch] refuses in a
