@@ -37,6 +37,7 @@ The three files have different jobs:
 
 ## Active ideas
 
+- [Composable conditions](composable-conditions/) — approved 2026-10-28; a condition is a machine composed with outputs, two tools (`effects`, `effects/machine`) formed in `examples/effects`; design, plan
 - [Actions are data](actions-are-data/) — implemented; includes design, completed plan, and implementation record
 - [Encounter](encounter/)
 - [Encounter anchoring](encounter-anchoring/)
