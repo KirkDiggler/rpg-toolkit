@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -54,6 +55,13 @@ type LootInput struct {
 	// does. A negative Range is a caller defect and is refused rather than
 	// normalized.
 	Range int
+
+	// Leave is the ids of equipped items ([ItemGrant.ID]) the looter does not
+	// take: they stay on the body, untold, for someone else to loot
+	// (rpg-project#850). Optional; nil or empty takes everything. The caller
+	// does not know the body, so an id the body does not have equipped, an
+	// empty id and a repeated id are ignored, never an error.
+	Leave []string
 }
 
 // LootOutput is what the host needs from a loot, and nothing a bystander may
@@ -178,7 +186,7 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 	// WHAT THE BODY HAD EQUIPPED comes off it, after holdings and before
 	// presence, so a loot's own consequences read: looted, what the intel
 	// reveals, taken.
-	items, err := e.takeEquipment(in.Member, in.Target, at)
+	items, err := e.takeEquipment(in.Member, in.Target, in.Leave, at)
 	if err != nil {
 		return nil, fmt.Errorf("loot: %w", err)
 	}
@@ -215,15 +223,26 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 //
 // Nothing to take is not a special case: a body with none, a body already
 // looted and a looter that takes none all run this and answer nil.
-func (e *Encounter) takeEquipment(looter, body MemberID, at uint64) ([]TakenItem, error) {
+func (e *Encounter) takeEquipment(looter, body MemberID, leave []string, at uint64) ([]TakenItem, error) {
 	taker, bodyRecord := e.members[looter], e.members[body]
 	if taker == nil || bodyRecord == nil || taker.Kind != KindPlayer || len(bodyRecord.Equipment) == 0 {
 		return nil, nil
 	}
 
-	gear := cloneEquipment(bodyRecord.Equipment)
+	// WHAT THE CALLER SAYS TO LEAVE stays on the body exactly as it was, in the
+	// same place among what remains, and is not told. The caller knows what the
+	// looter owns and the body does not know the caller, so an id the body lacks,
+	// an empty id and a repeated id each change nothing.
+	var gear, kept []ItemGrant
+	for _, grant := range bodyRecord.Equipment {
+		if grant.ID != "" && slices.Contains(leave, grant.ID) {
+			kept = append(kept, grant)
+			continue
+		}
+		gear = append(gear, cloneItemGrant(grant))
+	}
 	sort.SliceStable(gear, func(i, j int) bool { return gear[i].ID < gear[j].ID })
-	bodyRecord.Equipment = nil
+	bodyRecord.Equipment = kept
 
 	items := make([]TakenItem, 0, len(gear))
 	for _, grant := range gear {
