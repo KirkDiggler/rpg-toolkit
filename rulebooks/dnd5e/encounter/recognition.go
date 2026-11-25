@@ -112,6 +112,12 @@ type TriggerRecognized struct {
 	// Topic is the topic the other party must hold about "me". REQUIRED
 	// non-empty, and one some interaction's outcome grants.
 	Topic TopicID
+
+	// As is the value the note must carry (rpg-project#1007). Empty asks
+	// whether the topic is noted at all, whatever value it carries or none:
+	// today's question exactly. Non-empty is true only for a note that
+	// carries exactly this value, and must be one some give carries.
+	As string `json:"As,omitempty"`
 }
 
 // isTrigger marks TriggerRecognized as a Trigger.
@@ -123,8 +129,6 @@ func (t TriggerRecognized) isTrigger() {}
 // rpg-project#925); on a line's row only, Tells or [RelocateGrant]
 // (passage.go, rpg-project#958).
 type Consequence struct {
-	SceneMove *SceneMove `json:"sceneMove,omitzero"`
-
 	// Recognize is: holders come to hold a topic about subjects.
 	Recognize *Recognition `json:"recognize,omitzero"`
 
@@ -199,6 +203,14 @@ type Recognition struct {
 	// HeardBy is who else holds it, through [ChannelHeard]. Empty: nobody.
 	// Otherwise [RecognitionCarriersWhoWitnessed].
 	HeardBy RecognitionHearers `json:"heard_by,omitzero"`
+
+	// As is the value the note carries (rpg-project#1007): a plain string,
+	// empty meaning no value. One note is held per holder, subject and topic;
+	// a give with a different value replaces the held note, the same value
+	// confirms it. Refused on the engine's own topics ([TopicArrested],
+	// [TopicWanted], [TopicJailed]), and a topic is given with a value
+	// everywhere it is given, or nowhere.
+	As string `json:"as,omitzero"`
 }
 
 // ChannelJudgement is the intel channel a holder comes to hold a topic
@@ -231,15 +243,6 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
-			if c.SceneMove != nil {
-				if c.Relocate != nil || c.Tells != "" || c.Arrest != nil || c.Jail != nil || c.Recognize != nil || c.ApplyStatus != nil {
-					return fmt.Errorf("%s mixes scene movement with another consequence", what)
-				}
-				if err := c.SceneMove.validate(); err != nil {
-					return fmt.Errorf("%s: %w", what, err)
-				}
-				continue
-			}
 			if c.Relocate != nil {
 				return fmt.Errorf("%s relocates: a relocate moves the speaker on a line's row; an interaction's outcome uses `jail`", what)
 			}
@@ -297,6 +300,8 @@ func validateConsequence(what string, c Consequence, carriers bool) error {
 		return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
 	case r.Topic == "":
 		return fmt.Errorf("%s recognizes on no topic", what)
+	case r.As != "" && isEngineTopic(r.Topic):
+		return errEngineTopicValue(what, r.Topic, r.As)
 	case r.Holder != RecognitionSpokenTo:
 		return fmt.Errorf("%s holder %q: the holder is %q", what, r.Holder, RecognitionSpokenTo)
 	case r.About != RecognitionPartyInSight && r.About != RecognitionSpeaker:
@@ -328,12 +333,6 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 				a := cloneArrest(*c.Arrest)
 				c.Arrest = &a
 			}
-			if c.SceneMove != nil {
-				move := *c.SceneMove
-				move.Guards = slices.Clone(move.Guards)
-				move.Anchors = slices.Clone(move.Anchors)
-				c.SceneMove = &move
-			}
 			if c.Jail != nil {
 				j := *c.Jail
 				c.Jail = &j
@@ -349,24 +348,96 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 	return out
 }
 
+// topicGrants is every topic the run gives and, for each, the set of values
+// it is given with (rpg-project#1007): "" is a give with no value. Asking
+// whether a topic is given is [topicGrants.gives]; whether it is given with a
+// value is [topicGrants.givesAs].
+type topicGrants map[TopicID]map[string]bool
+
+// add records one give of topic as value.
+func (g topicGrants) add(topic TopicID, as string) {
+	if g[topic] == nil {
+		g[topic] = map[string]bool{}
+	}
+	g[topic][as] = true
+}
+
+// gives reports whether any give carries topic.
+func (g topicGrants) gives(topic TopicID) bool { return len(g[topic]) > 0 }
+
+// givesAs reports whether some give carries topic with exactly the value
+// given. The empty value is a give with none.
+func (g topicGrants) givesAs(topic TopicID, as string) bool { return g[topic][as] }
+
+// merge adds every give of other to g.
+func (g topicGrants) merge(other topicGrants) {
+	for topic, values := range other {
+		for as := range values {
+			g.add(topic, as)
+		}
+	}
+}
+
+// isEngineTopic reports whether topic is one the engine gives itself.
+func isEngineTopic(topic TopicID) bool {
+	return topic == TopicArrested || topic == TopicWanted || topic == TopicJailed
+}
+
+// errEngineTopicValue is the refusal of a value on an engine topic.
+func errEngineTopicValue(what string, topic TopicID, as string) error {
+	return fmt.Errorf("%s gives %q as %q: %q is the engine's own topic and has no value", what, topic, as, topic)
+}
+
+// checkTopicValues refuses a run that gives one topic with a value in one
+// place and with none in another: a topic has a value everywhere it is
+// given, or nowhere (rpg-project#1007). An arrest and a jail give their
+// topics with none.
+func checkTopicValues(g topicGrants) error {
+	for _, topic := range slices.Sorted(maps.Keys(g)) {
+		if !g[topic][""] || len(g[topic]) < 2 {
+			continue
+		}
+		for _, as := range slices.Sorted(maps.Keys(g[topic])) {
+			if as != "" {
+				return fmt.Errorf("the topic %q is given as %q in one place and with no value in another: "+
+					"a topic has a value everywhere it is given, or nowhere", topic, as)
+			}
+		}
+	}
+	return nil
+}
+
 // grantedTopics is every topic some interaction's outcome grants, or some
-// line's answer among the lists given grants (rpg-project#929): the topics a
-// [TriggerRecognized] may name.
-func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[]Option) map[TopicID]bool {
-	out := map[TopicID]bool{}
+// line's answer among the lists given grants (rpg-project#929), with the
+// values each is given with (rpg-project#1007): the topics a
+// [TriggerRecognized] may name, and the values it may ask for.
+func grantedTopics(interactions map[InteractionID]*interactionRecord, machines []map[string][]Consequence, lines ...[]Option) topicGrants {
+	out := topicGrants{}
+	// A creature's machine gives the topics of its state outcomes
+	// (rpg-project#989): a line may require one only a machine gives.
+	for _, outcomes := range machines {
+		for _, cs := range outcomes {
+			for _, c := range cs {
+				if c.Recognize != nil {
+					out.add(c.Recognize.Topic, c.Recognize.As)
+				}
+			}
+		}
+	}
 	for _, r := range interactions {
 		for _, cs := range r.input.Outcomes {
 			for _, c := range cs {
 				if c.Recognize != nil {
-					out[c.Recognize.Topic] = true
+					out.add(c.Recognize.Topic, c.Recognize.As)
 				}
 				// An arrest grants both its topics (arrest.go).
 				if c.Arrest != nil {
-					out[TopicArrested], out[TopicWanted] = true, true
+					out.add(TopicArrested, "")
+					out.add(TopicWanted, "")
 				}
 				// A jail grants its own (jail.go).
 				if c.Jail != nil {
-					out[TopicJailed] = true
+					out.add(TopicJailed, "")
 				}
 			}
 		}
@@ -375,7 +446,7 @@ func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[
 		for _, o := range options {
 			for _, g := range o.Grants {
 				if g.Consequence.Recognize != nil {
-					out[g.Consequence.Recognize.Topic] = true
+					out.add(g.Consequence.Recognize.Topic, g.Consequence.Recognize.As)
 				}
 			}
 		}
@@ -527,9 +598,56 @@ func (e *Encounter) hasNoted(holder, subject MemberID, topic TopicID) bool {
 	return e.recognizes(holder, subject, topic)
 }
 
+// hasNotedAs is [Encounter.hasNoted] with the value asked for
+// (rpg-project#1007): an empty value is that question exactly; a non-empty
+// one is true only when the note is held and carries exactly this value. A
+// payload that cannot be decoded has no value, so it fails closed.
+func (e *Encounter) hasNotedAs(holder, subject MemberID, topic TopicID, as string) bool {
+	if !e.hasNoted(holder, subject, topic) {
+		return false
+	}
+	if as == "" {
+		return true
+	}
+	held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(subject), perception.Topic(topic))
+	if err != nil {
+		return false
+	}
+	return noteValueOf(held.Payload) == as
+}
+
+// notedValue is the value of the note holder holds about subject on topic, as
+// [Encounter.hasNoted] reads it now: the empty string when nothing is noted,
+// or the note carries no value (rpg-project#1007).
+func (e *Encounter) notedValue(holder, subject MemberID, topic TopicID) string {
+	if !e.hasNoted(holder, subject, topic) {
+		return ""
+	}
+	held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(subject), perception.Topic(topic))
+	if err != nil {
+		return ""
+	}
+
+	return noteValueOf(held.Payload)
+}
+
+// noteValueOf is the value a held note's payload carries: none when the
+// payload cannot be decoded.
+func noteValueOf(payload []byte) string {
+	var why recognitionTestimony
+	if err := json.Unmarshal(payload, &why); err != nil {
+		return ""
+	}
+	return why.As
+}
+
 // recognitionLine is what [Encounter.applyOutcome] needs of the line that
 // moved the interaction.
 type recognitionLine struct {
+	// as is the value the note being held carries (rpg-project#1007), set by
+	// [Encounter.grantRecognitionAt] on its own copy of the line for
+	// [Encounter.holdTopic]; empty is no value.
+	as          string
 	interaction InteractionID
 	state       string
 	// option is the line whose answer granted, empty for an outcome.
@@ -570,6 +688,9 @@ type recognitionLine struct {
 	// witness or hearer of the line (arrest.go): who is wanted is the guards'
 	// own memory.
 	holdersOnly bool
+	// named is the one a machine's step names ([Encounter.enteredState]):
+	// what `the_one_named` means at `state.give.about`. Empty for a line.
+	named MemberID
 }
 
 // knowsHolder is whether reader may be named the holder of a recognition
@@ -615,8 +736,6 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 	for _, c := range r.input.Outcomes[line.state] {
 		var err error
 		switch {
-		case c.SceneMove != nil:
-			err = e.applySceneMove(*c.SceneMove, line)
 		case c.Arrest != nil:
 			err = e.applyArrest(r, *c.Arrest, line)
 		case c.Jail != nil:
@@ -649,9 +768,16 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 // ([sightMember]), the observer key the store's sightings use and the load
 // check demands, and is told as [BeatRecognized] beats ([Encounter.tellRecognition]).
 func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error {
+	return e.grantRecognitionAt(r, line, WhoInGiveTo, WhoInGiveAbout)
+}
+
+// grantRecognitionAt is [Encounter.grantRecognition] with the places its
+// words are written at: a line's (`give.to`, `give.about`) or a machine
+// state's (`state.give.to`, `state.give.about`).
+func (e *Encounter) grantRecognitionAt(r Recognition, line recognitionLine, toPlace, aboutPlace string) error {
 	// WHO, BY THE ONE RESOLVER a status grant asks too ([landing.whoNow]).
 	landed := e.landingOf(line)
-	holders, err := landed.whoNow(WhoInGiveTo, string(r.Holder))
+	holders, err := landed.whoNow(toPlace, string(r.Holder))
 	if err != nil || len(holders) == 0 {
 		return err
 	}
@@ -660,10 +786,11 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	subjects, err := landed.whoNow(WhoInGiveAbout, string(r.About))
+	subjects, err := landed.whoNow(aboutPlace, string(r.About))
 	if err != nil || len(subjects) == 0 {
 		return err
 	}
+	line.as = r.As
 	if err := e.holdTopic(reach, holder, subjects, r.Topic, ChannelJudgement, line); err != nil {
 		return err
 	}
@@ -735,6 +862,8 @@ type recognitionTestimony struct {
 	Interaction InteractionID `json:"interaction,omitempty"`
 	State       string        `json:"state,omitempty"`
 	Option      string        `json:"option,omitempty"`
+	// As is the value the note carries (rpg-project#1007), empty for none.
+	As string `json:"as,omitempty"`
 }
 
 // holdTopic lands one holder's record on topic about every subject, through
@@ -742,7 +871,9 @@ type recognitionTestimony struct {
 func (e *Encounter) holdTopic(
 	reach sightReach, holder MemberID, subjects []MemberID, topic TopicID, channel string, line recognitionLine,
 ) error {
-	payload, err := json.Marshal(recognitionTestimony{Interaction: line.interaction, State: line.state, Option: line.option})
+	payload, err := json.Marshal(recognitionTestimony{
+		Interaction: line.interaction, State: line.state, Option: line.option, As: line.as,
+	})
 	if err != nil {
 		return fmt.Errorf("recognition payload: %w", err)
 	}
@@ -751,11 +882,22 @@ func (e *Encounter) holdTopic(
 	// has, its first payload with it, so only a confirmation lands and when
 	// he first recognised the subject survives. The beat still says which
 	// line or outcome granted this time.
+	//
+	// A DIFFERENT VALUE REPLACES IT (rpg-project#1007): the same value (two
+	// empty ones are the same) is that rule exactly; a new value writes the
+	// new payload over the held one, one note per holder, subject and topic.
+	// A replaced note is news: it lands the `topic` beat, naming its subject, as a first contact
+	// does (rpg-project#1113); the same value given again lands none.
+	changed := map[MemberID]bool{}
 	reports := make([]perception.Presence, 0, len(subjects))
 	for _, s := range subjects {
 		report := perception.Presence{ID: sightMember(s), Payload: payload}
 		if held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(s), perception.Topic(topic)); err == nil {
-			report.Payload = held.Payload
+			if noteValueOf(held.Payload) == line.as {
+				report.Payload = held.Payload
+			} else {
+				changed[s] = true
+			}
 		}
 		reports = append(reports, report)
 	}
@@ -767,9 +909,19 @@ func (e *Encounter) holdTopic(
 		return fmt.Errorf("%s holds %q: %w", holder, topic, err)
 	}
 	// A HOLDER WHO COMES TO HOLD A TOPIC MAY WAKE ON IT (rpg-project#929):
-	// only a first holding is news; a record confirmed again is not.
-	if len(reported.FirstContact) > 0 {
-		e.landTopicBeat(holder, line.at)
+	// a first holding is news, and so is a value that replaced the held one;
+	// a record confirmed again is not.
+	for _, p := range reported.FirstContact {
+		for _, s := range subjects {
+			if sightMember(s) == p.ID {
+				changed[s] = true
+			}
+		}
+	}
+	for _, s := range subjects {
+		if changed[s] {
+			e.landTopicBeat(holder, s, line.at)
+		}
 	}
 	return e.tellRecognition(reach, holder, subjects, topic, channel, line)
 }
@@ -871,18 +1023,26 @@ func (e *Encounter) tellRecognition(
 // prop's line: a prop holds nothing about anybody.
 var errRecognizedOnProp = errors.New("a prop notes nothing about anybody, so a line said to one cannot ask what it has noted")
 
+// errNothingGivesValue is the refusal of a requirement for a value no give carries.
+func errNothingGivesValue(what string, topic TopicID, as string) error {
+	return fmt.Errorf("%s asks whether %q is noted as %q, and nothing gives it that value", what, topic, as)
+}
+
 // validateRecognizedTopics refuses a `recognized` requirement naming a topic
 // no interaction of the run grants — a requirement nobody can ever meet —
 // on any line or post pass of the members given.
-func validateRecognizedTopics(granted map[TopicID]bool, what string, requires []Trigger) error {
+func validateRecognizedTopics(granted topicGrants, what string, requires []Trigger) error {
 	for _, t := range requires {
 		inner, _ := unwrapNot(t)
 		r, ok := inner.(TriggerRecognized)
 		if !ok {
 			continue
 		}
-		if !granted[r.Topic] {
+		if !granted.gives(r.Topic) {
 			return fmt.Errorf("%s asks whether %q is noted, and no interaction's outcome gives it", what, r.Topic)
+		}
+		if r.As != "" && !granted.givesAs(r.Topic, r.As) {
+			return errNothingGivesValue(what, r.Topic, r.As)
 		}
 	}
 	return nil

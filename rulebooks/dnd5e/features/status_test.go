@@ -31,10 +31,13 @@ func (r stubResourceReader) ResourceStatus(key coreResources.ResourceKey) (int, 
 	return v[0], v[1], true
 }
 
-func TestSecondWindStatusReportsPrivateResourceWithoutJSON(t *testing.T) {
+func TestSecondWindStatusReportsOwnerPoolWithoutJSON(t *testing.T) {
 	sw := newSecondWindForTest("second-wind-feature", "fighter-1")
+	owner := stubResourceReader{values: map[coreResources.ResourceKey][2]int{
+		resources.SecondWind: {1, 1},
+	}}
 
-	out, err := sw.Status(&StatusInput{})
+	out, err := sw.Status(&StatusInput{Owner: owner})
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.NotNil(t, out.Status)
@@ -43,7 +46,7 @@ func TestSecondWindStatusReportsPrivateResourceWithoutJSON(t *testing.T) {
 	assert.NotEmpty(t, out.Status.Name, "name must never be empty")
 	assert.Empty(t, out.Status.Detail, "detail is server-authored and may be empty")
 
-	require.NotNil(t, out.Status.Resource, "Second Wind owns a private resource")
+	require.NotNil(t, out.Status.Resource, "Second Wind reports the owner's shared pool")
 	assert.Equal(t, resources.SecondWind, out.Status.Resource.Key)
 	assert.Equal(t, "Second Wind", out.Status.Resource.Name)
 	assert.Equal(t, 1, out.Status.Resource.Current)

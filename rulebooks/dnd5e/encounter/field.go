@@ -1072,6 +1072,17 @@ type MemberInput struct {
 	// [ErrBadMember].
 	Posts map[string]Post
 
+	// Outcomes names, by state of the body machine, the consequences done
+	// once each time a step enters that state (rpg-project#989): the one kind
+	// is [Consequence.Recognize], the creature itself noting a topic about
+	// the one the beat names. Nil does nothing, which is every member before
+	// outcomes existed. The first state, entered by nothing at setup, does
+	// nothing.
+	//
+	// VALIDATED AT THIS DOOR ([validateStateOutcomes]): see its refusals;
+	// each is [ErrBadMember].
+	Outcomes map[string][]Consequence
+
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — the author's placement, seeded at
 	// construction as holdings nobody but the engine ever sees. Optional;
@@ -1187,6 +1198,7 @@ type memberFacts struct {
 	Behaviors          *BehaviorInput
 	BlockingStates     []string
 	Posts              map[string]Post
+	Outcomes           map[string][]Consequence
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1221,6 +1233,9 @@ func validateMemberFacts(in memberFacts) error {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if err := validatePostStates(bound.bodyRecipe(), in.Posts); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validateStateOutcomes(bound.bodyRecipe(), in.Outcomes); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1712,6 +1727,10 @@ type memberRecord struct {
 	// copied.
 	Posts map[string]Post
 
+	// Outcomes is [MemberInput.Outcomes], validated against Recipe at every
+	// door and persisted beside it.
+	Outcomes map[string][]Consequence
+
 	// Clock names the clock this member is seated on (R5); empty is the
 	// world clock. Every member is on the world clock in this slice; S7
 	// seats members on an area's own clock. Persisted when not the world.
@@ -1930,6 +1949,15 @@ type StepOutput struct {
 	// steps it took. The hailing carrier's answer is in IntelDeltas, Formed
 	// and Outcome with the step's own. Empty when nobody hailed.
 	Addressed []Addressed
+
+	// Hailed is every creature that hailed the mover in this step from its
+	// OWN machine (ownhail.go, rpg-project#1139): a creature with no
+	// conversation whose `approached` step requires a `within` and whose step
+	// FIRED (a pick ran or its state changed) for a mover whose step crossed
+	// in to that distance in its sight. Nearest first, then by id. No
+	// address stands and nothing is swept later; the creature's answer is in
+	// IntelDeltas and Formed with the step's own. Empty when nobody hailed.
+	Hailed []MemberID
 }
 
 // JoinInput names who is arriving and the cell on the map they arrive at.
@@ -2013,6 +2041,10 @@ type JoinInput struct {
 	// Posts — see [MemberInput.Posts]'s own doc, validated at this door the
 	// same way; an empty [Post.Cells] means [JoinInput.Cell].
 	Posts map[string]Post
+
+	// Outcomes — see [MemberInput.Outcomes]'s own doc, validated at this door
+	// the same way.
+	Outcomes map[string][]Consequence
 
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — [MemberInput.Holds] for a member who

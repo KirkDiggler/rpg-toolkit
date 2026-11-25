@@ -18,7 +18,7 @@ import (
 
 // wakebeats.go is TRIGGERS WITH SCOPE (rpg-project#766 S4, design §3 of
 // ideas/the-world-runs): a beat the record already writes — a sound heard, a
-// deed done, an enemy sighted, a fact learned, a clock's round — wakes the
+// deed done, someone sighted, a fact learned, a clock's round — wakes the
 // machines that listen for it, in the raise it landed in.
 //
 // # Landed, then matched
@@ -26,7 +26,7 @@ import (
 // The sites that write those beats land one [wakeBeat] each on
 // [Encounter.landed] — [Encounter.makeSound] (one per hearer),
 // [Encounter.landDeedAt], [Encounter.learnFact], the sight refresh (one per
-// observer that gained an opposed subject) and the raise itself (`clock`).
+// observer, for each member it gained) and the raise itself (`clock`).
 // The next raise ([Encounter.wake]) matches them against the listener index
 // in landing order and, for each, its listeners in seat order, then clears
 // them. A beat lands only when somebody listens for it, so content with no
@@ -70,7 +70,8 @@ const (
 	beatHeard machine.Beat = "heard"
 	// beatDeed is a deed done anywhere; `deed:<word>` names one word.
 	beatDeed machine.Beat = "deed"
-	// beatSeen is an opposed subject coming into the listener's sight.
+	// beatSeen is someone, whoever they are, coming into the listener's sight
+	// (rpg-project#1123): a step says what it cares about in its `when`.
 	beatSeen machine.Beat = "seen"
 	// beatBarred is a bump on the listener (barred.go, rpg-project#842): a
 	// player's attempt stopped by its body, matched on it alone in the verb
@@ -80,7 +81,9 @@ const (
 	beatFact machine.Beat = "fact"
 	// beatTopic is a topic the listener came to hold about somebody
 	// (rpg-project#929): through his own judgement or heard, landed when the
-	// record is first held. A guard reads which topic with `topic:<id>`.
+	// record is first held or its value is replaced, once for each subject
+	// whose note changed, naming that subject (rpg-project#1123). A guard
+	// reads which topic with `topic:<id>`.
 	beatTopic machine.Beat = "topic"
 	// beatClock prefixes a clock's round: `clock:world`, `clock:fight`,
 	// `clock:bell:<prop>`, or an area clock's name.
@@ -142,11 +145,12 @@ type wakeBeat struct {
 // place, which no scope admits).
 //
 // Subject is the one the beat is about, AS THIS LISTENER'S SENSES NAME THEM
-// (rpg-project#1000): the opposed member it saw (`seen`), the mover who
+// (rpg-project#1000): the member it saw (`seen`), the mover who
 // walked into it (`barred`), the one it hailed (`approached`), and on
 // `heard` the speaker of a character's line whose words it caught while
-// seeing them. Every other beat names nobody: a noise, a voice not seen, a
-// deed, a fact, a topic, a clock. It is what a `noted:<topic>` guard asks
+// seeing them, and on `topic` the one the note is about (a `topic` saved with
+// no subject names nobody). Every other beat names nobody: a noise, a voice
+// not seen, a deed, a fact, a clock. It is what a `noted:<topic>` guard asks
 // about, and what a step's consequences will name (S2).
 //
 // Claim is a caught checked line's verdict, read by `heard.claim`.
@@ -178,6 +182,8 @@ func namesSubject(b wakeBeat) bool {
 		return true
 	case beatHeard:
 		return b.Named
+	case beatTopic:
+		return b.Subject != ""
 	}
 	return false
 }
@@ -283,15 +289,16 @@ func (e *Encounter) landDeedBeat(verb string, actor MemberID, where spatial.Posi
 	}
 }
 
-// landTopicBeat lands a topic on the member who came to hold it, when it
-// listens (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
+// landTopicBeat lands a topic on the member who came to hold it, naming the
+// subject the note is about (rpg-project#1123), when it listens
+// (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
 // a state that is not listening does not hear it, and a later state that
 // listens reads it through its `topic:<id>` guard on the next topic beat.
-func (e *Encounter) landTopicBeat(member MemberID, at uint64) {
+func (e *Encounter) landTopicBeat(member, subject MemberID, at uint64) {
 	if _, ok := e.listensFor(member, beatTopic); !ok {
 		return
 	}
-	e.land(wakeBeat{Beat: beatTopic, Member: member, At: at})
+	e.land(wakeBeat{Beat: beatTopic, Subject: subject, Member: member, At: at})
 }
 
 // landFactBeat lands a fact on the member who learned it, when it listens.
@@ -302,8 +309,12 @@ func (e *Encounter) landFactBeat(member MemberID, at uint64) {
 	e.land(wakeBeat{Beat: beatFact, Member: member, At: at})
 }
 
-// landSightings lands one `seen` per observer that listens for it and gained
-// an opposed subject in this refresh, at the subject's cell.
+// landSightings lands one `seen` for each member an observer that listens for
+// it gained in this refresh, at that member's cell (rpg-project#1123): anyone
+// who comes into sight, enemy or not, in id order, and never the observer
+// itself. One a guard noted must not be hidden behind someone else who came
+// into view in the same refresh, so every one is news; which of them wakes the
+// machine is the step's own `when`.
 func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 	if !e.listened(beatSeen) {
 		return
@@ -323,7 +334,10 @@ func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 		sort.Slice(gained, func(i, j int) bool { return gained[i] < gained[j] })
 		for _, subject := range gained {
 			m, ok := e.members[subject]
-			if !ok || !e.opposed(l.Key, subject) {
+			if !ok || subject == l.Key {
+				continue
+			}
+			if !e.couldBeWokenBySeeing(l.Key, subject) {
 				continue
 			}
 			cell, err := e.cellOf(m)
@@ -331,7 +345,6 @@ func (e *Encounter) landSightings(deltas map[MemberID]*IntelDelta, at uint64) {
 				continue
 			}
 			e.land(wakeBeat{Beat: beatSeen, Cell: &cell, Subject: subject, Member: l.Key, At: at})
-			break // one sighting wakes it; the rest are the same news
 		}
 	}
 }
@@ -516,7 +529,7 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		if env.err != nil {
 			return env.err
 		}
-		if err := e.behaviorStepped(m, observed.Steps); err != nil {
+		if err := e.behaviorStepped(m, observed.Steps, ev.Subject, now); err != nil {
 			return err
 		}
 		if len(observed.Outcomes) > 0 {

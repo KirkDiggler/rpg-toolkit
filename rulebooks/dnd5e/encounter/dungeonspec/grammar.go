@@ -349,6 +349,12 @@ type grammarInput struct {
 	// (rpg-project#929, #932): with the interactions' outcomes, what a
 	// `noted` requirement may name.
 	LineTopics map[string]bool
+
+	// Values is every value each topic the document gives is given with
+	// (rpg-project#1007): what a `noted` that asks a value may ask. A dialect
+	// that does not read the document's gives leaves it nil, and judges no
+	// value.
+	Values topicValues
 }
 
 // interactionShape is what an option may name of one root interaction: the
@@ -445,6 +451,9 @@ type grammar struct {
 
 	// lineTopics is [grammarInput.LineTopics].
 	lineTopics map[string]bool
+
+	// values is [grammarInput.Values].
+	values topicValues
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -462,6 +471,7 @@ func newGrammar(in grammarInput) *grammar {
 		doors:                in.Doors,
 		interactions:         in.Interactions,
 		lineTopics:           in.LineTopics,
+		values:               in.Values,
 	}
 }
 
@@ -711,6 +721,8 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 			g.fail(path+".noted", "%s", errNotedOnProp)
 		case !given:
 			g.fail(path+".noted", "%s", topicNeverGiven(p.Noted))
+		case p.NotedAs != "" && g.values != nil && !g.values.givesAs(p.Noted, p.NotedAs):
+			g.fail(path+".noted", "%s", errNothingGivesValue("this line", p.Noted, p.NotedAs))
 		}
 	case predicateCarries:
 		holdable, placed := props[p.Carries]
@@ -869,7 +881,10 @@ func (g *grammar) applyStatus(at string, a ApplyStatusSpec, isProp bool) {
 		return
 	}
 	for _, key := range a.others {
-		g.fail(at+"."+key, "apply_status takes `status` and `to`, not `%s`", key)
+		g.fail(at+"."+key, "apply_status takes `status`, `to` and `until`, not `%s`", key)
+	}
+	if a.Until != nil {
+		g.until(at+".until", a.Until)
 	}
 	for _, key := range a.notWords {
 		g.fail(at+"."+key, "apply_status's `%s` is one word, not a list or a mapping", key)
@@ -900,6 +915,31 @@ func (g *grammar) applyStatus(at string, a ApplyStatusSpec, isProp bool) {
 	if isProp && a.To != string(encounter.RecognitionSpeaker) {
 		g.fail(at+".to", "on a thing's line nobody is spoken to, so nobody receives it but the speaker: "+
 			"only `to: %s` can be used here", encounter.RecognitionSpeaker)
+	}
+}
+
+// until judges an `apply_status.until:` (rpg-project#1080), each fault at the
+// author's path with one sentence. The rounds sentence is the engine's own
+// ([encounter.StatusUntilRefusal]), so both say the same thing.
+func (g *grammar) until(at string, u *StatusUntilSpec) {
+	switch {
+	case u.notMapping:
+		g.fail(at, "until is a mapping: write until: { rounds: 3 }")
+		return
+	case u.empty:
+		g.fail(at, "until says when the status ends: write until: { rounds: <n> }, or leave until out")
+		return
+	}
+	for _, key := range u.others {
+		g.fail(at+"."+key, "until takes `rounds`, not `%s`: a status given for a time ends after a number of rounds of world time", key)
+	}
+	switch {
+	case u.notNumber:
+		g.fail(at+".rounds", "%s", encounter.StatusUntilRefusal(0))
+	case len(u.others) == 0:
+		if why := encounter.StatusUntilRefusal(u.Rounds); why != "" {
+			g.fail(at+".rounds", "%s", why)
+		}
 	}
 }
 

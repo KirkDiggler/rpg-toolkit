@@ -90,7 +90,7 @@ type ResourceView struct {
 // built from the live sheet and feature Status reports — never from
 // persistence JSON — and excludes legacy class resources by construction. Its
 // resource catalog is closed to the current six builds: Barbarian
-// (RageCharges/HitDice), Fighter (HitDice plus private Second Wind and Action
+// (RageCharges/HitDice), Fighter (SecondWind/HitDice plus private Action
 // Surge), Monk (Ki/HitDice), Rogue (HitDice), Bard
 // (Inspiration/SpellSlotLevel1/HitDice), and Cleric (SpellSlotLevel1/HitDice).
 type StatusView struct {
@@ -332,7 +332,7 @@ type resourceReport struct {
 // feature-reported rows. Owner rows always appear. A feature report whose key
 // matches an owner row dedupes against it — keeping the owner row — but must
 // agree on name, current, and maximum or the merge fails loudly. A feature report
-// whose key is not in the owner rows (Second Wind, Action Surge) is added.
+// whose key is not in the owner rows (Action Surge) is added.
 // Negative counts, current > maximum, and conflicts all error with no partial
 // output.
 func mergeResources(ownerRows []resourceReport, reports []resourceReport) ([]ResourceView, error) {
@@ -411,7 +411,9 @@ func ownerResourceAllowed(class classes.Class, key coreResources.ResourceKey) bo
 	switch class {
 	case classes.Barbarian:
 		return key == resources.RageCharges || key == resources.HitDice
-	case classes.Fighter, classes.Rogue:
+	case classes.Fighter:
+		return key == resources.SecondWind || key == resources.HitDice
+	case classes.Rogue:
 		return key == resources.HitDice
 	case classes.Monk:
 		return key == resources.Ki || key == resources.HitDice

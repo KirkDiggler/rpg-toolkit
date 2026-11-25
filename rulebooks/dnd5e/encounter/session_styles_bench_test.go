@@ -44,7 +44,7 @@ func simKeep(b *testing.B) (*encounter.Encounter, []spatial.Position) {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

@@ -43,6 +43,7 @@ type selectorDefinition struct {
 	Attack   *combatActions.AttackProfile   `json:"attack,omitempty"`
 	Cast     *selectorCastProfile           `json:"cast,omitempty"`
 	Sequence *combatActions.SequenceProfile `json:"sequence,omitempty"`
+	Effect   *combatActions.EffectProfile   `json:"effect,omitempty"`
 }
 
 // selectorCastProfile mirrors every [combatActions.CastProfile] field with an
@@ -92,6 +93,7 @@ func selectorDefinitionOf(definition *combatActions.Definition) *selectorDefinit
 		Attack:   definition.Attack,
 		Cast:     selectorCastProfileOf(definition.Cast),
 		Sequence: definition.Sequence,
+		Effect:   definition.Effect,
 	}
 }
 

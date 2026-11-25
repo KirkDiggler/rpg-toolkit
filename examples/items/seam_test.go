@@ -19,6 +19,7 @@ import (
 func TestItemPackageStaysInsideItsGenericSeam(t *testing.T) {
 	allowed := map[string]bool{
 		"github.com/KirkDiggler/rpg-toolkit/core":                      true,
+		"github.com/KirkDiggler/rpg-toolkit/core/resources":            true,
 		"github.com/KirkDiggler/rpg-toolkit/events":                    true,
 		"github.com/KirkDiggler/rpg-toolkit/mechanics/effects":         true,
 		"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine": true,

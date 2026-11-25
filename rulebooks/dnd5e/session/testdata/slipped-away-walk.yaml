@@ -1,0 +1,175 @@
+# THE ONE WHO SLIPPED AWAY (rpg-project#1134): a small walk site, cut from the
+# known-on-sight site, for a state that notes the party he sees and those he saw
+# who are gone. One Guard Captain in a hall, two characters of one party, a gate
+# wall with a door to a yard. Nothing has to be done first and nothing is rolled.
+#   1. Bob walks out through the door and steps aside in the yard, behind the
+#      gate wall, where the captain does not see him.
+#   2. Alice insults the captain. He says "Out. Out of my hall." The note of the
+#      insult wakes him: he notes standing as barred about everyone of her party
+#      he sees (alice), and standing as wanted about those he saw who are gone
+#      (bob). Then he walks to his spot beside the door.
+#   3. Alice has lost every line.
+#   4. Bob steps back into view. He is known on sight as the one who slipped
+#      away: "There is the other one."
+#   5. Alice walks out, aside and back. He says nothing: she is barred, not wanted.
+version: 5
+key: slipped-away-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  guard-captain:
+    base: dnd5e:monsters:human
+    name: Guard Captain
+    hitDice: 10d8
+    armor: dnd5e:armor:breastplate
+    abilities: { str: 15, dex: 14, con: 14, cha: 14 }
+    proficiency: 3
+    actions: [dnd5e:weapons:longsword, dnd5e:weapons:javelin]
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: neutral }
+
+behaviorDefinitions:
+  captain-policy:
+    recipe:
+      ref: site:behaviors:captain-policy
+      initial: in-hall
+      states:
+        in-hall:
+          transitions:
+            - on: topic
+              when: { fact: { name: noted:insulted, op: eq, value: true } }
+              to: seizing
+              reason: he was insulted
+        seizing:
+          transitions:
+            - on: time
+              to: at-the-door
+              do:
+                - pick: at-the-door
+              reason: he goes to his door
+            - on: turn
+              to: at-the-door
+              do:
+                - pick: at-the-door
+              reason: he goes to his door
+        at-the-door:
+          transitions:
+            - on: seen
+              when: { fact: { name: noted.as:standing, op: eq, value: wanted } }
+              to: calls-out
+              reason: the one who slipped away is back in his sight
+            - on: time
+              do:
+                - pick: at-the-door
+            - on: turn
+              do:
+                - pick: at-the-door
+        calls-out:
+          transitions:
+            - on: time
+              to: at-the-door
+              do:
+                - pick: calls-out
+              reason: he has said it
+            - on: turn
+              to: at-the-door
+              do:
+                - pick: calls-out
+              reason: he has said it
+    outcomes:
+      seizing:
+        - give: { topic: standing, as: barred, to: itself, about: party_in_sight }
+        - give: { topic: standing, as: wanted, to: itself, about: the_gone }
+    table:
+      at-the-door:
+        - when: { enemy: none }
+          toward: { at: { q: -4, r: 6 } }
+      calls-out:
+        - say: There is the other one.
+
+room:
+  version: 3
+  id: room-1
+  name: The One Who Slipped Away
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: The One Who Slipped Away
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-5, 2]] }
+          - { r: 4, q: [[-6, 2]] }
+          - { r: 5, q: [[-6, 1]] }
+          - { r: 6, q: [[-7, 1]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -3, r: 4 }
+    monsterDeclarations:
+      - id: captain
+        ref: dnd5e:monsters:guard-captain
+        startingCell: { location: { q: -1, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      captain:
+        faction: garrison
+        options:
+          - id: insult
+            say: You are the Mad King's dog, and you always were.
+            requires:
+              not: { noted: insulted }
+            success:
+              - say: Out. Out of my hall.
+                give: { topic: insulted, to: spoken_to, about: speaker }
+          - id: the-way-in
+            say: Where will the feast be, captain?
+            requires:
+              not: { noted: standing }
+            success:
+              - say: In the great hall. You’re expected.
+        behaviors:
+          - id: policy
+            use: captain-policy
+        behaviorState: policy

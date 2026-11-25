@@ -157,7 +157,7 @@ func (b *builder) needsOf(requires []encounter.Trigger) []Connection {
 		case encounter.TriggerFact:
 			out = append(out, Connection{Kind: "fact", ID: string(v.Fact), Role: "needs"})
 		case encounter.TriggerRecognized:
-			out = append(out, Connection{Kind: "topic", ID: string(v.Topic), Role: "needs"})
+			out = append(out, Connection{Kind: "topic", ID: string(v.Topic), Role: "needs", Is: v.As})
 		case encounter.TriggerHolds:
 			out = append(out, Connection{Kind: "prop", ID: b.unqualify(string(v.Prop)), Role: "needs"})
 		case encounter.TriggerInteraction:
@@ -521,8 +521,8 @@ func (h holder) leavesOn(fact string) bool {
 // it is about, the conversation whose carriers may hear it, whether it
 // spreads to them, and how it is made.
 type grant struct {
-	topic, about, conv, how string
-	heard                   bool
+	topic, as, about, conv, how string
+	heard                       bool
 	// aboutWord is whom it is about as the who-words say it
 	// ([encounter.WhoWords]), for its note edges.
 	aboutWord string
@@ -538,7 +538,7 @@ func (b *builder) grantsOf(o encounter.Option) []grant {
 			continue
 		}
 		r := g.Consequence.Recognize
-		out = append(out, grant{topic: string(r.Topic), about: shortSubjects(r.About), conv: conv, aboutWord: string(r.About),
+		out = append(out, grant{topic: string(r.Topic), as: r.As, about: shortSubjects(r.About), conv: conv, aboutWord: string(r.About),
 			heard: r.HeardBy != "", how: fmt.Sprintf("its %s", winWord(o))})
 	}
 	if o.Advance != nil && o.Advance.Success != "" {
@@ -552,7 +552,7 @@ func (b *builder) grantsOf(o encounter.Option) []grant {
 					if cq.Recognize == nil {
 						continue
 					}
-					out = append(out, grant{topic: string(cq.Recognize.Topic), about: shortSubjects(cq.Recognize.About), conv: c,
+					out = append(out, grant{topic: string(cq.Recognize.Topic), as: cq.Recognize.As, about: shortSubjects(cq.Recognize.About), conv: c,
 						heard: cq.Recognize.HeardBy != "", aboutWord: string(cq.Recognize.About),
 						how: fmt.Sprintf("its %s steps %s to %s, whose outcome", winWord(o), quote(c), quote(state))})
 				}
@@ -631,8 +631,8 @@ func (b *builder) unlessWords(nots []encounter.Trigger) (string, []Connection) {
 			parts = append(parts, "carries the prop "+quote(p))
 			cs = append(cs, Connection{Kind: "prop", ID: p, Role: "unless"})
 		case encounter.TriggerRecognized:
-			parts = append(parts, "has "+quote(string(v.Topic))+" noted about them by the holder")
-			cs = append(cs, Connection{Kind: "topic", ID: string(v.Topic), Role: "unless"})
+			parts = append(parts, "has "+topicWords(string(v.Topic), v.As)+" noted about them by the holder")
+			cs = append(cs, Connection{Kind: "topic", ID: string(v.Topic), Role: "unless", Is: v.As})
 		}
 	}
 	if len(parts) == 0 {
@@ -722,7 +722,7 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 		return Statement{}, false
 	}
 	for _, g := range grants {
-		s := fmt.Sprintf("%s makes the creature it is said to note %s about %s", g.how, quote(g.topic), g.about)
+		s := fmt.Sprintf("%s makes the creature it is said to note %s about %s", g.how, topicWords(g.topic, g.as), g.about)
 		if g.heard {
 			s += fmt.Sprintf(", and the conversation %s's other carriers who witness it note the same, heard", quote(g.conv))
 		}
@@ -730,7 +730,7 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 		// THE ONE PLACE A GIVE'S NOTE EDGES ARE MADE (noteedges.go): the
 		// one the line is said to judges, the conversation's other
 		// carriers who catch it hear.
-		give := noteGive{topic: g.topic, about: g.aboutWord, cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, "")},
+		give := noteGive{topic: g.topic, as: g.as, about: g.aboutWord, cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, "")},
 			takers: []noteTaker{{word: string(encounter.RecognitionSpokenTo), creatures: []string{site.member}}}}
 		if g.heard {
 			var others []string

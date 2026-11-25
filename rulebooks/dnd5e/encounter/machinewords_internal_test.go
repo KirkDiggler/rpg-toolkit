@@ -114,7 +114,9 @@ func TestMachineWords_ConditionsAreReadWhereTheTableSays(t *testing.T) {
 		"heard.loudness:": leafOf("heard.loudness:shout", true),
 		"heard.claim":     leafOf("heard.claim", ClaimFailed),
 		"noted:":          leafOf("noted:admitted", true),
+		"noted.as:":       leafOf("noted.as:admitted", "warned"),
 		"noted.anyone:":   leafOf("topic:admitted", true), // as the engine reads it once lowered
+		"stance":          leafOf("stance", string(StanceHostile)),
 	}
 	for _, c := range MachineWords().Conditions {
 		if !c.Fact {
@@ -273,13 +275,13 @@ func TestMachineWords_TheTableIsACopy(t *testing.T) {
 // beats `heard.claim` and `noted:` are read on.
 func TestMachineWords_WhereAllowedIsPinned(t *testing.T) {
 	require.Equal(t, []string{"heard", "deed", "seen", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Scoped }))
-	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Names }))
+	require.Equal(t, []string{"heard", "seen", "topic", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Names }))
 	require.Equal(t, []string{"time", "turn", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Picks }))
 	require.Equal(t, []string{"time", "turn"}, beatsWhere(func(b BeatWord) bool { return b.Timed }))
 	claim, _ := ConditionWordOf("heard.claim")
 	require.Equal(t, []string{"heard"}, claim.allowedOn())
 	noted, _ := ConditionWordOf("noted:x")
-	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, noted.allowedOn())
+	require.Equal(t, []string{"heard", "seen", "topic", "barred", "approached"}, noted.allowedOn())
 	require.Equal(t, []string{"time", "turn", "heard", "deed", "seen", "fact", "topic", "clock:world", "clock:fight", "barred", "approached"}, MachineBeats)
 }
 
@@ -358,7 +360,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"beat turn":        {"its turn in a fight", ""},
 		"beat heard":       {"hears something", ""},
 		"beat deed":        {"a deed is done", ""},
-		"beat seen":        {"sees someone opposed", ""},
+		"beat seen":        {"sees someone", ""},
 		"beat fact":        {"learns a fact", "learns {id}"},
 		"beat topic":       {"notes a topic about someone", "notes {id} about someone"},
 		"beat clock:world": {"a round of world time", ""},
@@ -376,20 +378,23 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"cond heard.claim": {"it was a claim that {value}", "",
 			"held=it was a claim that held", "failed=it was a claim that failed"},
 		"cond noted:":        {"has noted {id} about them", "has not noted {id} about them"},
+		"cond noted.as:":     {"has noted {id} as {value} about them", "has not noted {id} as {value} about them"},
 		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
 		"cond flag:":         {"{id} is set", ""},
-		"cond within":        {"within {n} cells", ""},
-		"cond regions":       {"within {n} rooms", ""},
-		"cond rounds":        {"{op} {n} rounds since it marked the moment", ""},
-		"cond all":           {"all of these", ""},
-		"cond any":           {"any of these", ""},
-		"cond not":           {"not this", ""},
-		"act to":             {"changes to {id}"},
-		"act pick":           {"acts from the {id} list"},
-		"act wake_in":        {"waits {n} rounds"},
-		"act set":            {"sets {id} to {value}"},
-		"act clear":          {"forgets {id}"},
-		"act anchor":         {"marks the moment"},
+		"cond stance": {"is {value} to it", "is not {value} to it", "hostile=is its enemy", "neutral=is neutral to it",
+			"allied=is its ally", "none=is on no side"},
+		"cond within":  {"within {n} cells", ""},
+		"cond regions": {"within {n} rooms", ""},
+		"cond rounds":  {"{op} {n} rounds since it marked the moment", ""},
+		"cond all":     {"all of these", ""},
+		"cond any":     {"any of these", ""},
+		"cond not":     {"not this", ""},
+		"act to":       {"changes to {id}"},
+		"act pick":     {"acts from the {id} list"},
+		"act wake_in":  {"waits {n} rounds"},
+		"act set":      {"sets {id} to {value}"},
+		"act clear":    {"forgets {id}"},
+		"act anchor":   {"marks the moment"},
 	}, got)
 }
 

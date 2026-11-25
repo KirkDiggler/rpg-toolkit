@@ -147,6 +147,7 @@ func (s *ClocksTestSuite) TestABubbleRoundTripsAndIsReachedThroughItsMembers() {
 		ActiveIdx: 1,
 		Round:     3,
 	}}
+	data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -216,6 +217,7 @@ func (s *ClocksTestSuite) TestAMemberOutsideTheFightKeepsFreeRoamingWhileItRuns(
 	data.Bubbles = []clock.TurnData{{
 		Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1,
 	}}
+	data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -265,6 +267,7 @@ func (s *ClocksTestSuite) TestMutatingTheReturnedOrderCannotCorruptTheEncounter(
 	delete(data.Clock.Budgets, alice)
 	delete(data.Clock.Budgets, goblin)
 	data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
+	data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -304,6 +307,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 		// alice deliberately LEFT in Clock.Budgets while also in the bubble.
 		delete(data.Clock.Budgets, goblin)
 		data.Bubbles = []clock.TurnData{{Order: []core.EntityID{goblin, alice}, ActiveIdx: 0, Round: 1}}
+		data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data,
@@ -335,6 +339,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAMemberOnTwoClocks() {
 			{Order: []core.EntityID{alice, goblin}, ActiveIdx: 0, Round: 1},
 			{Order: []core.EntityID{alice}, ActiveIdx: 0, Round: 1},
 		}
+		data.Initiative = make([]encounter.BubbleInitiativeData, 2) // one empty entry per bubble: the fixture, not the assertion
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data,
@@ -405,6 +410,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data.Bubbles = []clock.TurnData{{
 			Order: []core.EntityID{alice, core.EntityID("ghost")}, ActiveIdx: 0, Round: 1,
 		}}
+		data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data,
@@ -433,6 +439,7 @@ func (s *ClocksTestSuite) TestLoadRejectsANonMemberOnAClock() {
 		data.Bubbles = []clock.TurnData{{
 			Order: []core.EntityID{"ghost", "phantom"}, ActiveIdx: 0, Round: 1,
 		}}
+		data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 			Data: data,
@@ -982,6 +989,7 @@ func (s *ClocksTestSuite) TestLoadRejectsAnIdleBubble() {
 	enc := s.fiveMemberEncounter()
 	data := enc.ToData()
 	data.Bubbles = []clock.TurnData{{}}
+	data.Initiative = make([]encounter.BubbleInitiativeData, 1) // one empty entry per bubble: the fixture, not the assertion
 
 	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,

@@ -1810,6 +1810,24 @@ type AbilityRef struct {
 	// Name is the ability's own display name — "Dodge", "Rage", "Second
 	// Wind". Authored by the ability, never derived from the ref by a reader.
 	Name string `json:"name"`
+
+	// Giver is the worn item that grants this ability. Nil means it is the
+	// member's own. It is part of an Activate declaration's selector material:
+	// the fighter's own Second Wind and a cloak's are two rows with two ids,
+	// because the uses a giver holds are that giver's own.
+	Giver *AbilityGiver `json:"giver,omitempty"`
+}
+
+// AbilityGiver names the item behind a granted ability.
+type AbilityGiver struct {
+	// ItemID is the owned item, this one and not its kind.
+	ItemID string `json:"item_id"`
+
+	// ItemName is what a player sees, "Lieutenant's cloak".
+	ItemName string `json:"item_name"`
+
+	// Grant is the grant's name within the item, "second-wind".
+	Grant string `json:"grant"`
 }
 
 // SpellRef identifies WHICH SPELL a cast row offers and which spell a cast

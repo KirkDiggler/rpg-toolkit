@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
@@ -73,6 +74,9 @@ const (
 	vaultStatus = "statuses:\n  rested:\n    name: Rested\n    changes:\n      - advantage: saves\n    maintenance:\n      - ends_on: rest\n    again: ignored\n"
 )
 
+// untilRoundsSentence is the engine's own sentence for a rounds out of range.
+const untilRoundsSentence = "rounds must be a whole number of one or more, at most 1000, such as 3"
+
 func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 	const asked = "room.room.monsterBindings.captain.options[0].success[0]"
 	_ = loadSource(t, vaultWithAStatus(t, vaultApply, vaultApply))
@@ -90,7 +94,26 @@ func TestDungeonspec_AStatusIsRefusedWhereItIsWrong(t *testing.T) {
 		"an unknown receiver": {vaultApply, "                apply_status: { status: rested, to: the_taken }\n",
 			asked + ".apply_status.to", `"the_taken" is not who can receive a status: write ` + "`to:` as " + receiverWords},
 		"another key": {vaultApply, "                apply_status: { status: rested, to: speaker, for: ever }\n",
-			asked + ".apply_status.for", "apply_status takes `status` and `to`, not `for`"},
+			asked + ".apply_status.for", "apply_status takes `status`, `to` and `until`, not `for`"},
+		"until a scalar": {vaultApply, "                apply_status: { status: rested, to: speaker, until: 3 }\n",
+			asked + ".apply_status.until", "until is a mapping: write until: { rounds: 3 }"},
+		"until empty": {vaultApply, "                apply_status: { status: rested, to: speaker, until: {} }\n",
+			asked + ".apply_status.until", "until says when the status ends: write until: { rounds: <n> }, or leave until out"},
+		"until null": {vaultApply, "                apply_status: { status: rested, to: speaker, until: ~ }\n",
+			asked + ".apply_status.until", "until says when the status ends: write until: { rounds: <n> }, or leave until out"},
+		"until zero rounds": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { rounds: 0 } }\n",
+			asked + ".apply_status.until.rounds", untilRoundsSentence},
+		"until negative rounds": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { rounds: -2 } }\n",
+			asked + ".apply_status.until.rounds", untilRoundsSentence},
+		"until too many rounds": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { rounds: 1001 } }\n",
+			asked + ".apply_status.until.rounds", untilRoundsSentence},
+		"until word rounds": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { rounds: three } }\n",
+			asked + ".apply_status.until.rounds", untilRoundsSentence},
+		"until fractional rounds": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { rounds: 2.5 } }\n",
+			asked + ".apply_status.until.rounds", untilRoundsSentence},
+		"until turns": {vaultApply, "                apply_status: { status: rested, to: speaker, until: { turns: 2 } }\n",
+			asked + ".apply_status.until.turns",
+			"until takes `rounds`, not `turns`: a status given for a time ends after a number of rounds of world time"},
 		"a list of receivers": {vaultApply, "                apply_status: { status: rested, to: [speaker, spoken_to] }\n",
 			asked + ".apply_status.to", "apply_status's `to` is one word, not a list or a mapping"},
 		"a null receiver": {vaultApply, "                apply_status: { status: rested, to: ~ }\n",
@@ -146,6 +169,17 @@ func TestDungeonspec_AStatusIsNotATableRow(t *testing.T) {
 	for _, e := range errs {
 		require.Equal(t, errs[0], e, "the table row is the one thing refused")
 	}
+}
+
+// AN `until` ON A TABLE ROW IS REFUSED ONCE: the row grants nothing, so the one
+// refusal is the row's, with no second one about the `until` it also wrote.
+func TestDungeonspec_AnUntilOnATableRowIsRefusedOnce(t *testing.T) {
+	errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
+		"        - say: Not one step further without my say.\n"+
+			"          apply_status: { status: warmed-up, to: speaker, until: 3 }\n"))
+	require.Len(t, errs, 1, "exactly one refusal: %v", errs)
+	require.Equal(t, "apply_status is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
+	require.True(t, strings.HasSuffix(errs[0].Path, ".apply_status"), "at the row's own key: %s", errs[0].Path)
 }
 
 // A SITE THAT DECLARES NO STATUS GIVES NONE: the refusal says there are none.
@@ -214,4 +248,53 @@ func TestDungeonspec_ApplyStatusRefusesAKeyWrittenTwice(t *testing.T) {
 		"                apply_status: { status: rested, to: speaker, to: party_in_sight }\n")))
 	require.Error(t, err)
 	require.Regexp(t, `line \d+: mapping key "to" already defined at line \d+`, err.Error())
+}
+
+// UNTIL COMPILES TO THE GRANT (rpg-project#1080): the number rides on the
+// encounter's grant, never inside the status block; a row without it has none.
+// Rounds are world rounds: they pass only when someone acts or waits (Wait is
+// rpg-project#1079).
+func TestDungeonspec_UntilCompilesToTheGrant(t *testing.T) {
+	grantOf := func(t *testing.T, row string) *encounter.StatusGrant {
+		t.Helper()
+		c := loadSource(t, vaultWithAStatus(t, vaultApply, row))
+		for _, o := range monsterNamed(t, c, "captain").Options {
+			for _, g := range o.Grants {
+				if g.Consequence.ApplyStatus != nil {
+					return g.Consequence.ApplyStatus
+				}
+			}
+		}
+		require.FailNow(t, "the captain's line gives no status")
+		return nil
+	}
+	timed := grantOf(t, "                apply_status: { status: rested, to: speaker, until: { rounds: 3 } }\n")
+	require.NotNil(t, timed.Until)
+	require.Equal(t, 3, timed.Until.Rounds)
+	require.NotContains(t, string(timed.Status), "until", "the status block stays opaque to the number")
+	require.Nil(t, grantOf(t, vaultApply).Until)
+}
+
+// UNTIL ROUND-TRIPS THROUGH YAML: a studio save writes `until: { rounds: N }`
+// back, and a status with none writes none.
+func TestDungeonspec_UntilRoundTripsThroughYAML(t *testing.T) {
+	var spec dungeonspec.ApplyStatusSpec
+	require.NoError(t, yaml.Unmarshal([]byte("{ status: rested, to: speaker, until: { rounds: 3 } }"), &spec))
+	require.NotNil(t, spec.Until)
+	require.Equal(t, 3, spec.Until.Rounds)
+	out, err := yaml.Marshal(spec)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "until:")
+	var again dungeonspec.ApplyStatusSpec
+	require.NoError(t, yaml.Unmarshal(out, &again))
+	require.Equal(t, spec.Status, again.Status)
+	require.Equal(t, spec.To, again.To)
+	require.NotNil(t, again.Until)
+	require.Equal(t, 3, again.Until.Rounds)
+
+	var bare dungeonspec.ApplyStatusSpec
+	require.NoError(t, yaml.Unmarshal([]byte("{ status: rested, to: speaker }"), &bare))
+	out, err = yaml.Marshal(bare)
+	require.NoError(t, err)
+	require.NotContains(t, string(out), "until")
 }

@@ -48,6 +48,10 @@ func (l *landing) sight() (sightReach, error) {
 //   - `party_in_sight`: the speaker's party the creature spoken to sees, live
 //     — or, for a line judged as spoken, as it saw them when the words were
 //     said ([recognitionLine.sees]) — the speaker included only if seen.
+//   - `party_in_sight` at `state.give.about`: the party of the one the beat
+//     names (that one included) the creature sees now.
+//   - `the_gone` at `state.give.about`: the members of that party it does not
+//     see now and holds a sight record about: it saw them earlier.
 //   - `speaker` at `give.about`: the speaker, if the one spoken to sees them.
 //   - `speaker` at `apply_status.to`: the speaker, unconditionally.
 //
@@ -59,6 +63,13 @@ func (l *landing) whoNow(place, word string) ([]MemberID, error) {
 	}
 	line := l.line
 	switch word {
+	case WhoItself:
+		return []MemberID{line.spokenTo}, nil
+	case WhoTheOneNamed:
+		if line.named == "" {
+			return nil, nil
+		}
+		return []MemberID{line.named}, nil
 	case string(RecognitionSpokenTo):
 		if line.spokenTo == "" {
 			return nil, nil
@@ -89,7 +100,49 @@ func (l *landing) whoNow(place, word string) ([]MemberID, error) {
 		if err != nil {
 			return nil, err
 		}
+		if place == WhoInStateGiveAbout {
+			seen, _ := l.e.namedPartySeen(reach, holder, line)
+			return seen, nil
+		}
 		return l.e.partyInSight(reach, holder, line), nil
+	case WhoTheGone:
+		if place != WhoInStateGiveAbout {
+			break
+		}
+		holder := line.spokenTo
+		if holder == "" {
+			return nil, nil
+		}
+		reach, err := l.sight()
+		if err != nil {
+			return nil, err
+		}
+		_, gone := l.e.namedPartySeen(reach, holder, line)
+		return gone, nil
 	}
 	return nil, fmt.Errorf("who %q at %s: no resolution written for it", word, place)
+}
+
+// namedPartySeen is the party of the one the line names, that one included
+// and holder never, split in id order: those holder sees now on the reach
+// given, and those it does not see now but holds a sight record about (it saw
+// them earlier: the test an arrest uses). A line that names nobody gives
+// nobody for both.
+func (e *Encounter) namedPartySeen(reach sightReach, holder MemberID, line recognitionLine) (seen, gone []MemberID) {
+	if line.named == "" {
+		return nil, nil
+	}
+	for _, id := range e.partyOf(line.named) {
+		if id == holder {
+			continue
+		}
+		if line.sees(reach, holder, id) {
+			seen = append(seen, id)
+			continue
+		}
+		if _, held := e.intelLog.On(sightMember(holder), sightMember(id)); held == nil {
+			gone = append(gone, id)
+		}
+	}
+	return seen, gone
 }

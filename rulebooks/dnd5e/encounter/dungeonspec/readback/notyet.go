@@ -35,21 +35,22 @@ var saidKeys = map[string][]string{
 	"disposition":        {"between", "stance", "until"},
 	"propBinding":        {"holdable", "holds", "options", "arrives"},
 	"doorBinding":        {"closed", "locked", "opened"},
-	"behaviorDefinition": {"recipe", "table"},
+	"behaviorDefinition": {"recipe", "table", "outcomes"},
 	"interaction":        {"recipe", "approach", "outcomes"},
 	"approach":           {"within"},
 	"outcome":            {"give", "arrest", "jail"},
 	"jail":               {"words", "rounds", "escaped"},
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
-	"give":               {"topic", "to", "about", "heard_by"},
+	"give":               {"topic", "as", "to", "about", "heard_by"},
 	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure", "use"},
 	"conversation":       {"lines"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
 	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "apply_status", "activity", "weight"},
 	"relocate":           {"to", "words", "rounds"},
-	"applyStatus":        {"status", "to"},
+	"applyStatus":        {"status", "to", "until"},
+	"statusUntil":        {"rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
 	"recipe":             {"ref", "initial", "states"},
@@ -130,6 +131,7 @@ func (b *builder) notYetSaid() []Unsaid {
 					give(r, rp)
 					check(at(r, "relocate"), rp+".relocate", "relocate")
 					check(at(r, "apply_status"), rp+".apply_status", "applyStatus")
+					check(at(at(r, "apply_status"), "until"), rp+".apply_status.until", "statusUntil")
 					check(at(r, "activity"), rp+".activity", "activity")
 				})
 			}
@@ -179,6 +181,12 @@ func (b *builder) notYetSaid() []Unsaid {
 	each(at(root, "behaviorDefinitions"), "behaviorDefinitions", func(n *yaml.Node, p string) {
 		check(n, p, "behaviorDefinition")
 		recipe(at(n, "recipe"), p+".recipe", "routineRecipe") // its bag is said (routines.go)
+		each(at(n, "outcomes"), p+".outcomes", func(list *yaml.Node, op string) {
+			each(list, op, func(c *yaml.Node, cp string) {
+				check(c, cp, "outcome")
+				give(c, cp)
+			})
+		})
 		each(at(n, "table"), p+".table", func(rows *yaml.Node, kp string) {
 			each(rows, kp, func(r *yaml.Node, rp string) {
 				check(r, rp, "tableRow")

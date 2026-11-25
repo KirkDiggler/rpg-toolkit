@@ -76,6 +76,7 @@ var machineFactReaders = map[string]func(env any) (any, bool){
 	string(factEnemy):      readEnemy,
 	"heard.kind":           readHeardKind,
 	string(factHeardClaim): readHeardClaim,
+	string(factStance):     readStance,
 }
 
 func vocabularyFor(r *machine.Recipe) machine.Vocabulary {
@@ -145,6 +146,24 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 			return me.e.hasNoted(me.id, ev.Subject, topic), true
 		}}
 	}
+	// THE VALUE OF WHAT THIS CREATURE HAS NOTED ABOUT THE ONE THIS BEAT IS
+	// ABOUT (rpg-project#1007): ALWAYS KNOWN. An unknown fact makes the whole
+	// step depend, and a `not` of it would never fire, so a beat that names
+	// nobody, a topic not noted and a note with no value all answer "".
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), notedAsPrefix) && len(g.Fact.Name) > len(notedAsPrefix) {
+		topic := TopicID(strings.TrimPrefix(string(g.Fact.Name), notedAsPrefix))
+		facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindString, Read: func(env any) (any, bool) {
+			me, ok := env.(*machineEnv)
+			if !ok {
+				return nil, false
+			}
+			ev, ok := me.event.(wakeEv)
+			if !ok || ev.Subject == "" {
+				return "", true
+			}
+			return me.e.notedValue(me.id, ev.Subject, topic), true
+		}}
+	}
 	// A RAISED VOICE (rpg-project#933): only a loudness this rulebook names
 	// is registered, so a misspelt word is a fact the vocabulary refuses,
 	// and so is none at all (`heard.loudness:` names no loudness; the
@@ -178,11 +197,43 @@ func (e *Encounter) envFor(id MemberID) *machineEnv { return &machineEnv{e: e, i
 // noise, or a voice whose words were not caught is neither.
 const factHeardClaim machine.FactName = "heard.claim"
 
+// factStance names the guard fact that reads how this creature stands to the
+// one the beat names (rpg-project#1125): [StanceHostile], [StanceNeutral],
+// [StanceAllied] or [StanceNone].
+const factStance machine.FactName = "stance"
+
+// readStance is how the creature believes it stands to the one the beat names
+// ([Encounter.BelievedStance]: what it believes, never the graph read behind
+// its back). ALWAYS KNOWN: an unknown fact makes the whole step depend and a
+// `not` of it would never fire, so a beat that names nobody and a belief that
+// cannot be read both answer "".
+func readStance(env any) (any, bool) {
+	me, ok := env.(*machineEnv)
+	if !ok {
+		return nil, false
+	}
+	ev, ok := me.event.(wakeEv)
+	if !ok || ev.Subject == "" {
+		return "", true
+	}
+	stance, err := me.e.BelievedStance(me.id, ev.Subject)
+	if err != nil {
+		return "", true
+	}
+	return string(stance), true
+}
+
 // notedPrefix names a guard fact true while this creature has noted a topic
 // about the one the beat names (rpg-project#1000): `noted:<topic>`.
 // `noted.anyone:<topic>` (the engine's `topic:<id>`) is the question
 // about anybody.
 const notedPrefix = "noted:"
+
+// notedAsPrefix names a guard fact that reads the VALUE of what this creature
+// has noted about the one the beat names (rpg-project#1007):
+// `noted.as:<topic>`, a string compared with `eq`. It always answers: the
+// empty string when nothing is noted, or the note has no value.
+const notedAsPrefix = "noted.as:"
 
 // readHeardClaim is `heard.claim`'s reader: the verdict the beat carries,
 // unknown when it carries none.
@@ -226,15 +277,19 @@ func guardWordsAt(on machine.Beat, g *machine.Guard, at []machine.Segment) (stri
 		word, known := ConditionWordOf(name)
 		here := append(slices.Clone(at), machine.Segment{Name: "fact"})
 		switch {
-		case known && word.Word == string(factHeardClaim):
+		case known && (word.Word == string(factHeardClaim) || word.Word == string(factStance)):
 			if v, ok := g.Fact.Value.(string); !ok || !slices.Contains(word.Values, v) {
-				return fmt.Sprintf("`%s` is %s, and this names %q", word.Word, strings.Join(word.Values, " or "), fmt.Sprint(g.Fact.Value)), here
+				return fmt.Sprintf("`%s` is %s, and this names %q", word.Word, joinWords(word.Values, "or"), fmt.Sprint(g.Fact.Value)), here
 			}
 			if allowed := word.allowedOn(); !beatAllowed(allowed, on) {
+				if word.Word == string(factStance) {
+					return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
+						"it is read on %s", name, on, joinWords(allowed, "and")), here
+				}
 				return fmt.Sprintf("`%s` reads what the creature heard, and `%s` is not hearing: it is read on `%s` only",
 					word.Word, on, strings.Join(allowed, "`, `")), here
 			}
-		case known && word.Word == notedPrefix:
+		case known && (word.Word == notedPrefix || word.Word == notedAsPrefix):
 			if !beatAllowed(word.allowedOn(), on) {
 				return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
 					"it is read on %s", name, on, joinWords(word.allowedOn(), "and")), here
@@ -467,12 +522,26 @@ func onDefaultClock(m *memberRecord) bool { return m.Clock == "" || m.Clock == w
 func (e *Encounter) relistBehavior(m *memberRecord) {
 	if m.behaviors == nil {
 		e.listeners.Set(m.ID, nil)
+		delete(e.seenWants, m.ID)
 		return
 	}
 	status, _ := m.behaviors.composer.Inspect(&behavior.InspectComposerInput{})
 	seen := map[machine.Beat]bool{}
 	var listens []machine.Listen
+	// WHAT ITS `seen` STEPS REQUIRE of the one seen (rpg-project#1126): the
+	// steps of each instance's CURRENT state. Any step that requires
+	// nothing makes the member "anyone", and it has no entry.
+	var wants seenWants
+	anyone := false
 	for _, instance := range status.Instances {
+		if i, ok := m.behaviors.byID[instance.ID]; ok {
+			transitions := m.behaviors.input.Instances[i].Instance.Recipe.States[instance.State].Transitions
+			if w, filtered := seenWantsOf(transitions); filtered {
+				wants = append(wants, w...)
+			} else if slices.ContainsFunc(transitions, func(t machine.Transition) bool { return t.On == beatSeen }) {
+				anyone = true
+			}
+		}
 		for _, listen := range instance.Listens {
 			if !seen[listen.Beat] {
 				seen[listen.Beat] = true
@@ -481,6 +550,15 @@ func (e *Encounter) relistBehavior(m *memberRecord) {
 		}
 	}
 	e.listeners.Set(m.ID, listens)
+	if anyone || len(wants) == 0 {
+		delete(e.seenWants, m.ID)
+
+		return
+	}
+	if e.seenWants == nil {
+		e.seenWants = map[MemberID]seenWants{}
+	}
+	e.seenWants[m.ID] = wants
 }
 
 // behaviorDue asks only world-timed instances. A fight-only role never arms the
@@ -716,6 +794,10 @@ func MachineTopic(id string) machine.FactName { return machine.FactName(topicPre
 // MachineNoted names a guard fact true while the creature has noted a topic
 // about the one the beat names (rpg-project#1000): `noted:<id>`.
 func MachineNoted(id string) machine.FactName { return machine.FactName(notedPrefix + id) }
+
+// MachineNotedAs names a guard fact that reads the value the creature has
+// noted about the one the beat names (rpg-project#1007): `noted.as:<id>`.
+func MachineNotedAs(id string) machine.FactName { return machine.FactName(notedAsPrefix + id) }
 
 // MachineEnemyFact reads the actor's own enemy band, never authoritative intel.
 const MachineEnemyFact = factEnemy

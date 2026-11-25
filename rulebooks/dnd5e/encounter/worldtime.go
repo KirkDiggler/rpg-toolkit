@@ -136,7 +136,12 @@ func (e *Encounter) elapseWorld(span int) error {
 		return fmt.Errorf("elapse %d rounds: %w", span, err)
 	}
 	e.clock = jumped
-	return e.jumpWake(uint64(span))
+	if err := e.jumpWake(uint64(span)); err != nil {
+		return err
+	}
+	// A time jump counts against the rounds; lapses are NOT shifted, they
+	// are due at a world round and the jump raised it.
+	return e.lapseDue()
 }
 
 // seatOnWorldClock puts a NEWCOMER on the world clock at the world's own
@@ -534,6 +539,10 @@ func (e *Encounter) wakePass(raised, world bool) error {
 		if err := e.appendTickBeat(at); err != nil {
 			return err
 		}
+		// THE TIME PASSED FOR THE HOLDER FIRST, then creatures are asked.
+		if err := e.lapseDue(); err != nil {
+			return err
+		}
 	}
 	if world {
 		e.landClock(worldClockName, "", at)
@@ -620,6 +629,14 @@ func (e *Encounter) wakePass(raised, world bool) error {
 					return fmt.Errorf("world wakes standing: %w", derr)
 				}
 			}
+		}
+	}
+
+	// AGAIN AFTER THE POP LOOP: a creature's pick can raise the world inside
+	// this pass, and a timer that round made due fires in it.
+	if raised {
+		if err := e.lapseDue(); err != nil {
+			return err
 		}
 	}
 

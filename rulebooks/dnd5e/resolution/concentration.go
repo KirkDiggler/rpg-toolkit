@@ -12,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // concentrationCollector hears every hold that ended during one interaction.
@@ -107,11 +108,11 @@ func (c *concentrationCollector) spellHeldBy(
 		return encounter.SpellIdentity{}, err
 	}
 	if held.Held {
-		return nativeMaintenanceSpell(held.Info.SourceRef, held.Info.SourceName)
+		return nativeMaintenanceHold(held.Info.SourceRef, held.Info.SourceName)
 	}
 	for _, fact := range c.facts {
 		if fact.MaintainerID == casterID {
-			return nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
+			return nativeMaintenanceHold(fact.SourceRef, fact.SourceName)
 		}
 	}
 
@@ -239,7 +240,7 @@ func breaksFrom(
 
 	breaks := make([]encounter.ConcentrationBreak, 0, len(facts))
 	for _, fact := range facts {
-		spell, err := nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
+		spell, err := nativeMaintenanceHold(fact.SourceRef, fact.SourceName)
 		if err != nil {
 			return nil, err
 		}
@@ -278,6 +279,11 @@ func removedResults(fact dnd5eEvents.ConcentrationEndedEvent) ([]encounter.Activ
 		if err != nil {
 			return nil, fmt.Errorf("resolution: %s ended and removed %s from %q: %w",
 				fact.SourceName, address.ConditionRef, address.MemberID, err)
+		}
+		if *parsed == *refs.Conditions.LinkedEffects() {
+			// A linked receiver carries its application's name, which is the
+			// status's own; the catalog's "Linked effects" would name nothing.
+			name = fact.SourceName
 		}
 		results = append(results, encounter.ActivationResult{
 			Kind: encounter.ResultConditionRemoved,

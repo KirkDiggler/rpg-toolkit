@@ -177,6 +177,8 @@ func authorTurnClock(t *testing.T, stored *fakeEncounters, run string, order []s
 	}{{Order: ids, ActiveIdx: active, Round: 1}})
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &data.Bubbles))
+	// A fight nobody rolled for: the save says so and loads (rpg-project#1068).
+	data.Initiative = make([]encounter.BubbleInitiativeData, len(data.Bubbles))
 }
 
 // seedRun writes a run straight into the fake stores, for the few scenes whose

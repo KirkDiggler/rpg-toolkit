@@ -75,7 +75,7 @@ ROUTINES
         at behaviorDefinitions.porter-policy
     - In the state `ready`, Guard (porter) listens for 1 beat.
         at behaviorDefinitions.porter-policy.recipe.states.ready
-    - In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.
+    - In the state `ready`, when someone's step brings them within Guard (porter)'s distance (the step's own `within`) and Guard (porter) sees them; or, when Guard (porter) carries a conversation that declares an approach, under that conversation's hail rule, Guard (porter) acts from its own `approached` rows.
         at behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]
     - `approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and anyone in the next room within 30 feet of Guard (porter) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).
         at behaviorDefinitions.porter-policy.table.approached[0]

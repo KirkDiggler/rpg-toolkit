@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/currency"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -106,6 +107,13 @@ type Data struct {
 	Wallet currency.Money `json:"wallet"`
 
 	EquipmentSlots EquipmentSlots `json:"equipment_slots,omitempty"`
+
+	// Items are the items this character owns that keep their own record: each
+	// carries its whole description and its own counts, copied onto the
+	// character with it. They are not rows of the rulebook's catalogue, so
+	// they have an identity of their own (the item's id, never a catalogue
+	// id) and are worn only in the worn slots (see [WornSlots]).
+	Items []magicitems.Data `json:"items,omitempty"`
 
 	// KnownCantrips and KnownSpells are what this character knows, as
 	// canonical content refs ("dnd5e:spells:vicious-mockery"), written by the

@@ -70,8 +70,8 @@ ROUTINES
   Routine `porter-policy` — run by Guard (porter); starts in `ready`; recipe `site:behaviors:porter-policy`.
       [behaviorDefinitions.porter-policy]
     - States (it is the runner):
-      - In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) →
-          acts from its `approached` rows. [ready.transitions[0]]
+      - In `ready`, when someone comes within its distance in its sight (or, for a conversation's carrier,
+          under that conversation's hail rule) → acts from its `approached` rows. [ready.transitions[0]]
     - Rows (one whose conditions are true is picked by weight):
       - `approached`: says “Halt there. What's your business?” [approached[0]]
 

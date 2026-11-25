@@ -367,6 +367,8 @@ func (c *Character) buildAvailableAbilities() []AvailableAbility {
 		})
 	}
 
+	result = append(result, c.wornItemAbilities()...)
+
 	return result
 }
 
@@ -414,7 +416,18 @@ func (c *Character) activateCombatAbility(
 
 // activateFeature directly manages action economy for feature activation.
 // Features manage their own resources while Character manages slot consumption.
+//
+// A feature that carries a description is not activated here: it is used from
+// its description, so it is refused before the turn is touched.
 func (c *Character) activateFeature(f features.Feature, input *ActivateAbilityInput) (*ActivateAbilityOutput, error) {
+	if _, described := f.(features.Described); described {
+		return &ActivateAbilityOutput{
+			Success:   false,
+			Error:     features.ErrUsedFromItsDescription.Error(),
+			Abilities: c.buildAvailableAbilities(),
+		}, nil
+	}
+
 	if !c.canUseAbilityByActionType(f.ActionType()) {
 		reason := c.actionTypeExhaustedReason(f.ActionType())
 		return &ActivateAbilityOutput{
@@ -645,8 +658,8 @@ func (c *Character) featureResourceInfo(f features.Feature) (current, max int) {
 		r := c.GetResource(resources.RageCharges)
 		return r.Current(), r.Maximum()
 	case refs.Features.SecondWind().ID:
-		// SecondWind manages its own resource internally
-		return 0, 0
+		r := c.GetResource(resources.SecondWind)
+		return r.Current(), r.Maximum()
 	case refs.Features.FlurryOfBlows().ID, refs.Features.PatientDefense().ID, refs.Features.StepOfTheWind().ID:
 		r := c.GetResource(resources.Ki)
 		return r.Current(), r.Maximum()

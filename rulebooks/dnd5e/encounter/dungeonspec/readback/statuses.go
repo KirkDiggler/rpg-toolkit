@@ -62,9 +62,21 @@ const RoleReceives = "receives"
 func (b *builder) statusGrantStatement(g encounter.StatusGrant, lead, path string, t lineTarget, f foldInfo) Statement {
 	name := b.statusName(g.ID)
 	who, short := receiverWords(g.To, t)
-	s := fmt.Sprintf("%s, %s is given the status %s (%s). The rules apply it to them; a second giving does what the status's "+
-		"`again` says.", lead, who, said(name), quote(g.ID))
-	f.text = "gives " + short + " the status " + said(name)
+	// The ending written where it is given (rpg-project#1080): a clause between
+	// the id's closing bracket and the full stop, and "for N rounds" folded.
+	var until, foldedFor string
+	if g.Until != nil {
+		unit, passed := "rounds", "have"
+		if g.Until.Rounds == 1 {
+			unit, passed = "round", "has"
+		}
+		until = fmt.Sprintf(" until %d %s of world time %s passed, or sooner if one of the status's own endings comes first",
+			g.Until.Rounds, unit, passed)
+		foldedFor = fmt.Sprintf(" for %d %s", g.Until.Rounds, unit)
+	}
+	s := fmt.Sprintf("%s, %s is given the status %s (%s)%s. The rules apply it to them; a second giving does what the status's "+
+		"`again` says.", lead, who, said(name), quote(g.ID), until)
+	f.text = "gives " + short + " the status " + said(name) + foldedFor
 	return b.fstmt(KindLineGrant, t.about, path+".apply_status", s, f,
 		Connection{Kind: ConnStatus, ID: g.ID, Role: RoleGives},
 		Connection{Kind: ConnWho, ID: g.To, Role: RoleReceives, At: g.ID})

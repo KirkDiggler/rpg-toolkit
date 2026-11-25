@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -249,48 +250,42 @@ func (s *statusSuite) TestEveryWordAndValueCompilesAndRuns() {
 
 // THE TABLE AND THE COMPILER AGREE: every word in the table appears in a
 // compiled document above, and every key Compile read in those documents is
-// a word in the table.
+// a word in the table. Where a word is written, and what a list's entries are
+// written with, are read from the table's own WrittenIn and Holds.
 func (s *statusSuite) TestWordsAndCompileAgree() {
 	words := status.Words(&status.WordsInput{}).Words
 	known := map[string]bool{}
+	writtenIn := map[string]status.Word{}
 	for _, w := range words {
 		s.NotEmpty(w.Label, w.Word)
 		s.Equal(strings.ToLower(w.Label[:1]), w.Label[:1], "%s label starts lower-case", w.Word)
 		known[string(w.Place)+":"+w.Word] = true
+		writtenIn[string(w.WrittenIn)+":"+w.Word] = w
 		for _, v := range w.Values {
 			s.NotEmpty(v.Label)
 			s.Equal(strings.ToLower(v.Label[:1]), v.Label[:1], "%s label starts lower-case", v.Word)
 		}
 	}
 	used := map[string]bool{}
-	var walk func(place status.Place, raw json.RawMessage)
-	walk = func(place status.Place, raw json.RawMessage) {
+	var walk func(in status.Place, raw json.RawMessage)
+	walk = func(in status.Place, raw json.RawMessage) {
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(raw, &fields) != nil {
 			return
 		}
 		for key, value := range fields {
-			if place == status.PlaceStatus && key == "again" {
-				used[string(status.PlaceAgain)+":"+key] = true
-			} else {
-				used[string(place)+":"+key] = true
-			}
-			switch {
-			case place == status.PlaceStatus && (key == "changes" || key == "maintenance" || key == "when_given"):
+			w, ok := writtenIn[string(in)+":"+key]
+			s.Require().True(ok, "Compile accepted %s written in %s, which Words does not list", key, in)
+			used[string(w.Place)+":"+key] = true
+			switch w.Shape {
+			case status.ShapeList:
 				var items []json.RawMessage
 				s.Require().NoError(json.Unmarshal(value, &items))
-				next := status.PlaceChange
-				switch key {
-				case "maintenance":
-					next = status.PlaceMaintenance
-				case "when_given":
-					next = status.PlaceWhenGiven
-				}
 				for _, item := range items {
-					walk(next, item)
+					walk(w.Holds, item)
 				}
-			case place == status.PlaceChange && key == "when":
-				walk(status.PlaceWhen, value)
+			case status.ShapeEntries:
+				walk(w.Holds, value)
 			}
 		}
 	}
@@ -305,40 +300,142 @@ func (s *statusSuite) TestWordsAndCompileAgree() {
 	}
 }
 
+// THE WORDS TELL A FORM WHAT EACH TAKES: where each is written, what a list's
+// entries are written with, which are required, which only narrow, the bounds
+// of a number and the when words a change may use. Each is checked against
+// what Compile does, so a field cannot say what the compiler does not.
+func (s *statusSuite) TestWordsTellAFormWhatEachTakes() {
+	words := status.Words(&status.WordsInput{}).Words
+	holds := map[string]status.Place{
+		"changes": status.PlaceChange, "maintenance": status.PlaceMaintenance,
+		"when_given": status.PlaceWhenGiven, "when": status.PlaceWhen,
+	}
+	var required, narrows []string
+	for _, w := range words {
+		s.NotEmpty(w.WrittenIn, w.Word)
+		if w.Word == "again" {
+			s.Equal(status.PlaceStatus, w.WrittenIn)
+		} else {
+			s.Equal(w.Place, w.WrittenIn, w.Word)
+		}
+		if w.Shape == status.ShapeList || w.Shape == status.ShapeEntries {
+			s.Equal(holds[w.Word], w.Holds, w.Word)
+		} else {
+			s.Empty(w.Holds, w.Word)
+		}
+		if w.Required {
+			required = append(required, w.Word)
+		}
+		if w.Narrows {
+			narrows = append(narrows, w.Word)
+		}
+		number := w.Shape == status.ShapeWholeNumber || w.Shape == status.ShapePositiveWholeNumber
+		if number != (w.Bounds != nil) {
+			s.Failf("bounds", "%s: bounds are set exactly for number words", w.Word)
+		}
+		if w.Bounds != nil {
+			s.numberEdges(w)
+		}
+		if w.Place == status.PlaceChange && !w.Narrows {
+			s.whenWords(words, w)
+		}
+	}
+	s.ElementsMatch([]string{"name", "changes", "maintenance", "again"}, required)
+	s.Equal([]string{"when"}, narrows)
+}
+
+// numberEdges checks a number word's bounds against what Compile accepts.
+func (s *statusSuite) numberEdges(w status.Word) {
+	doc := func(n int) string {
+		change := fmt.Sprintf(`{"%s":%d}`, w.Word, n)
+		if w.Place == status.PlaceWhenGiven {
+			return strings.Replace(cook, `"again":"ignored"`, fmt.Sprintf(`"again":"ignored","when_given":[%s]`, change), 1)
+		}
+		return s.withChange(change)
+	}
+	compiles := func(n int) bool {
+		_, err := status.Compile(&status.CompileInput{ID: "t", Status: json.RawMessage(doc(n))})
+		return err == nil
+	}
+	s.True(compiles(w.Bounds.Min), "%s min", w.Word)
+	s.True(compiles(w.Bounds.Max), "%s max", w.Word)
+	s.False(compiles(w.Bounds.Min-1), "%s below min", w.Word)
+	s.False(compiles(w.Bounds.Max+1), "%s above max", w.Word)
+	s.Equal(w.Bounds.ZeroAllowed, compiles(0), "%s zero", w.Word)
+}
+
+// whenWords checks a change word's when words against what Compile accepts:
+// a when word compiles exactly when it is in the word's When, or, for a word
+// whose when depends on its value, in that value's When.
+func (s *statusSuite) whenWords(words []status.Word, w status.Word) {
+	type variant struct {
+		change string
+		allow  []string
+	}
+	var variants []variant
+	switch w.Shape {
+	case status.ShapeOneOf:
+		s.Empty(w.When, "%s: a one of word's when words belong to its values", w.Word)
+		for _, v := range w.Values {
+			variants = append(variants, variant{fmt.Sprintf(`"%s":%q`, w.Word, v.Word), v.When})
+		}
+	case status.ShapeListOf:
+		variants = append(variants, variant{fmt.Sprintf(`"%s":[%q]`, w.Word, w.Values[0].Word), w.When})
+	default:
+		variants = append(variants, variant{fmt.Sprintf(`"%s":2`, w.Word), w.When})
+	}
+	for _, v := range variants {
+		for _, when := range words {
+			if when.Place != status.PlaceWhen {
+				continue
+			}
+			doc := s.withChange(fmt.Sprintf(`{%s,"when":{"%s":%q}}`, v.change, when.Word, when.Values[0].Word))
+			_, err := status.Compile(&status.CompileInput{ID: "t", Status: json.RawMessage(doc)})
+			s.Equal(slices.Contains(v.allow, when.Word), err == nil, "%s: when %s", v.change, when.Word)
+		}
+	}
+}
+
 // EVERY REFUSAL NAMES THE AUTHOR'S PATH and the words allowed there.
 func (s *statusSuite) TestRefusalsNameThePathAndTheWords() {
-	for name, tc := range map[string]struct{ doc, says string }{
-		"unknown change":             {strings.Replace(cook, `"advantage":"checks"`, `"inspiration":"checks"`, 1), "changes[0].inspiration: not a change; a change is one of: advantage, resistance, damage"},
-		"unknown value":              {strings.Replace(cook, `"advantage":"checks"`, `"advantage":"skills"`, 1), `changes[0].advantage: "skills" is not one of: "checks"`},
-		"unknown when key":           {strings.Replace(cook, `"ability":"charisma"`, `"skill":"persuasion"`, 1), "changes[0].when.skill: not a when word; one of: ability, attack"},
-		"unknown when value":         {strings.Replace(cook, `"charisma"`, `"cha"`, 1), `changes[0].when.ability: "cha" is not one of: "strength"`},
-		"when the kind can't use":    {strings.Replace(cook, `"ability":"charisma"`, `"attack":"melee"`, 1), "changes[0].when.attack: advantage cannot be narrowed by attack; it can use ability"},
-		"resistance takes no when":   {strings.Replace(cook, `"advantage":"checks"`, `"resistance":["fire"]`, 1), "changes[0].when.ability: resistance cannot be narrowed by ability; it can use nothing"},
-		"cannot takes no when":       {strings.Replace(cook, `"advantage":"checks"`, `"cannot":["move"]`, 1), "changes[0].when: cannot takes no when; it is in force while held"},
-		"cannot an unknown thing":    {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":["speak"]`, 1), `changes[0].cannot[0]: "speak" is not one of: "move"`},
-		"cannot nothing":             {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":[]`, 1), `changes[0].cannot: must be a non-empty list of: "move"`},
-		"cannot move twice":          {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":["move","move"]`, 1), `changes[0].cannot[1]: "move" is listed twice`},
-		"cannot a single word":       {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":"move"`, 1), `changes[0].cannot: must be a non-empty list of: "move"`},
-		"unknown damage type":        {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"resistance":["sonic"]`, 1), `changes[0].resistance[0]: "sonic" is not one of`},
-		"zero damage":                {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"damage":0`, 1), "changes[0].damage: must be a whole number other than zero"},
-		"fractional damage":          {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"damage":1.5`, 1), "changes[0].damage: must be a whole number"},
-		"two changes in one":         {strings.Replace(cook, `"advantage":"checks"`, `"advantage":"checks","damage":2`, 1), "changes[0]: one change per entry"},
-		"empty maintenance":          {strings.Replace(cook, `[{"ends_on":"run"}]`, `[]`, 1), "maintenance: needs at least one rule"},
-		"unknown rule":               {strings.Replace(cook, `"ends_on":"run"`, `"lasts":"run"`, 1), "maintenance[0].lasts: not a maintenance rule; one of: ends_on"},
-		"unknown rule value":         {strings.Replace(cook, `"ends_on":"run"`, `"ends_on":"dawn"`, 1), `maintenance[0].ends_on: "dawn" is not one of: "run"`},
-		"unknown again":              {strings.Replace(cook, `"again":"ignored"`, `"again":"refresh"`, 1), `again: "refresh" is not one of: "ignored"`},
-		"missing name":               {strings.Replace(cook, `"name":"Well fed",`, ``, 1), "the status has no name"},
-		"blank name":                 {strings.Replace(cook, `"Well fed"`, `" "`, 1), "name: must be non-empty text"},
-		"unknown top-level word":     {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","lasts":"forever"`, 1), "the status: unknown word lasts; one of: name, changes, maintenance, when_given, again"},
-		"no changes":                 {strings.Replace(cook, `[{"advantage":"checks","when":{"ability":"charisma"}}]`, `[]`, 1), "changes: needs at least one change"},
-		"unknown change list":        {strings.Replace(cook, `"advantage":"checks"`, `"inspiration":"checks"`, 1), "a change is one of: advantage, resistance, damage, max_hit_points, initiative"},
-		"unknown when_given word":    {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"feed":2}]`, 1), "when_given[0].feed: not something done when given; one of: heal"},
-		"when_given not a list":      {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":{"heal":2}`, 1), "when_given: must be a list"},
-		"two acts in one entry":      {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"heal":2,"feed":1}]`, 1), "when_given[0]: one act per entry"},
-		"when_given without changes": {strings.Replace(strings.Replace(cook, `[{"advantage":"checks","when":{"ability":"charisma"}}]`, `[]`, 1), `"again":"ignored"`, `"again":"ignored","when_given":[{"heal":2}]`, 1), "changes: needs at least one change"},
-		"repeated key":               {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","again":"ignored"`, 1), "the status: must be an object of"},
+	for name, tc := range map[string]struct{ doc, says, path string }{
+		"unknown change":             {strings.Replace(cook, `"advantage":"checks"`, `"inspiration":"checks"`, 1), "changes[0].inspiration: not a change; a change is one of: advantage, resistance, damage", "changes[0].inspiration"},
+		"unknown value":              {strings.Replace(cook, `"advantage":"checks"`, `"advantage":"skills"`, 1), `changes[0].advantage: "skills" is not one of: "checks"`, "changes[0].advantage"},
+		"unknown when key":           {strings.Replace(cook, `"ability":"charisma"`, `"skill":"persuasion"`, 1), "changes[0].when.skill: not a when word; one of: ability, attack", "changes[0].when.skill"},
+		"unknown when value":         {strings.Replace(cook, `"charisma"`, `"cha"`, 1), `changes[0].when.ability: "cha" is not one of: "strength"`, "changes[0].when.ability"},
+		"when the kind can't use":    {strings.Replace(cook, `"ability":"charisma"`, `"attack":"melee"`, 1), "changes[0].when.attack: advantage cannot be narrowed by attack; it can use ability", "changes[0].when.attack"},
+		"resistance takes no when":   {strings.Replace(cook, `"advantage":"checks"`, `"resistance":["fire"]`, 1), "changes[0].when.ability: resistance cannot be narrowed by ability; it can use nothing", "changes[0].when.ability"},
+		"cannot takes no when":       {strings.Replace(cook, `"advantage":"checks"`, `"cannot":["move"]`, 1), "changes[0].when: cannot takes no when; it is in force while held", "changes[0].when"},
+		"cannot an unknown thing":    {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":["speak"]`, 1), `changes[0].cannot[0]: "speak" is not one of: "move"`, "changes[0].cannot[0]"},
+		"cannot nothing":             {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":[]`, 1), `changes[0].cannot: must be a non-empty list of: "move"`, "changes[0].cannot"},
+		"cannot move twice":          {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":["move","move"]`, 1), `changes[0].cannot[1]: "move" is listed twice`, "changes[0].cannot[1]"},
+		"cannot a single word":       {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"cannot":"move"`, 1), `changes[0].cannot: must be a non-empty list of: "move"`, "changes[0].cannot"},
+		"unknown damage type":        {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"resistance":["sonic"]`, 1), `changes[0].resistance[0]: "sonic" is not one of`, "changes[0].resistance[0]"},
+		"zero damage":                {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"damage":0`, 1), "changes[0].damage: must be a whole number other than zero", "changes[0].damage"},
+		"fractional damage":          {strings.Replace(cook, `"advantage":"checks","when":{"ability":"charisma"}`, `"damage":1.5`, 1), "changes[0].damage: must be a whole number", "changes[0].damage"},
+		"two changes in one":         {strings.Replace(cook, `"advantage":"checks"`, `"advantage":"checks","damage":2`, 1), "changes[0]: one change per entry", "changes[0]"},
+		"empty maintenance":          {strings.Replace(cook, `[{"ends_on":"run"}]`, `[]`, 1), "maintenance: needs at least one rule", "maintenance"},
+		"unknown rule":               {strings.Replace(cook, `"ends_on":"run"`, `"lasts":"run"`, 1), "maintenance[0].lasts: not a maintenance rule; one of: ends_on", "maintenance[0].lasts"},
+		"unknown rule value":         {strings.Replace(cook, `"ends_on":"run"`, `"ends_on":"dawn"`, 1), `maintenance[0].ends_on: "dawn" is not one of: "run"`, "maintenance[0].ends_on"},
+		"unknown again":              {strings.Replace(cook, `"again":"ignored"`, `"again":"refresh"`, 1), `again: "refresh" is not one of: "ignored"`, "again"},
+		"missing name":               {strings.Replace(cook, `"name":"Well fed",`, ``, 1), "the status has no name", "name"},
+		"blank name":                 {strings.Replace(cook, `"Well fed"`, `" "`, 1), "name: must be non-empty text", "name"},
+		"unknown top-level word":     {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","lasts":"forever"`, 1), "the status: unknown word lasts; one of: name, changes, maintenance, when_given, again", "lasts"},
+		"no changes":                 {strings.Replace(cook, `[{"advantage":"checks","when":{"ability":"charisma"}}]`, `[]`, 1), "changes: needs at least one change", "changes"},
+		"unknown change list":        {strings.Replace(cook, `"advantage":"checks"`, `"inspiration":"checks"`, 1), "a change is one of: advantage, resistance, damage, max_hit_points, initiative", "changes[0].inspiration"},
+		"unknown when_given word":    {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"feed":2}]`, 1), "when_given[0].feed: not something done when given; one of: heal", "when_given[0].feed"},
+		"when_given not a list":      {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":{"heal":2}`, 1), "when_given: must be a list", "when_given"},
+		"two acts in one entry":      {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","when_given":[{"heal":2,"feed":1}]`, 1), "when_given[0]: one act per entry", "when_given[0]"},
+		"when_given without changes": {strings.Replace(strings.Replace(cook, `[{"advantage":"checks","when":{"ability":"charisma"}}]`, `[]`, 1), `"again":"ignored"`, `"again":"ignored","when_given":[{"heal":2}]`, 1), "changes: needs at least one change", "changes"},
+		"repeated key":               {strings.Replace(cook, `"again":"ignored"`, `"again":"ignored","again":"ignored"`, 1), "the status: must be an object of", ""},
 	} {
-		s.Run(name, func() { s.refused(tc.doc, tc.says) })
+		s.Run(name, func() {
+			s.refused(tc.doc, tc.says)
+			_, err := status.Compile(&status.CompileInput{ID: "well-fed", Status: json.RawMessage(tc.doc)})
+			var refusal *status.Refusal
+			s.Require().ErrorAs(err, &refusal)
+			s.Equal(tc.path, refusal.Path)
+		})
 	}
 }
 

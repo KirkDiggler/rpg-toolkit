@@ -457,7 +457,7 @@ func TestMachineWords_FixedAndRequiredArePinned(t *testing.T) {
 	}
 	require.Equal(t, []string{
 		"enemy.op=eq", "fact:.op=eq", "heard.kind.op=eq", "heard.loudness:.op=eq", "heard.claim.op=eq",
-		"noted:.op=eq", "noted.anyone:.op=eq", "within.op=lte", "regions.op=lte", "anchor.value=true",
+		"noted:.op=eq", "noted.as:.op=eq", "noted.anyone:.op=eq", "stance.op=eq", "within.op=lte", "regions.op=lte", "anchor.value=true",
 	}, fixed)
 	require.Equal(t, []string{"rounds.n"}, optional, "the arguments that may be left out")
 }

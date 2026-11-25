@@ -213,7 +213,11 @@ func (e *statusError) Error() string { return "statuses." + e.id + ": " + e.mess
 // not a JSON object") — so a row that names a status can never compile
 // quietly without its grant.
 func statusGrantOf(a ApplyStatusSpec, statuses map[string]json.RawMessage) *encounter.StatusGrant {
-	return &encounter.StatusGrant{ID: a.Status, Status: append(json.RawMessage(nil), statuses[a.Status]...), To: a.To}
+	grant := &encounter.StatusGrant{ID: a.Status, Status: append(json.RawMessage(nil), statuses[a.Status]...), To: a.To}
+	if a.Until != nil {
+		grant.Until = &encounter.StatusUntil{Rounds: a.Until.Rounds}
+	}
+	return grant
 }
 
 // declaredStatusList is the declared ids as a refusal lists them.

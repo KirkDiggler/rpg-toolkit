@@ -201,7 +201,7 @@ func (e *Encounter) completeBehaviorWork(m *memberRecord, work *BehaviorWork, ex
 	if err != nil {
 		return err // completion never retries with Decide
 	}
-	if err := e.behaviorStepped(m, out.Steps); err != nil {
+	if err := e.behaviorStepped(m, out.Steps, "", now); err != nil {
 		return err
 	}
 	if _, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m, act: executionAct,

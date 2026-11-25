@@ -4,16 +4,22 @@
 package items_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // The rulebook vocabulary and rules stay in this consumer, not in items.
@@ -24,16 +30,12 @@ const (
 	windGrant                = "second_wind"
 )
 
-// This ref belongs to the prototype consumer's parameter schema. It is not a
-// claim that the production feature loader accepts a ring-level grant payload.
-var windRef = core.Ref{Module: "example", Type: "abilities", ID: "second_wind"}
-
-type windParameters struct {
-	Level int `json:"level"`
-}
+// The ring names the production ability: the same ref a fighter's class
+// feature asks the rulebook for.
+var windRef = *refs.Features.SecondWind()
 
 func ringDefinition(level int) items.Definition {
-	parameters, err := json.Marshal(windParameters{Level: level})
+	parameters, err := json.Marshal(features.SecondWindParameters{Level: level})
 	if err != nil {
 		panic(err)
 	}
@@ -56,25 +58,8 @@ func ringConfig(id string, level int, state *items.Data) items.Config {
 	}
 }
 
-func parseWind(grant items.Grant) (windParameters, error) {
-	if grant.Ref != windRef {
-		return windParameters{}, fmt.Errorf("unknown consumer ability %s", grant.Ref.String())
-	}
-	var p windParameters
-	decoder := json.NewDecoder(bytes.NewReader(grant.Parameters))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&p); err != nil {
-		return p, err
-	}
-	if p.Level <= 0 {
-		return p, fmt.Errorf("Second Wind requires a positive supplied level")
-	}
-	return p, nil
-}
-
 func validateSecondWind(grant items.Grant) error {
-	_, err := parseWind(grant)
-	return err
+	return features.ValidateParameters(&features.ValidateParametersInput{Ref: grant.Ref, Parameters: grant.Parameters})
 }
 
 func useRing(ctx context.Context, item *items.Item, holder string, roller dice.Roller) (
@@ -83,21 +68,60 @@ func useRing(ctx context.Context, item *items.Item, holder string, roller dice.R
 	return items.Use(ctx, items.UseInput[*dndevents.RollCalculation]{
 		Item: item, HolderID: holder, GrantID: windGrant,
 		Resolve: func(ctx context.Context, offer items.Offer) (*dndevents.RollCalculation, error) {
-			p, err := parseWind(offer.Grant)
+			abilityRef, itemRef := offer.Grant.Ref, offer.Source.ItemRef
+			// The item charges its own count in items.Use, so no pools are passed.
+			definition, err := features.DescribeFromRef(&features.DescribeFromRefInput{
+				Ref:        offer.Grant.Ref,
+				Parameters: offer.Grant.Parameters,
+				Giver: dndevents.RollSource{
+					Ref: &itemRef, Name: offer.Source.Name, Label: "Ring level", SourceID: offer.Source.ItemID,
+				},
+			})
 			if err != nil {
 				return nil, err
 			}
-			abilityRef, itemRef := offer.Grant.Ref, offer.Source.ItemRef
 			source := dndevents.RollSource{Ref: &abilityRef, Name: offer.Source.Name, SourceID: offer.Source.ItemID}
-			declaration := healing.Declaration{
-				Dice: "1d10",
-				Modifiers: []healing.Modifier{{Amount: p.Level, Source: dndevents.RollSource{
-					Ref: &itemRef, Name: offer.Source.Name, SourceID: offer.Source.ItemID, Label: "Ring level",
-				}}},
-			}
-			return healing.Resolve(ctx, declaration, source, roller)
+			return healing.Resolve(ctx, *definition.Effect.Healing, source, roller)
 		},
 	})
+}
+
+// payRing uses the ring at the rulebook's gate: the holder's bonus action and
+// the ring's own use are checked together and spent together, in one payment.
+// Nothing is taken and given back. The healing resolves only after the payment.
+func payRing(ctx context.Context, item *items.Item, holder string, economy *combat.ActionEconomy, roller dice.Roller) (
+	*dndevents.RollCalculation, error,
+) {
+	offers, err := item.Offers(items.OffersInput{HolderID: holder})
+	if err != nil {
+		return nil, err
+	}
+	var offer *items.Offer
+	for i := range offers.Grants {
+		if offers.Grants[i].ID == windGrant {
+			offer = &offers.Grants[i]
+		}
+	}
+	if offer == nil {
+		return nil, fmt.Errorf("%w: %q holds no %s offer from this ring", items.ErrUnavailable, holder, windGrant)
+	}
+	abilityRef, itemRef := offer.Grant.Ref, offer.Source.ItemRef
+	definition, err := features.DescribeFromRef(&features.DescribeFromRefInput{
+		Ref:        offer.Grant.Ref,
+		Parameters: offer.Grant.Parameters,
+		Giver: dndevents.RollSource{
+			Ref: &itemRef, Name: offer.Source.Name, Label: "Ring level", SourceID: offer.Source.ItemID,
+		},
+		Pools: map[coreResources.ResourceKey]int{coreResources.ResourceKey(offer.Grant.Pool): offer.Grant.Uses},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := combat.Pay(combat.WithPools(economy, item.Budget(holder)), definition.Cost); err != nil {
+		return nil, err
+	}
+	source := dndevents.RollSource{Ref: &abilityRef, Name: offer.Source.Name, SourceID: offer.Source.ItemID}
+	return healing.Resolve(ctx, *definition.Effect.Healing, source, roller)
 }
 
 type fixedRoller struct {
@@ -123,4 +147,26 @@ func (r *fixedRoller) RollN(_ context.Context, count, size int) ([]int, error) {
 		return nil, fmt.Errorf("fixture expects exactly one d10, got %dd%d", count, size)
 	}
 	return []int{r.face}, nil
+}
+
+// The ring's grant is checked by the rulebook, so the rulebook's own sentences
+// refuse a bad grant when the item is built.
+func TestRulebookRefusesABadRingGrant(t *testing.T) {
+	for name, tc := range map[string]struct {
+		parameters string
+		contains   string
+	}{
+		"level zero":     {`{"level": 0}`, "second wind level 0 must be at least 1"},
+		"unknown member": {`{"level": 1, "bonus": 2}`, "second wind parameters"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := ringConfig("ring-bad", 1, nil)
+			grant := cfg.Definition.Grants[windGrant]
+			grant.Parameters = json.RawMessage(tc.parameters)
+			cfg.Definition.Grants[windGrant] = grant
+			_, err := items.New(cfg)
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.contains)
+		})
+	}
 }
