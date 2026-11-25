@@ -228,6 +228,9 @@ type AtlasStructuralWall struct {
 	// FaceFinishes are detached explicit choices on this permitted wall's faces.
 	FaceFinishes []WallFaceFinish
 
+	// Sections are detached visual spans disclosed only with this wall.
+	Sections []WallSection
+
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area — the same support that decides whether the
 	// wall is presented, so a presented wall's list is never empty — in order
@@ -705,6 +708,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			FootprintCells: footprint,
 			Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
 			FaceFinishes:   cloneWallFaceFinishes(w.faceFinishes),
+			Sections:       cloneWallSections(w.sections),
 		}
 		for j := range w.openings {
 			o := &w.openings[j]

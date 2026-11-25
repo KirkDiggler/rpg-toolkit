@@ -947,11 +947,22 @@ type RoomWallDoor struct {
 // in a catalog is the codec that owns that catalog (the web's) — not this
 // engine's.
 type RoomWallAppearance struct {
+	Sections          []RoomWallSection      `yaml:"sections,omitempty" json:"sections,omitempty"`
 	MaterialOverrides []RoomMaterialOverride `yaml:"materialOverrides,omitempty" json:"materialOverrides,omitempty"`
 	AssetRef          string                 `yaml:"assetRef" json:"assetRef"`
 	Height            float64                `yaml:"height" json:"height"`
 	Thickness         float64                `yaml:"thickness" json:"thickness"`
 	Elevation         float64                `yaml:"elevation" json:"elevation"`
+}
+
+// RoomWallSection is a once-placed visual feature owned by its wall. Position
+// and width are scene-unit lengths along that wall, never a mechanical opening.
+// AssetRef is opaque; no model or material registry participates in compilation.
+type RoomWallSection struct {
+	ID       string  `yaml:"id" json:"id"`
+	AssetRef string  `yaml:"assetRef" json:"assetRef"`
+	Position float64 `yaml:"position" json:"position"`
+	Width    float64 `yaml:"width" json:"width"`
 }
 
 // RoomRegion is one authored place on the site's floor (rpg-project#725): an

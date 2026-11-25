@@ -305,6 +305,14 @@
 // existing projection; opening-only replacements never change them. This
 // module neither resolves material resources nor infers regional wall charts.
 //
+// WallSection captures a once-placed visual replacement owned by a structural
+// wall: an opaque ref and wall-local identity, centre and width in canonical
+// feet. Its spans fit without overlapping each other or opening surrounds.
+// Sections never create gameplay openings, contributors or door state. Input,
+// site data, Atlas reads and reveal rows are detached; a hidden wall carries
+// none, and opening-only replacements leave the captured list unchanged.
+// Empty legacy lists preserve existing appearance and site identity.
+//
 // # Structural walls and their permitted cuts (rpg-project#169)
 //
 // The placed spans are the MECHANICAL truth — the rectangles a wall blocks
