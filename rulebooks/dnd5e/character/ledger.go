@@ -181,8 +181,17 @@ func (c *Character) BankCapacity(key combat.CapacityType, n int) {
 // zero is the answer that REFUSES a cost in it. A character with no ki must not
 // be able to pay for Flurry of Blows by not paying.
 //
+// A key that is the [ItemPoolKey] of a pool of an item the character owns is
+// answered from the item's live record while the item is worn, and reads zero
+// when it is not. The character's own pools are looked up first.
+//
 // Implements [combat.Ledger].
 func (c *Character) PoolLeft(key coreResources.ResourceKey) int {
+	if _, own := c.resources[key]; !own {
+		if i, name, ok := c.itemPool(key); ok {
+			return c.items[i].Left[name]
+		}
+	}
 	return c.GetResource(key).Current()
 }
 
@@ -198,5 +207,14 @@ func (c *Character) PoolLeft(key coreResources.ResourceKey) int {
 //
 // Implements [combat.Ledger].
 func (c *Character) SpendPool(key coreResources.ResourceKey, n int) {
+	if _, own := c.resources[key]; !own {
+		if i, name, ok := c.itemPool(key); ok {
+			if n > 0 {
+				c.items[i].Left[name] = max(0, c.items[i].Left[name]-n)
+				c.poolChanged()
+			}
+			return
+		}
+	}
 	_ = c.UseResource(key, n)
 }

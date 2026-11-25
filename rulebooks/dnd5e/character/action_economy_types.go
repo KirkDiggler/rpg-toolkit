@@ -89,6 +89,17 @@ type AvailableAbility struct {
 	Reason          string                // why CanUse is false (empty when true)
 	ResourceCurrent int                   // current charges (0 if no resource)
 	ResourceMax     int                   // max charges (0 if no resource)
+
+	// Giver is the item that grants this ability. Nil means it is the
+	// character's own (a combat ability or a class feature).
+	Giver *AbilityGiver
+}
+
+// AbilityGiver names the worn item an ability comes from.
+type AbilityGiver struct {
+	ItemID   string // the item, e.g. "cloak-7"
+	ItemName string // what a player sees, e.g. "Lieutenant's cloak"
+	Grant    string // the grant's name within the item, e.g. "second-wind"
 }
 
 // StartTurnInput provides input for initializing the action economy at turn start.
