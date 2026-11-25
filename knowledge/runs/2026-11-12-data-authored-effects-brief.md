@@ -1,5 +1,7 @@
 # Run — 2026-11-12 — Data-authored effect compositions
 
+processed: 2026-11-25T190427Z
+
 Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703), with item consumer [#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: toolkit main at [d7069af9](https://github.com/KirkDiggler/rpg-toolkit/commit/d7069af9). Implementation: rulebook and its cookbook [#946](https://github.com/KirkDiggler/rpg-project/issues/946); downstream item adoption [#947](https://github.com/KirkDiggler/rpg-project/issues/947) is deferred and separate.
 
 ## Shipped

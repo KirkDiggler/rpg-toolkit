@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -108,12 +109,22 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 		return nil, fmt.Errorf("loot: %w", err)
 	}
 
-	if _, err := scope.enc.Loot(&encounter.LootInput{
+	taken, err := scope.enc.Loot(&encounter.LootInput{
 		Member: encounter.MemberID(in.Member),
 		Target: encounter.MemberID(in.Target),
 		Range:  in.Range,
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, fmt.Errorf("loot: %w", translate(err))
+	}
+
+	// What the body carried reaches the looter's saved sheet. The sheet is
+	// loaded and saved on EVERY loot by a player, whatever the body held, so
+	// the answer's save report is the same either way (design P3). Delivery
+	// fails closed: an item that cannot be delivered refuses the whole loot,
+	// and since nothing is committed the body keeps what it wore.
+	if err := m.deliverLoot(ctx, scope, in, taken.Items); err != nil {
+		return nil, fmt.Errorf("loot: %w", err)
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
@@ -122,4 +133,21 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 	}
 
 	return &LootOutput{Saved: report, Delivery: delivery}, nil
+}
+
+// deliverLoot loads the looter's sheet, lands what was taken on it and saves
+// it. A looter with no sheet of its own (not a player) takes nothing from the
+// encounter and gets no save.
+func (m *Manager) deliverLoot(ctx context.Context, scope *writeScope, in *LootInput, taken []encounter.TakenItem) error {
+	sheet, err := m.sheetsFor(nil).load(ctx, "looter", in.Member)
+	if err != nil {
+		if errors.Is(err, ErrNoCharacter) && len(taken) == 0 {
+			return nil
+		}
+		return err
+	}
+	if err := deliverTaken(in.Session, in.Target, sheet, taken); err != nil {
+		return err
+	}
+	return m.sheetsFor(scope).save(ctx, sheet)
 }

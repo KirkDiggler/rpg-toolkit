@@ -136,6 +136,9 @@ func (b *builder) place() []Group {
 	for _, st := range b.statusStatements() {
 		add(st)
 	}
+	for _, st := range b.itemStatements() {
+		add(st)
+	}
 	for _, id := range sortedKeys(b.spec.Templates) {
 		t := b.spec.Templates[id]
 		parts := []string{fmt.Sprintf("The stat block %s (%s) is built on %s", quote(id), t.Name, t.Base)}
@@ -297,6 +300,9 @@ func (b *builder) propStatements(id string) []Statement {
 		conns = append(conns, more...)
 	}
 	out := []Statement{b.fstmt(KindProp, about, path, s+".", foldInfo{site: "the prop " + quote(id) + " arriving"}, conns...)}
+	if st, ok := b.propItemStatement(name, about, path, bind.Item); ok {
+		out = append(out, st)
+	}
 	if prop != nil && len(prop.Options) > 0 {
 		out = append(out, b.carrierLineStatements(prop.Options, path, bind.Options, lineTarget{name: "the prop " + name, short: "the prop", about: about, prop: true})...)
 	}

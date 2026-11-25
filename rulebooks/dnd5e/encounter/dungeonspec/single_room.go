@@ -101,6 +101,12 @@ type SingleRoomSpec struct {
 	// here only for its four top-level words. Optional; absent means none.
 	Statuses map[string]StatusSpec `yaml:"statuses,omitempty" json:"statuses,omitempty"`
 
+	// CustomItems are the items this site's creatures may have equipped and
+	// its props may be, keyed by id (rpg-project#850, custom_items.go): each in
+	// the author's words, judged here only for its four top-level words.
+	// Optional; absent means none. NOTHING IN A RUN USES THEM YET.
+	CustomItems map[string]CustomItemSpec `yaml:"customItems,omitempty" json:"customItems,omitempty"`
+
 	// Exits are the ways out of this room, in authored order — the v2 root's
 	// own key ([Spec.Exits]) reaching this dialect with its cell in this
 	// dialect's frame (rpg-project#488 R2). Optional; absent means none.
@@ -545,6 +551,12 @@ type RoomMonsterBinding struct {
 	// way in and looting either teaches it. Not refused as a duplicate.
 	Holds []string `yaml:"holds,omitempty" json:"holds,omitempty"`
 
+	// Equipment is the custom items this creature has equipped, by id
+	// ([SingleRoomSpec.CustomItems], rpg-project#850). Each names a declared
+	// item and none is repeated. Optional; absent means none. Carried, unread,
+	// as [MonsterPlacement.Equipment]; nothing in a run uses it yet.
+	Equipment []string `yaml:"equipment,omitempty" json:"equipment,omitempty"`
+
 	// Options is the lines a character can say to this creature —
 	// [PlaceSpec.Options]' shape and its sentences (rpg-project#569). Each
 	// is an id, a line, a check, an optional `requires` and the rows answered
@@ -640,6 +652,15 @@ type RoomPropBinding struct {
 	// A prop that carries records need NOT be Holdable. Authoring one nobody
 	// can pick up is inert, not an error.
 	Holds []string `yaml:"holds,omitempty" json:"holds,omitempty"`
+
+	// Item names the custom item this prop IS ([SingleRoomSpec.CustomItems],
+	// rpg-project#850): a prop placed in the scene like any other. Optional;
+	// absent means the prop is no item. It is refused together with
+	// `holdable: true` (a thing is held in the hands or taken as an item, not
+	// both, in this version) and together with `holds:` (what an item teaches
+	// is not built). Carried, unread, as [encounter.PlacedPropInput.Item];
+	// nothing in a run takes it yet.
+	Item string `yaml:"item,omitempty" json:"item,omitempty"`
 
 	// Arrives is the predicate that brings this prop onto the floor —
 	// [RoomMonsterBinding.Arrives]'s field on a prop, the same
@@ -926,11 +947,22 @@ type RoomWallDoor struct {
 // in a catalog is the codec that owns that catalog (the web's) — not this
 // engine's.
 type RoomWallAppearance struct {
+	Sections          []RoomWallSection      `yaml:"sections,omitempty" json:"sections,omitempty"`
 	MaterialOverrides []RoomMaterialOverride `yaml:"materialOverrides,omitempty" json:"materialOverrides,omitempty"`
 	AssetRef          string                 `yaml:"assetRef" json:"assetRef"`
 	Height            float64                `yaml:"height" json:"height"`
 	Thickness         float64                `yaml:"thickness" json:"thickness"`
 	Elevation         float64                `yaml:"elevation" json:"elevation"`
+}
+
+// RoomWallSection is a once-placed visual feature owned by its wall. Position
+// and width are scene-unit lengths along that wall, never a mechanical opening.
+// AssetRef is opaque; no model or material registry participates in compilation.
+type RoomWallSection struct {
+	ID       string  `yaml:"id" json:"id"`
+	AssetRef string  `yaml:"assetRef" json:"assetRef"`
+	Position float64 `yaml:"position" json:"position"`
+	Width    float64 `yaml:"width" json:"width"`
 }
 
 // RoomRegion is one authored place on the site's floor (rpg-project#725): an

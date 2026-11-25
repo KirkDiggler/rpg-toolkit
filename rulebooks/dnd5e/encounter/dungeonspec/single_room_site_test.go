@@ -254,7 +254,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "        temper: coward\n        mind: goblin-1",
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.mind",
-				Message: `"mind" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, faction, holds, on, options, posts, states, table, temper`,
+				Message: `"mind" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, equipment, faction, holds, on, options, posts, states, table, temper`,
 			},
 		},
 		{
@@ -282,7 +282,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			want: FieldError{
 				Path: "height",
 				Message: `"height" is not a key this build reads: ` +
-					"they are behaviorDefinitions, bundles, concealments, conversations, dispositions, endings, exits, factions, intel, interactions, key, party, play, room, scenarios, statuses, tables, templates, version",
+					"they are behaviorDefinitions, bundles, concealments, conversations, customItems, dispositions, endings, exits, factions, intel, interactions, key, party, play, room, scenarios, statuses, tables, templates, version",
 			},
 		},
 		{
@@ -325,9 +325,9 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Equal(t, []FieldError{
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
-			"they are behaviorDefinitions, bundles, concealments, conversations, dispositions, endings, exits, factions, intel, interactions, key, party, play, room, scenarios, statuses, tables, templates, version"},
+			"they are behaviorDefinitions, bundles, concealments, conversations, customItems, dispositions, endings, exits, factions, intel, interactions, key, party, play, room, scenarios, statuses, tables, templates, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
-			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, faction, holds, on, options, posts, states, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, equipment, faction, holds, on, options, posts, states, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")
 }
 

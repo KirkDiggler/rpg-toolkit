@@ -108,7 +108,16 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		}
 		return Compiled{}, err
 	}
-	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings, statuses)
+	// THE CUSTOM ITEMS ONCE, failing closed the same way (custom_items.go).
+	items, err := customItemsOf(spec.CustomItems)
+	if err != nil {
+		var ie *itemError
+		if errors.As(err, &ie) {
+			return Compiled{}, singleRoomCompileError("customItems."+ie.id, ie.message)
+		}
+		return Compiled{}, err
+	}
+	applyPropBindings(spec.Key, props, spec.Room.Gameplay.PropBindings, statuses, items)
 	// AND THE STRUCTURAL WALLS (rpg-project#169, single_room_walls.go). One
 	// authored wall lowers to its IDENTITY-ONLY presence entry (raw wall id,
 	// complete blocker, both flags false) plus one blocking contributor per
@@ -264,6 +273,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
 		mp.Options = optionsOf(spec.Key, from.optionsFor(b.Options, b.Faction), encounter.HexesArePointyTop(), statuses)
 		mp.Arrives = predicateOf(b.Arrives)
+		mp.Equipment = equipmentOf(b.Equipment, items)
 		monsters = append(monsters, mp)
 	}
 	// Validate each source placement independently. Besides identifying the

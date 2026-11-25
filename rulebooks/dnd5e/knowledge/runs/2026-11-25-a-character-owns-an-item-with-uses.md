@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — item story S1 a character owns an item with uses
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1162](https://github.com/KirkDiggler/rpg-project/issues/1162) of story [rpg-project#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: `rpg-toolkit` `main` at [`28b42774`](https://github.com/KirkDiggler/rpg-toolkit/commit/28b42774344eba7bf501fbcd9fe1a60db784694c).
 
 ## Shipped

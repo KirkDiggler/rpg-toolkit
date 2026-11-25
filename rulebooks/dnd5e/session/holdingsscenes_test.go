@@ -33,8 +33,9 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	out, err := s.mgr.Loot(ctx, &session.LootInput{
 		Session: "sess", Member: "alice", Target: "captain"})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:sess"}, out.Saved.Written,
-		"the transferred fact rides the world, and nothing else is written")
+	s.Equal([]string{"character:alice", "encounter:sess"}, out.Saved.Written,
+		"the looter's sheet is saved on every loot so the report never says whether anything was taken; "+
+			"the transferred fact rides the world")
 
 	s.Run("the looter alone is told about the secret", func() {
 		s.Equal([]string{encounter.BeatLooted, encounter.BeatConcealmentRevealed, encounter.BeatSighted, encounter.BeatTick},

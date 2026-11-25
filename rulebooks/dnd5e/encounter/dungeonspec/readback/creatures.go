@@ -73,6 +73,9 @@ func (b *builder) creatureGroups() []Group {
 				"%s holds the records %s from the start.", name, joinAnd(recs)),
 				foldInfo{text: "{Self} holds the records " + joinAnd(recs) + " from the start."}, hc...))
 		}
+		if st, ok := b.equipmentStatement(name, about, bindPath, bind.Equipment); ok {
+			add(st)
+		}
 		if m.Arrives != nil {
 			w, ac := b.triggerWords(m.Arrives, lineContext{})
 			add(b.fstmt(KindArrives, about, bindPath+".arrives", fmt.Sprintf(

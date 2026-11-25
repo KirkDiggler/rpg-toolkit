@@ -153,7 +153,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	// EVERY STATUS A LINE CAN GIVE COMPILES (rpg-project#1024): the content
 	// check, asked before anything is written, so a status the rules refuse
 	// is a launch refused rather than a line that fails when it lands.
-	if err := refuseLaunchStatuses(in.Dungeon); err != nil {
+	if err := refuseLaunchContent(in.Dungeon); err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
 	world, site, err := launchWorld(in.Dungeon, in.DungeonKey, m.sites)
@@ -247,6 +247,10 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		// line requiring that topic would refuse the launch, the engine
 		// seeing a required topic nothing gives. Nil gives nothing.
 		join.Outcomes = monster.placement.Outcomes
+		// The custom items the author says it has equipped (rpg-project#850,
+		// #1169), carried unread: the encounter keeps them on the creature so
+		// that looting its body can take them. Nil carries none.
+		join.Equipment = monster.placement.Equipment
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees

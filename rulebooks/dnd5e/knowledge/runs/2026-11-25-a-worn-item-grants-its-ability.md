@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — the item story: a worn item grants its ability and pays from its own count
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1163](https://github.com/KirkDiggler/rpg-project/issues/1163) of story [rpg-project#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: `rpg-toolkit` `main` at [`cc4c5009`](https://github.com/KirkDiggler/rpg-toolkit/commit/cc4c5009df509c6d6b8d2fc6c9d346b6185ff25f).
 
 One line per entry. Every line ends with a link.

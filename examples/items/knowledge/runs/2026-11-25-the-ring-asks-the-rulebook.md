@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — one way to pay for an ability S1157 the ring asks the rulebook
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1157](https://github.com/KirkDiggler/rpg-project/issues/1157) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`868f209b`](https://github.com/KirkDiggler/rpg-toolkit/commit/868f209b).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-12 — Courtyard S4 frame presentation at the host seam
 
+processed: 2026-11-25T190427Z
+
 Slice [Project #906](https://github.com/KirkDiggler/rpg-project/issues/906), story [Project #867](https://github.com/KirkDiggler/rpg-project/issues/867).
 
 ## Shipped

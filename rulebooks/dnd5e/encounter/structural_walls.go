@@ -74,6 +74,10 @@ type StructuralWallInput struct {
 	// FaceFinishes are explicit wall-local face choices, not regional ownership.
 	FaceFinishes []WallFaceFinish
 
+	// Sections are immutable visual replacements, not gameplay openings.
+	// IDs are unique within this wall; spans fit without overlap.
+	Sections []WallSection
+
 	// From and To are the wall's two ends in canonical feet. REQUIRED finite,
 	// representable and distinct: the line must have a positive length.
 	From, To spatial.Point
@@ -164,6 +168,7 @@ type structuralWall struct {
 	openings          []structuralOpening
 	materialOverrides []MaterialOverride
 	faceFinishes      []WallFaceFinish
+	sections          []WallSection
 }
 
 // structuralOpening is one compiled opening: its own facts and its optional
@@ -249,6 +254,9 @@ func structuralWallsFrom(f *field, in []StructuralWallInput, doors []DoorInput) 
 		if err != nil {
 			return nil, err
 		}
+		if err := validateWallSections(w, length); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 		if err := validateMaterialOverrides(w.MaterialOverrides); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
@@ -266,6 +274,7 @@ func structuralWallsFrom(f *field, in []StructuralWallInput, doors []DoorInput) 
 			openings:          openings,
 			materialOverrides: cloneMaterialOverrides(w.MaterialOverrides),
 			faceFinishes:      cloneWallFaceFinishes(w.FaceFinishes),
+			sections:          cloneWallSections(w.Sections),
 		}
 	}
 

@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — a state names the party S1 note about party_in_sight and the_gone
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1135](https://github.com/KirkDiggler/rpg-project/issues/1135) of story [rpg-project#1134](https://github.com/KirkDiggler/rpg-project/issues/1134). Base: `rpg-toolkit` `main` at [`2d7824ec`](https://github.com/KirkDiggler/rpg-toolkit/commit/2d7824ec).
 
 One line per entry. Every line ends with a link.

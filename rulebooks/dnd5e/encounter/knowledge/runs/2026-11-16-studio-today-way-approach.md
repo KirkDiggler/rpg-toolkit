@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today: a way's alternatives and the parts of one approach
 
+processed: 2026-11-25T190427Z
+
 Issue [rpg-toolkit#2444](https://github.com/KirkDiggler/rpg-toolkit/issues/2444), story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-toolkit` `main` at [`cdefe89a`](https://github.com/KirkDiggler/rpg-toolkit/commit/cdefe89a).
 
 ## Shipped

@@ -170,6 +170,18 @@ type PlacedPropInput struct {
 	// [PropInput.Options]' field with [PropInput.Options]' rules
 	// (rpg-project#569).
 	Options []Option
+
+	// Item is the custom item this placement IS, as its author wrote it,
+	// carried unread ([ItemGrant], rpg-project#850). Nil means the placement
+	// is no item, which is what every placement was before this field.
+	//
+	// KEPT, NEVER READ, IN THIS VERSION: nothing takes an item prop yet.
+	// Construction refuses a grant with no id or a block that is not a JSON
+	// object (ErrNoField); the grant survives a save ([PlacedPropData.Item]).
+	// It is refused together with Holdable by the site format, not here: a
+	// thing is held in the hands or taken as an item, and which of the two a
+	// placement is is the author's word.
+	Item *ItemGrant `json:"Item,omitempty"`
 }
 
 // placedContributor is one compiled placed prop: the input's facts, deep
@@ -196,6 +208,9 @@ type placedContributor struct {
 	// options is the lines a character can say to it, deep-copied
 	// ([PlacedPropInput.Options]).
 	options []Option
+
+	// item is [PlacedPropInput.Item], deep-copied; nil for no item.
+	item *ItemGrant
 }
 
 // mutable reports whether this contributor can leave the floor or arrive
@@ -270,6 +285,12 @@ func (f *field) compilePlaced(in []PlacedPropInput) error {
 			holds:             append([]IntelID(nil), p.Holds...),
 			arrives:           p.Arrives,
 			options:           cloneOptions(p.Options),
+		}
+		if p.Item != nil {
+			if err := validateItemGrant(fmt.Sprintf("placed prop %q", p.ID), *p.Item); err != nil {
+				return fmt.Errorf("%w: %w", err, ErrNoField)
+			}
+			f.placed[i].item = cloneItem(p.Item)
 		}
 		if err := validatePropOptions(p.ID, string(p.ID), p.Options); err != nil {
 			return err

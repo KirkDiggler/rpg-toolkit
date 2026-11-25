@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — Kept status S2 a status hold has a name
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1093](https://github.com/KirkDiggler/rpg-project/issues/1093) of story [rpg-project#1090](https://github.com/KirkDiggler/rpg-project/issues/1090). Base: `rpg-toolkit` `main` at [`b7fbc2d3`](https://github.com/KirkDiggler/rpg-toolkit/commit/b7fbc2d3c39d7e57bf568ea957981101a6cead35).
 
 ## Shipped

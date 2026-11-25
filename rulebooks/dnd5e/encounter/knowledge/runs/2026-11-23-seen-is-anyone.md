@@ -1,5 +1,7 @@
 # Run — 2026-11-23 — a wake says whom it is about S2 seen is anyone
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1125](https://github.com/KirkDiggler/rpg-project/issues/1125) of story [rpg-project#1123](https://github.com/KirkDiggler/rpg-project/issues/1123). Base: `rpg-toolkit` `main` at [`8b42fdd8`](https://github.com/KirkDiggler/rpg-toolkit/commit/8b42fdd8e986f49839cda0e71545bcd905d41227).
 
 One line per entry. Every line ends with a link.

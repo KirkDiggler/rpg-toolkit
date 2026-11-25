@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — status effect powers: the words serve, toolkit slice
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1095](https://github.com/KirkDiggler/rpg-project/issues/1095) of story [rpg-project#1036](https://github.com/KirkDiggler/rpg-project/issues/1036). Base: `rpg-toolkit` `main` at [`73a6f7cb`](https://github.com/KirkDiggler/rpg-toolkit/commit/73a6f7cb).
 
 One line per entry. Every line ends with a link.

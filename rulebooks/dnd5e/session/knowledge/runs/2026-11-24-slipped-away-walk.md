@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — the one who slipped away S2 walk site and test
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1136](https://github.com/KirkDiggler/rpg-project/issues/1136) of story [rpg-project#1134](https://github.com/KirkDiggler/rpg-project/issues/1134). Base: `rpg-toolkit` `main` at [`9bb217a9`](https://github.com/KirkDiggler/rpg-toolkit/commit/9bb217a9).
 
 ## Shipped

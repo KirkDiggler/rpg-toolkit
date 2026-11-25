@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Joining a fight S2 the engine
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1075](https://github.com/KirkDiggler/rpg-project/issues/1075) of story [rpg-project#1068](https://github.com/KirkDiggler/rpg-project/issues/1068). Base: `rpg-toolkit` `main` at [`8ef15b06`](https://github.com/KirkDiggler/rpg-toolkit/commit/8ef15b06).
 
 ## Shipped

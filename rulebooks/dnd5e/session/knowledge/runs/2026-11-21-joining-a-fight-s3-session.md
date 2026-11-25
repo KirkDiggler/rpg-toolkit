@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Joining a fight S3 the session
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1077](https://github.com/KirkDiggler/rpg-project/issues/1077) of story [rpg-project#1068](https://github.com/KirkDiggler/rpg-project/issues/1068). Base: `rpg-toolkit` `main` at [`f5a0d773`](https://github.com/KirkDiggler/rpg-toolkit/commit/f5a0d773).
 
 ## Shipped

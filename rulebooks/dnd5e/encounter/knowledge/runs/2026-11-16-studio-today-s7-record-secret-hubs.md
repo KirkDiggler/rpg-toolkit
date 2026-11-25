@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S7 records and secrets as hubs
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#973](https://github.com/KirkDiggler/rpg-project/issues/973) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-toolkit` `main` at [`f3deb20f`](https://github.com/KirkDiggler/rpg-toolkit/commit/f3deb20f).
 
 ## Shipped

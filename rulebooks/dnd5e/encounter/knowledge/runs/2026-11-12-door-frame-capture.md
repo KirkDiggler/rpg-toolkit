@@ -1,5 +1,7 @@
 # Run — 2026-11-12 — Courtyard S4 door-frame capture
 
+processed: 2026-11-25T190427Z
+
 Slice [Project #906](https://github.com/KirkDiggler/rpg-project/issues/906), story [Project #867](https://github.com/KirkDiggler/rpg-project/issues/867). Base `main` at [5dcae25](https://github.com/KirkDiggler/rpg-toolkit/commit/5dcae25ff21893c10cabbcd5699da15805f621f8).
 
 ## Shipped

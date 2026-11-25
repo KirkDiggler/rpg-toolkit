@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Joining a fight S1 seated from the next round
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1071](https://github.com/KirkDiggler/rpg-project/issues/1071) of story [rpg-project#1068](https://github.com/KirkDiggler/rpg-project/issues/1068). Base: `rpg-toolkit` `main` at [`4ee0ddd6`](https://github.com/KirkDiggler/rpg-toolkit/commit/4ee0ddd63111682b116955603235f62dc1b49152).
 
 ## Shipped
