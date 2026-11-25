@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S12 the fold reads well for one thing
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#980](https://github.com/KirkDiggler/rpg-project/issues/980) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-toolkit` `main` at [`cdc616bd`](https://github.com/KirkDiggler/rpg-toolkit/commit/cdc616bd).
 
 ## Shipped

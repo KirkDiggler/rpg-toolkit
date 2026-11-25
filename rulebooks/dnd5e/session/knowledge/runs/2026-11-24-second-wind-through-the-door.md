@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S4 second wind through the door
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1147](https://github.com/KirkDiggler/rpg-project/issues/1147) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`879406d1`](https://github.com/KirkDiggler/rpg-toolkit/commit/879406d1).
 
 One line per entry. Every line ends with a link.

@@ -1,5 +1,7 @@
 # Run — 2026-11-21 — Status effect powers S3 initiative rolls
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1047](https://github.com/KirkDiggler/rpg-project/issues/1047) of story [rpg-project#1036](https://github.com/KirkDiggler/rpg-project/issues/1036). Base: `rpg-toolkit` `main` at [`068393f7`](https://github.com/KirkDiggler/rpg-toolkit/commit/068393f793dff41e05446b8e1305e6cd0991ca7e).
 
 One line per entry. Every line ends with a link: a PR, an issue comment, a commit, or a design section anchor. This file rides on the work PR, under the `knowledge/runs/` of the lowest directory that contains everything the PR changed. The ingest reads it once and adds a `processed:` line at the top; nobody else edits it after merge.

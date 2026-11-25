@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — status rounds S2b review fixes
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1089](https://github.com/KirkDiggler/rpg-project/issues/1089) of story [rpg-project#1080](https://github.com/KirkDiggler/rpg-project/issues/1080). Base: `rpg-toolkit` `main` at [`3e7cca63`](https://github.com/KirkDiggler/rpg-toolkit/commit/3e7cca63).
 
 One line per entry. Every line ends with a link.

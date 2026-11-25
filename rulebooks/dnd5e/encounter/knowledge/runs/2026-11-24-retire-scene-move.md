@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — machine story road step 1 sceneMove is retired
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1133](https://github.com/KirkDiggler/rpg-project/issues/1133) of story [rpg-project#989](https://github.com/KirkDiggler/rpg-project/issues/989). Base: `rpg-toolkit` `main` at [`b9439d32`](https://github.com/KirkDiggler/rpg-toolkit/commit/b9439d32).
 
 ## Shipped

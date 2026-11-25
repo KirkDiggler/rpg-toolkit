@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — item story S: a worn item's ability is its own row
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1164](https://github.com/KirkDiggler/rpg-project/issues/1164) of story [rpg-project#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: `rpg-toolkit` `main` at [`bc93f94f`](https://github.com/KirkDiggler/rpg-toolkit/commit/bc93f94f3a9b1bc05410f1bfc24bb61e339e1723).
 
 ## Shipped

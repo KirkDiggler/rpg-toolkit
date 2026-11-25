@@ -1,5 +1,7 @@
 # Run — 2026-11-15 — studio today S5 the engine says which places join
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#971](https://github.com/KirkDiggler/rpg-project/issues/971) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-toolkit` `main` at [`4ff62fe5`](https://github.com/KirkDiggler/rpg-toolkit/commit/4ff62fe5).
 
 ## Shipped

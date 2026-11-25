@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — one way to pay for an ability S1160 the ring pays at the gate
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1160](https://github.com/KirkDiggler/rpg-project/issues/1160) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`64c707aa`](https://github.com/KirkDiggler/rpg-toolkit/commit/64c707aa).
 
 ## Shipped
