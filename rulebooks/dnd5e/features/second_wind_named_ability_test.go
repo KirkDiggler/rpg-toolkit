@@ -175,3 +175,37 @@ func (s *SecondWindNamedAbilitySuite) TestValidateParametersAgreesWithDescribeFr
 	s.NoError(ValidateParameters(&ValidateParametersInput{Ref: *refs.Features.SecondWind(), Parameters: json.RawMessage(`{"level":2}`)}))
 	s.Error(ValidateParameters(nil))
 }
+
+func TestNamedAbility(t *testing.T) {
+	ref, ok := NamedAbility("second wind")
+	if !ok || ref != *refs.Features.SecondWind() {
+		t.Fatalf("second wind = %v, %v", ref, ok)
+	}
+	for _, name := range []string{"Second Wind", "second  wind", " second wind", "rage", ""} {
+		if _, ok := NamedAbility(name); ok {
+			t.Errorf("%q must not be found", name)
+		}
+	}
+	names := NamedAbilities()
+	if len(names) != 1 || names[0] != "second wind" {
+		t.Fatalf("NamedAbilities = %v", names)
+	}
+}
+
+// Every listed name is an ability the rulebook can describe.
+func TestNamedAbilitiesAreDescribable(t *testing.T) {
+	valid := map[string]string{"second wind": `{"level":1}`}
+	for _, name := range NamedAbilities() {
+		ref, ok := NamedAbility(name)
+		if !ok {
+			t.Fatalf("%q is listed but not found", name)
+		}
+		params, known := valid[name]
+		if !known {
+			t.Fatalf("%q has no valid values in this test", name)
+		}
+		if err := ValidateParameters(&ValidateParametersInput{Ref: ref, Parameters: json.RawMessage(params)}); err != nil {
+			t.Errorf("%q: %v", name, err)
+		}
+	}
+}
