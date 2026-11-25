@@ -12,8 +12,9 @@ import (
 // rpg-project#1166): one statement per declared item, one under a creature
 // that has items equipped, one under a prop that is an item.
 //
-// IT SAYS ONLY WHAT IS TRUE IN THIS VERSION. Nothing in a run uses these words
-// yet, so no sentence here says looting a body or taking a prop gives an item.
+// IT SAYS ONLY WHAT IS TRUE IN THIS VERSION. Looting a creature's body gives
+// its equipped items to the looter (rpg-project#1167); nothing takes a prop
+// yet, so no sentence here says taking a prop gives an item.
 // What an item lets its wearer do is written in its own words and judged by the
 // rules when a run starts; the read-back says its id and name.
 
@@ -79,8 +80,8 @@ func (b *builder) equipmentStatement(name string, about Subject, path string, eq
 	}
 	list := joinAnd(names)
 	return b.fstmt(KindEquipment, about, path+".equipment",
-		fmt.Sprintf("%s has %s equipped.", name, list),
-		foldInfo{text: "{Self} has " + list + " equipped."}, conns...), true
+		fmt.Sprintf("%s has %s equipped. Looting its body gives %s to the looter.", name, list, list),
+		foldInfo{text: "{Self} has " + list + " equipped. Looting its body gives " + list + " to the looter."}, conns...), true
 }
 
 // propItemStatement says that a prop is an item, by name, or reports false

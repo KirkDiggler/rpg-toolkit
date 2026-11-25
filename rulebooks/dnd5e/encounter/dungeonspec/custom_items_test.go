@@ -155,7 +155,7 @@ func TestDungeonspec_ACustomItemCompilesIntoWhoHasItAndWhichPropIsOne(t *testing
 
 	cloak := placedNamed(t, c, "cloak-on-the-peg")
 	require.NotNil(t, cloak.Item)
-	require.Equal(t, encounter.ItemGrant{ID: "lieutenants-cloak", Item: []byte(cloakBlock)}, *cloak.Item)
+	require.Equal(t, encounter.ItemGrant{ID: "lieutenants-cloak", Name: "Lieutenant's cloak", Item: []byte(cloakBlock)}, *cloak.Item)
 	require.False(t, cloak.Holdable, "an item prop is not held in the hands")
 }
 

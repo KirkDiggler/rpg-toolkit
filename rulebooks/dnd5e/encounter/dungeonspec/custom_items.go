@@ -187,7 +187,21 @@ func (e *itemError) Error() string { return "customItems." + e.id + ": " + e.mes
 // grammar first) still compiles to a grant with no block, and the encounter
 // refuses that grant when it is built.
 func itemGrantOf(id string, items map[string]json.RawMessage) encounter.ItemGrant {
-	return encounter.ItemGrant{ID: id, Item: append(json.RawMessage(nil), items[id]...)}
+	return encounter.ItemGrant{ID: id, Name: nameOfItem(items[id]), Item: append(json.RawMessage(nil), items[id]...)}
+}
+
+// nameOfItem is the `name` word of a compiled item block, copied beside the
+// block so the encounter can say what was taken without reading inside it. The
+// format already refused an item whose name is not non-empty text, so a block
+// with none (no such item) gives an empty name.
+func nameOfItem(block json.RawMessage) string {
+	var named struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(block, &named); err != nil {
+		return ""
+	}
+	return named.Name
 }
 
 // equipmentOf is the grants a creature's `equipment:` names, in the author's

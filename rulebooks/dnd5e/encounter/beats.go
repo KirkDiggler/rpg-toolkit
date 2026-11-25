@@ -102,6 +102,12 @@ const (
 	// BeatLooted records a member looting a downed member.
 	BeatLooted = "looted"
 
+	// BeatTaken records one item a member took off a body they looted
+	// (rpg-project#850). It is told to the looter ALONE, after the `looted`
+	// beat, which never says what moved. Its payload: `member` (the looter),
+	// `item` (the item's id), `name` and `from` (the body).
+	BeatTaken = "taken"
+
 	// BeatHeld records a member taking up a holdable prop.
 	BeatHeld = "held"
 

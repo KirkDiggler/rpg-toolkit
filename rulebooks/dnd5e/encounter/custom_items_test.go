@@ -156,7 +156,7 @@ func TestCustomItems_TheEncounterKeepsWhoHasThemAndWhichPropIsOne(t *testing.T) 
 	first := saved(t, enc)
 	reloaded := saved(t, loadCloak(t, first, standing))
 	require.Equal(t, string(first), string(reloaded), "saved, loaded and saved again: byte for byte")
-	require.Contains(t, string(reloaded), `"equipment":[{"id":"lieutenants-cloak","item":`+cloakJSON+`}]`)
+	require.Contains(t, string(reloaded), `"equipment":[{"id":"lieutenants-cloak","name":"Lieutenant's cloak","item":`+cloakJSON+`}]`)
 }
 
 // The member who waits in reserve keeps its equipment across a save too: its
@@ -262,15 +262,16 @@ func TestCustomItems_LoadRefusesAMalformedGrant(t *testing.T) {
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
 }
 
-// Test 7: NOTHING IN A RUN USES THEM. Looting the equipped creature's body and
-// trying to hold the item prop behave exactly as they do for a creature with
-// no equipment and a prop that is not an item: the same answers, the same
-// beats, the same saved bytes once the new facts are set aside.
+// Test 7: NOTHING ELSE IN A RUN USES THEM. Trying to hold the item prop behaves
+// exactly as it does for a prop that is not an item: the same answer, the same
+// beats, the same saved bytes once the new facts are set aside. (Looting the
+// equipped creature's body used to be here; it now gives the looter the items,
+// rpg-project#1167, and is tested in looting_equipment_test.go.)
 func TestCustomItems_NothingInARunUsesThem(t *testing.T) {
 	c := cloakCompiled(t)
 	lieutenant := encounter.MemberID(c.Monsters[0].MemberID)
 
-	run := func(equipped bool) (loot, hold string, story, state []byte) {
+	run := func(equipped bool) (hold string, story, state []byte) {
 		cc := cloakCompiled(t)
 		if !equipped {
 			for i := range cc.Field.Placed {
@@ -283,9 +284,7 @@ func TestCustomItems_NothingInARunUsesThem(t *testing.T) {
 		_, err := aRound(enc)
 		require.NoError(t, err)
 
-		lootOut, lootErr := enc.Loot(&encounter.LootInput{Member: cloakPlayer, Target: lieutenant, Range: 50})
 		holdOut, holdErr := enc.Hold(&encounter.HoldInput{Member: cloakPlayer, Target: cloakProp, Range: 50})
-		loot = string(mustJSON(t, lootOut)) + "|" + errTextOrOK(lootErr)
 		hold = string(mustJSON(t, holdOut)) + "|" + errTextOrOK(holdErr)
 
 		beats, err := enc.Story(&encounter.StoryInput{Audience: cloakPlayer})
@@ -310,12 +309,11 @@ func TestCustomItems_NothingInARunUsesThem(t *testing.T) {
 		require.Len(t, kept, len(data.Log.Entries)-1, "exactly one beat names the site's hash")
 		data.Log.Entries = kept
 		state = mustJSON(t, data)
-		return loot, hold, story, state
+		return hold, story, state
 	}
 
-	lootWith, holdWith, storyWith, stateWith := run(true)
-	lootWithout, holdWithout, storyWithout, stateWithout := run(false)
-	require.Equal(t, lootWithout, lootWith, "looting the body: the same answer")
+	holdWith, storyWith, stateWith := run(true)
+	holdWithout, storyWithout, stateWithout := run(false)
 	require.Equal(t, holdWithout, holdWith, "holding the prop: the same answer")
 	require.Equal(t, string(storyWithout), string(storyWith), "the same beats")
 	require.Equal(t, string(stateWithout), string(stateWith), "the same encounter, the new facts aside")

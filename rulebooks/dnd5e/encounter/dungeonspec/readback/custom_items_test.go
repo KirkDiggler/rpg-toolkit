@@ -15,8 +15,8 @@ import (
 
 // Test 8 (rpg-project#1166): the read-back of the custom-items site says the
 // three words — the declared item, who has it equipped and which prop is one
-// — by name, and says nothing of looting or taking, which nothing in a run
-// does yet.
+// — by name. The item and the prop say nothing of looting or taking; the
+// creature's statement says looting it gives the item (TestEquipmentSaysLootingTheBodyGivesIt).
 func TestCustomItemsAreSaid(t *testing.T) {
 	raw, err := os.ReadFile("../testdata/custom-items/site.yaml") //nolint:gosec // a test reading its own fixture
 	require.NoError(t, err)
@@ -47,7 +47,9 @@ func TestCustomItemsAreSaid(t *testing.T) {
 	require.Contains(t, prop.Sentence, "is the item “Lieutenant's cloak”")
 	require.Contains(t, prop.Connects, readback.Connection{Kind: readback.ConnItem, ID: "lieutenants-cloak", Role: readback.RoleIsItem})
 
-	for _, st := range []readback.Statement{item, eq, prop} {
+	// The creature's own statement now says looting its body gives the items
+	// (rpg-project#1167), so only the other two keep the no-loot rule.
+	for _, st := range []readback.Statement{item, prop} {
 		for _, word := range []string{"loot", "take", "taken", "gives"} {
 			require.False(t, strings.Contains(strings.ToLower(st.Sentence), word),
 				"nothing in a run uses items yet, so %q does not say %q", st.Sentence, word)
