@@ -1121,7 +1121,7 @@ type MemberInput struct {
 	// replays: it is a fact about the member, and nothing else holds it. It
 	// is not a holding (a holding is something in a pair of hands) and no
 	// atlas, percept, beat or output says it.
-	Equipment []ItemGrant
+	Equipment []ItemGrant `json:"Equipment,omitempty"`
 
 	// Faction is the faction this member belongs to (rpg-project#375).
 	// Optional: EMPTY MEANS THE DEFAULT FOR THE KIND — a player is in
@@ -2099,7 +2099,7 @@ type JoinInput struct {
 	// with no id, a block that is not a JSON object, one id twice:
 	// ErrBadMember), deep-copied onto the member's record, kept while a
 	// reserved join waits, saved, and given to a player who loots the body.
-	Equipment []ItemGrant
+	Equipment []ItemGrant `json:"Equipment,omitempty"`
 
 	// Faction is the faction the joiner belongs to — [MemberInput.Faction]
 	// for a member who arrives mid-scene, which is how every monster
