@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -14,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
 )
 
@@ -30,6 +32,10 @@ type EquippedItemView struct {
 	SlotKeys []string
 	StatLine string
 	Quantity int
+	// Custom is true for a row that is an owned item with its own record, not a
+	// row of the rulebook's catalogue: a reader that looks a row up in the
+	// catalogue (for a price, a weight) must not look this one up.
+	Custom bool
 }
 
 // SlotDefView is one entry in the character's equip-slot taxonomy: which
@@ -114,6 +120,8 @@ func (c *Character) EquipmentView(ctx context.Context) (*EquipmentView, error) {
 		})
 	}
 
+	items = append(items, c.ownedItemRows()...)
+
 	breakdown, err := c.EffectiveAC(ctx)
 	if err != nil {
 		return nil, rpgerr.Wrap(err, "equipment view needs this character's effective AC")
@@ -122,7 +130,7 @@ func (c *Character) EquipmentView(ctx context.Context) (*EquipmentView, error) {
 	return &EquipmentView{
 		Items:          items,
 		Equipped:       maps.Clone(c.equipmentSlots),
-		Slots:          cloneSlotTaxonomy(),
+		Slots:          append(cloneSlotTaxonomy(), c.wornSlotDefs()...),
 		ACTotal:        breakdown.Total,
 		ACNote:         ACNote(breakdown),
 		MainHandDamage: MainHandDamage(mainHand.AsWeapon(), c.GetEquippedSlot(SlotOffHand)),
@@ -289,4 +297,84 @@ func titleCase(s string) string {
 		words[i] = strings.ToUpper(w[:1]) + w[1:]
 	}
 	return strings.Join(words, " ")
+}
+
+// wornSlotLabels are the display labels of the worn slots.
+var wornSlotLabels = map[InventorySlot]string{
+	SlotCloak: "Cloak", SlotAmulet: "Amulet", SlotRingLeft: "Ring (left)", SlotRingRight: "Ring (right)",
+	SlotBelt: "Belt", SlotHelm: "Helm", SlotBoots: "Boots",
+}
+
+// wornSlotKind is the family of item a worn slot accepts: "ring" for either
+// ring slot, otherwise the slot's own name. It is the one place a slot is
+// turned into a kind, for an item's Kind and for a slot's Accepts.
+func wornSlotKind(slot InventorySlot) string {
+	if slot == SlotRingLeft || slot == SlotRingRight {
+		return "ring"
+	}
+	return string(slot)
+}
+
+// itemKindOf is the family of slot an owned item is worn in, from its slots.
+// AddItem accepts only worn slots, so every owned item has a slot to read.
+func itemKindOf(item magicitems.Data) string {
+	if len(item.Description.Slots) == 0 {
+		return ""
+	}
+	return wornSlotKind(InventorySlot(item.Description.Slots[0]))
+}
+
+// ownedItemRows is one Custom inventory row for each owned item, in id order.
+func (c *Character) ownedItemRows() []EquippedItemView {
+	owned := c.Items()
+	rows := make([]EquippedItemView, 0, len(owned))
+	for _, item := range owned {
+		rows = append(rows, EquippedItemView{
+			ItemID:   item.ID,
+			Name:     item.Description.Name,
+			Kind:     itemKindOf(item),
+			SlotKeys: slices.Clone(item.Description.Slots),
+			StatLine: ownedItemStatLine(item),
+			Quantity: 1,
+			Custom:   true,
+		})
+	}
+	return rows
+}
+
+// ownedItemStatLine is what an item lets its wearer use, then its counts:
+// "Second Wind · 1 of 1 charges". An ability the rulebook cannot describe is
+// named by the item instead.
+func ownedItemStatLine(item magicitems.Data) string {
+	var parts []string
+	for _, name := range slices.Sorted(maps.Keys(item.Description.Grants)) {
+		definition, err := itemDefinition(item, name)
+		if err != nil {
+			parts = append(parts, item.Description.Name)
+			continue
+		}
+		parts = append(parts, definition.Name)
+	}
+	for _, pool := range slices.Sorted(maps.Keys(item.Description.Pools)) {
+		parts = append(parts, fmt.Sprintf("%d of %d %s", item.Left[pool], item.Description.Pools[pool].Maximum, pool))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// wornSlotDefs is, in the order of WornSlots, each worn slot an owned item can
+// go in or that holds something now.
+func (c *Character) wornSlotDefs() []SlotDefView {
+	var defs []SlotDefView
+	for _, slot := range WornSlots() {
+		listed := c.equipmentSlots.Get(slot) != ""
+		for _, item := range c.items {
+			if slices.Contains(item.Description.Slots, string(slot)) {
+				listed = true
+			}
+		}
+		if listed {
+			defs = append(defs, SlotDefView{Key: string(slot), DisplayLabel: wornSlotLabels[slot], Accepts: []string{wornSlotKind(slot)}})
+		}
+	}
+	return defs
 }
