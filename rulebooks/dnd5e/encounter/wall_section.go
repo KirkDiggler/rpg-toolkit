@@ -86,7 +86,8 @@ func validateWallSections(wall *StructuralWallInput, length float64) error {
 	}
 	sort.Slice(cuts, func(i, j int) bool { return cuts[i].start < cuts[j].start })
 	for i := 1; i < len(cuts); i++ {
-		if cuts[i].start < cuts[i-1].end {
+		// Unit conversion can put a touching boundary a few ULPs inside its peer.
+		if cuts[i].start < cuts[i-1].end-roundoff {
 			return fmt.Errorf("wall sections and opening surrounds must not overlap: %w", ErrNoField)
 		}
 	}

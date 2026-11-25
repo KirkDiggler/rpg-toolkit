@@ -5,6 +5,7 @@ package dungeonspec_test
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
@@ -33,6 +34,37 @@ func (s *SingleRoomWallSuite) TestSectionsDecodeLowerOnceAndDoNotChangeMechanica
 	s.Empty(compiled.Field.StructuralWalls[0].Openings)
 	spec.Room.Gameplay.Walls[0].Appearance.Sections[0].AssetRef = "later:edit"
 	s.Equal("opaque:window", compiled.Field.StructuralWalls[0].Sections[0].Ref)
+}
+
+func (s *SingleRoomWallSuite) TestTouchingNativeSectionsSurviveCanonicalConstruction() {
+	// The same contact can gain a few ULPs during authored arithmetic or the
+	// native-to-canonical conversion. Neither boundary may invent an overlap.
+	for _, scale := range []float64{1, scenePerFoot()} {
+		s.Run(fmt.Sprintf("scale-%g", scale), func() {
+			spec := s.baseSpec()
+			wall := &spec.Room.Gameplay.Walls[0]
+			wall.Line.End.X = 12 * scale
+			wall.Appearance.Sections = []dungeonspec.RoomWallSection{
+				{ID: "left", AssetRef: "opaque:left", Position: 3 * scale, Width: 6 * scale},
+				{ID: "right", AssetRef: "opaque:right", Position: 9 * scale, Width: 6 * scale},
+			}
+			compiled, err := dungeonspec.Load(s.encoded(spec))
+			s.Require().NoError(err)
+			sections := compiled.Field.StructuralWalls[0].Sections
+			if scale == 1 {
+				s.Less(sections[1].Position-sections[1].Width/2, sections[0].Position+sections[0].Width/2,
+					"the canonical contact must exercise arithmetic roundoff")
+			}
+			enc := s.wallEncounter(compiled)
+			atlas, err := enc.Atlas()
+			s.Require().NoError(err)
+			s.Equal(sections, atlas.StructuralWalls[0].Sections, "validation must not rewrite captured lengths")
+			// This is a real overlap, many orders above conversion roundoff.
+			wall.Appearance.Sections[1].Position -= 1e-8 * scale
+			_, err = dungeonspec.Load(s.encoded(spec))
+			s.Require().ErrorContains(err, "overlaps")
+		})
+	}
 }
 
 func (s *SingleRoomWallSuite) TestNativeSectionInvalidShapesAndIntervalsRefuse() {

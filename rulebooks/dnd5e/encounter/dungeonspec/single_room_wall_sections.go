@@ -77,7 +77,8 @@ func wallSectionValues(wall *RoomWall, length float64, path string, add errSink)
 	}
 	sort.SliceStable(intervals, func(i, j int) bool { return intervals[i].start < intervals[j].start })
 	for i := 1; i < len(intervals); i++ {
-		if intervals[i].start < intervals[i-1].end {
+		// Use the same arithmetic allowance as the canonical section boundary.
+		if intervals[i].start < intervals[i-1].end-roundoff {
 			add(intervals[i].path, "visual section overlaps another section or opening surround")
 		}
 	}
