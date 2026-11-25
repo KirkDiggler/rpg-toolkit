@@ -53,8 +53,10 @@
 // free roam is not a mode, it is where you are when no fight has pulled you
 // elsewhere. A fight is a turn bubble: Form pulls its members off the world
 // clock into a caller-rolled order (R7 — initiative arrives from outside),
-// Transfer moves a straggler in or out mid-round, EndTurn advances the fight,
-// and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
+// a straggler joining a fight under way rolls initiative and is placed by the
+// join rule (rolled by the initiative seam, placed in the order, recorded on
+// the transferred entry), Transfer is the caller-placed verb that moves a
+// member in or out at a chosen slot, EndTurn advances the fight, and Dissolve re-homes everyone to the tick. A fight also ENDS ITSELF when a
 // supplied Remove leaves it without a Contact side — [ByDefeat], with no
 // caller, the mirror of sight starting one. Everyone not in the fight keeps
 // free-roaming while it runs; everyone in it is the fight's alone — Step is a

@@ -148,7 +148,7 @@ func openGarrisonKeepOn(tb testing.TB, listen bool, sites encounter.SiteProvider
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
 		})
 		forwarded := members[len(members)-1].Behaviors
 		if m.Behaviors != nil && (forwarded == nil || len(forwarded.Instances) != len(m.Behaviors.Instances)) {

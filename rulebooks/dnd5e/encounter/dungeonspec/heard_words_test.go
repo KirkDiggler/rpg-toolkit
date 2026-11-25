@@ -42,11 +42,14 @@ func TestHeardWords_TheCaptainsStepIsRefusedWhereItCannotWork(t *testing.T) {
 			sentence: "`heard.claim` reads what the creature heard, and `seen` is not hearing: it is read on `heard` only",
 		},
 		{
-			name: "holds read on a beat that names nobody", old: "                  name: noted.anyone:admitted\n",
-			replacement: "                  name: noted:admitted\n",
-			path:        "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2].when.fact",
-			sentence: "`noted:admitted` asks about the one this beat is about, and `topic` is about nobody: " +
-				"it is read on heard, seen, barred and approached",
+			name: "holds read on a beat that names nobody",
+			old: "                  name: fact:gate-cowed\n                  op: eq\n                  value: true\n" +
+				"              to: cowed\n              reason: stood aside\n            # Hand edit (rpg-project#929)",
+			replacement: "                  name: noted:admitted\n                  op: eq\n                  value: true\n" +
+				"              to: cowed\n              reason: stood aside\n            # Hand edit (rpg-project#929)",
+			path: "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[1].when.fact",
+			sentence: "`noted:admitted` asks about the one this beat is about, and `fact` is about nobody: " +
+				"it is read on heard, seen, topic, barred and approached",
 		},
 		{
 			name: "holds of a topic nothing gives", old: theLiedToStep,

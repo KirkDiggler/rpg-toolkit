@@ -108,8 +108,8 @@ func (brokenDice) Roll(_ context.Context, _ int) (int, error) { return 0, errNoR
 // session exists to route the host's dice through the rulebook.
 type encOrderAsGiven struct{}
 
-func (encOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (encOrderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.InitiativeRoll, error) {
+	return encounter.PlacedInOrder(members), nil
 }
 
 // encEveryoneStanding is the standing capability the authored-world fixtures

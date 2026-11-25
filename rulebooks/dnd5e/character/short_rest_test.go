@@ -222,8 +222,6 @@ func restFighterData(t *testing.T) *Data {
 		ID:          "second-wind-short-rest",
 		Name:        "Second Wind",
 		CharacterID: "short-rest-fighter",
-		Uses:        0,
-		MaxUses:     1,
 	})
 	require.NoError(t, err)
 
@@ -244,6 +242,7 @@ func restFighterData(t *testing.T) *Data {
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
 			resources.HitDice:     {Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest},
 			resources.RageCharges: {Current: 0, Maximum: 2, ResetType: coreResources.ResetLongRest},
+			resources.SecondWind:  {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
 		},
 		Features: []json.RawMessage{secondWind},
 	}
@@ -260,9 +259,7 @@ func attachRestFighter(t *testing.T, data *Data) *Character {
 
 func secondWindUses(t *testing.T, char *Character) int {
 	t.Helper()
-	var data features.SecondWindData
-	require.NoError(t, json.Unmarshal(featureByRef(t, mustToData(t, char).Features, refs.Features.SecondWind()), &data))
-	return data.Uses
+	return mustToData(t, char).Resources[resources.SecondWind].Current
 }
 
 // Two hit dice for a level-2 fighter with CON +2 heal both rolls plus 4 and

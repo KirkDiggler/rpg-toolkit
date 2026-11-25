@@ -81,6 +81,17 @@ type BehaviorDefinitionSpec struct {
 	Parameters *BehaviorValue       `yaml:"parameters,omitempty" json:"parameters,omitempty"`
 	End        behavior.SequenceEnd `yaml:"end,omitempty" json:"end,omitempty"`
 	Body       *BehaviorValue       `yaml:"body,omitempty" json:"body,omitempty"`
+
+	// Outcomes is what follows a creature's body machine ENTERING a state of
+	// this recipe, keyed by that state (rpg-project#989): written once here,
+	// it applies to every creature whose body machine is this definition.
+	// The one kind a state gives is `give`, to `itself`, about
+	// `the_one_named`. A sequence has none.
+	//
+	//	outcomes:
+	//	  back-to-gate:
+	//	    - give: { topic: caught-lying, to: itself, about: the_one_named }
+	Outcomes map[string][]OutcomeSpec `yaml:"outcomes,omitempty" json:"outcomes,omitempty"`
 }
 
 // BehaviorBindingSpec supplies an actor-local attachment ID, document-local
@@ -97,6 +108,7 @@ type behaviorLowering struct {
 	Input          *encounter.BehaviorInput
 	BlockingStates []string
 	Posts          map[string]encounter.Post
+	Outcomes       map[string][]encounter.Consequence
 }
 
 type behaviorSourceInput struct {
@@ -114,6 +126,9 @@ type behaviorSourceInput struct {
 	// Topics is every topic a root interaction's outcomes grant
 	// (rpg-project#928): what a post's `pass` may ask `noted` of.
 	Topics map[string]bool
+
+	// Values is every value each of those topics is given with (rpg-project#1007).
+	Values topicValues
 }
 
 func behaviorSourceError(path, message string) error {
@@ -197,10 +212,20 @@ func checkBehaviorDefinition(key string, definition BehaviorDefinitionSpec) erro
 		if err := recipe.Ref.IsValid(); err != nil {
 			return behaviorSourceError(path+".recipe.ref", err.Error())
 		}
+		var refused []FieldError
+		stateOutcomesOf(key, definition, &recipe, func(at, message string) {
+			refused = append(refused, FieldError{Path: at, Message: message})
+		})
+		if len(refused) > 0 {
+			return &ValidationError{Errors: refused}
+		}
 		return nil
 	}
 	if definition.Table != nil {
 		return behaviorSourceError(path+".table", "a concrete table requires its recipe")
+	}
+	if len(definition.Outcomes) > 0 {
+		return behaviorSourceError(path+".outcomes", "outcomes are written on a recipe's states; a sequence has none")
 	}
 	if _, err := core.ParseString(definition.Ref); err != nil {
 		return behaviorSourceError(path+".ref", err.Error())
@@ -341,6 +366,36 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 		}
 		return states, nil
 	}
+	if in.Bindings != nil {
+		for index, binding := range *in.Bindings {
+			definition := in.Definitions[binding.Use]
+			if len(definition.Outcomes) == 0 {
+				continue
+			}
+			if binding.ID != body {
+				return behaviorLowering{}, behaviorSourceError(fmt.Sprintf("%s.behaviors[%d].use", in.Path, index), fmt.Sprintf(
+					"`%s` gives on entering a state, and only the machine that moves the creature does that: "+
+						"name it as `behaviorState`, or remove its outcomes", binding.Use))
+			}
+			var recipe machine.Recipe
+			if err := decodeBehaviorValue(definition.Recipe, &recipe); err != nil {
+				return behaviorLowering{}, behaviorSourceError(in.Path+".behaviors", err.Error())
+			}
+			lowered := stateOutcomesOf(binding.Use, definition, &recipe, func(string, string) {})
+			for _, name := range sortedKeys(lowered) {
+				states, err := resolveState(name)
+				if err != nil {
+					return behaviorLowering{}, err
+				}
+				if out.Outcomes == nil {
+					out.Outcomes = map[string][]encounter.Consequence{}
+				}
+				for _, state := range states {
+					out.Outcomes[state] = lowered[name]
+				}
+			}
+		}
+	}
 	if in.Blocking != nil {
 		for _, name := range *in.Blocking {
 			states, err := resolveState(name)
@@ -360,7 +415,7 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 		if !in.Doors[post.Door] {
 			return behaviorLowering{}, behaviorSourceError(path+".door", "must name a door in this site")
 		}
-		if at, refusal := passRefusal(path+".pass", post.Pass, in.Topics); refusal != "" {
+		if at, refusal := passRefusal(path+".pass", post.Pass, in.Topics, in.Values); refusal != "" {
 			return behaviorLowering{}, behaviorSourceError(at, refusal)
 		}
 		lowered := encounter.Post{Door: encounter.DoorID(in.Key + "/" + post.Door), Against: encounter.PostDirection(post.Against), Pass: passOf(post.Pass)}
@@ -381,7 +436,7 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 			out.Posts[state] = lowered
 		}
 	}
-	if _, err := encounter.CheckBehaviors(&encounter.CheckBehaviorsInput{Behaviors: *out.Input, BlockingStates: out.BlockingStates, Posts: out.Posts}); err != nil {
+	if _, err := encounter.CheckBehaviors(&encounter.CheckBehaviorsInput{Behaviors: *out.Input, BlockingStates: out.BlockingStates, Posts: out.Posts, Outcomes: out.Outcomes}); err != nil {
 		return behaviorLowering{}, behaviorSourceError(in.Path+".behaviors", err.Error())
 	}
 	return out, nil
@@ -437,7 +492,7 @@ func roomBehaviorInput(s *SingleRoomSpec, id string) (behaviorLowering, error) {
 	return bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: uses, Body: body,
 		Blocking: blocks, Posts: posts, Path: "room.room.monsterBindings." + id, Key: s.Key,
 		Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-		Topics: grantedTopicsOf(s)})
+		Topics: grantedTopicsOf(s), Values: givenValuesOf(s)})
 }
 
 func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
@@ -512,7 +567,7 @@ func behaviorSourceValues(s *SingleRoomSpec, add errSink) {
 		_, err := bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: faction.Behaviors,
 			Body: faction.BehaviorState, Blocking: faction.BlockingStates, Posts: faction.Posts,
 			Path: path, Key: s.Key, Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-			Topics: grantedTopicsOf(s)})
+			Topics: grantedTopicsOf(s), Values: givenValuesOf(s)})
 		report(err)
 	}
 	for _, actor := range s.Room.Gameplay.MonsterDeclarations {
@@ -594,4 +649,115 @@ func behaviorClockNames(node any) []string {
 		}
 	}
 	return names
+}
+
+// stateOutcomesOf judges and lowers a behaviour definition's `outcomes`
+// (rpg-project#989) at the author's own paths,
+// `behaviorDefinitions.<key>.outcomes.<state>` and below, as [outcomesOf] does
+// for a conversation: every key a state of the recipe, every state naming at
+// least one consequence, a state some transition steps into, every consequence
+// one `give` to `itself` about `the_one_named` (the words are the engine's
+// who-word table's, at [encounter.WhoInStateGiveTo] and
+// [encounter.WhoInStateGiveAbout]), and a note about the one the beat names
+// only where every beat entering the state names someone. The engine judges the
+// same again ([encounter.CheckBehaviors]). Nil for none.
+func stateOutcomesOf(
+	key string, definition BehaviorDefinitionSpec, recipe *machine.Recipe, add errSink,
+) map[string][]encounter.Consequence {
+	if len(definition.Outcomes) == 0 {
+		return nil
+	}
+	out := make(map[string][]encounter.Consequence, len(definition.Outcomes))
+	const gives = "a state's consequence is `give: { topic, to: itself, about: the_one_named }`"
+	for _, state := range sortedKeys(definition.Outcomes) {
+		at := "behaviorDefinitions." + key + ".outcomes." + state
+		if _, declared := recipe.States[state]; !declared {
+			add(at, fmt.Sprintf("%q is not a state of this definition's recipe", state))
+			continue
+		}
+		if len(definition.Outcomes[state]) == 0 {
+			add(at, "an outcome lists what follows entering the state: write at least one `give`")
+			continue
+		}
+		var entering []string
+		for _, name := range sortedKeys(recipe.States) {
+			for _, t := range recipe.States[name].Transitions {
+				if t.To == state {
+					entering = append(entering, string(t.On))
+				}
+			}
+		}
+		if len(entering) == 0 {
+			add(at, fmt.Sprintf("nothing steps into %q, so what it gives could never happen", state))
+			continue
+		}
+		for i, c := range definition.Outcomes[state] {
+			itemAt := fmt.Sprintf("%s[%d]", at, i)
+			switch {
+			case kinds(c) > 1:
+				add(itemAt, "a consequence is one kind, not two: "+gives)
+				continue
+			case c.Arrest != nil:
+				add(itemAt, "an arrest follows a conversation entering a state, never a machine's: "+gives)
+				continue
+			case c.Jail != nil:
+				add(itemAt, "a jail follows a conversation entering a state, never a machine's: "+gives)
+				continue
+			case c.Give == nil:
+				add(itemAt, gives)
+				continue
+			}
+			g, rec := c.Give, true
+			giveAt := itemAt + ".give"
+			if g.Topic == "" {
+				add(giveAt+".topic", "a give names the topic given: write `topic: <topic>`")
+				rec = false
+			}
+			if !slices.Contains(encounter.WhoWordsIn(encounter.WhoInStateGiveTo), g.To) {
+				said := []string{}
+				for _, w := range encounter.WhoWordsIn(encounter.WhoInStateGiveTo) {
+					wd, _ := encounter.WhoWordAt(encounter.WhoInStateGiveTo, w)
+					said = append(said, fmt.Sprintf("`to: %s`, %s", w, wd.Label))
+				}
+				add(giveAt+".to", "a state's note is given "+strings.Join(said, ", or "))
+				rec = false
+			}
+			if !slices.Contains(encounter.WhoWordsIn(encounter.WhoInStateGiveAbout), g.About) {
+				add(giveAt+".about", subjectsSentence(encounter.WhoInStateGiveAbout))
+				rec = false
+			}
+			if g.HeardBy != "" {
+				add(giveAt+".heard_by", "a state's note has no line, so nobody else hears it: omit heard_by")
+				rec = false
+			}
+			if rec {
+				for _, on := range entering {
+					if b, known := encounter.BeatWordOf(on); !known || !b.Names {
+						add(giveAt+".about", fmt.Sprintf("%q is entered on `%s`, which names nobody, so `%s` has no one to be about: "+
+							"it is read on %s", state, on, g.About, joinTableWords(namingBeatWords(), "and")))
+						rec = false
+						break
+					}
+				}
+			}
+			if rec {
+				out[state] = append(out[state], encounter.Consequence{Recognize: &encounter.Recognition{
+					Topic: encounter.TopicID(g.Topic), As: g.As, Holder: encounter.RecognitionHolder(g.To), About: encounter.RecognitionSubjects(g.About),
+				}})
+			}
+		}
+	}
+	return out
+}
+
+// namingBeatWords is every beat that names the one it is about, in table
+// order: where a note about `the_one_named` may be read.
+func namingBeatWords() []string {
+	var out []string
+	for _, b := range encounter.MachineWords().Beats {
+		if b.Names {
+			out = append(out, b.Word)
+		}
+	}
+	return out
 }

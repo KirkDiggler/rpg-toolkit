@@ -43,6 +43,18 @@ func (*retiredRecognize) UnmarshalYAML(node *yaml.Node) error {
 	return retiredAt(node, recognizeIsGive)
 }
 
+// sceneMoveIsRelocate is the refusal of the retired `sceneMove:` (rpg-project#989).
+const sceneMoveIsRelocate = "`sceneMove` is retired: a row moves its speaker with relocate: { to, words, rounds }, " +
+	"and a guard leaves by its own machine stepping on a fact a row teaches (fact: <id>, then on: fact)"
+
+// retiredSceneMove is an outcome's retired `sceneMove:` ([sceneMoveIsRelocate]).
+type retiredSceneMove struct{}
+
+// UnmarshalYAML refuses the old word, naming what replaced it.
+func (*retiredSceneMove) UnmarshalYAML(node *yaml.Node) error {
+	return retiredAt(node, sceneMoveIsRelocate)
+}
+
 // retiredStateHolds is a state's retired `holds:` ([stateHoldsIsPost]).
 type retiredStateHolds struct{}
 
@@ -52,7 +64,7 @@ func (*retiredStateHolds) UnmarshalYAML(node *yaml.Node) error {
 }
 
 // giveKeys is every key a give takes, in the order a refusal lists them.
-var giveKeys = []string{"topic", "to", "about", "heard_by"}
+var giveKeys = []string{"topic", "as", "to", "about", "heard_by"}
 
 // UnmarshalYAML reads a give, refusing a key it does not take by name and
 // line — a give hangs under a row or an outcome whose own reader does not

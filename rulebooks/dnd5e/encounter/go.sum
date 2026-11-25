@@ -12,8 +12,8 @@ github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0 h1:yWT2iHTOkV7QDbF3OseKpJ
 github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0/go.mod h1:7Q7d5co2WThTngjfpVf8NJWgV0iodpvkpFEcIxoLcA4=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0 h1:aoQxDJpZAmENlQr7Nl+sSHtqCdebwh24RRvc1USPnsw=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0/go.mod h1:CSaTa4GLoRShB6BqDdNrmKtAkmIs17w30EEN7Ex46Fs=
-github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=
-github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0/go.mod h1:LRzXoz7Is2z6s4KWtVG6B68uunxJgE5qWdk14EtHlbk=
+github.com/KirkDiggler/rpg-toolkit/play/clock v0.2.0 h1:WEigsKSQ/rdvMRcGaIfCdF0ZI7Va0dgpHW16M0nkg3s=
+github.com/KirkDiggler/rpg-toolkit/play/clock v0.2.0/go.mod h1:kUKhl/a2SmcRIAAzo4eKfJHG3W6Z853YC09t9Sd1FiM=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0 h1:yUg3WzBjif9YoqkZ1Fti7knlAjM5kgkRpB4r8KOlaUg=
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0/go.mod h1:wxDX02oFfpfgtPDRrfskHvRqw/2Bqv986w9NKUkP/MU=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0 h1:9k2WEG8YQc6bKZbuLjZHeIZNeMZWOid9xtxnH0KFmis=

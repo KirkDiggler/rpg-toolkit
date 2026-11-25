@@ -55,6 +55,7 @@ func BehaviorVocabulary(in *BehaviorVocabularyInput) (*BehaviorVocabularyOutput,
 		}
 		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineTopic(string(id))}})
 		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineNoted(string(id))}})
+		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineNotedAs(string(id))}})
 	}
 	return &BehaviorVocabularyOutput{Vocabulary: v}, nil
 }
@@ -65,6 +66,7 @@ type CheckBehaviorsInput struct {
 	Behaviors      BehaviorInput
 	BlockingStates []string
 	Posts          map[string]Post
+	Outcomes       map[string][]Consequence
 }
 
 // CheckBehaviorsOutput identifies the resolved body instance, if any. No live
@@ -86,6 +88,9 @@ func CheckBehaviors(in *CheckBehaviorsInput) (*CheckBehaviorsOutput, error) {
 		return nil, fmt.Errorf("%w: %w", ErrBadMember, err)
 	}
 	if err := validatePostStates(bound.bodyRecipe(), in.Posts); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadMember, err)
+	}
+	if err := validateStateOutcomes(bound.bodyRecipe(), in.Outcomes); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadMember, err)
 	}
 	return &CheckBehaviorsOutput{BodyInstance: bound.input.BodyInstance}, nil

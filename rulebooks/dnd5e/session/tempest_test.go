@@ -725,7 +725,8 @@ func (s *CastSuite) sceneWithSecondSkeleton(sheet *character.Data, cells int, ro
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
-	s.dice = &sequenceDice{rolls: append(make([]int, 3), rolls...)}
+	// 1s, legal d20 faces: every member up by the same 1, order unchanged.
+	s.dice = &sequenceDice{rolls: append([]int{1, 1, 1}, rolls...)}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},

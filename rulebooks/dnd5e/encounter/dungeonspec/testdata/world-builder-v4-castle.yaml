@@ -428,6 +428,16 @@ statuses:
     maintenance:
       - ends_on: run
     again: ignored
+  # Hand edit (rpg-project#1036): the Keep design's chapel benefit. Praying at
+  # the altar gives advantage on ability checks, and not on attacks or saving
+  # throws, until the run ends. It does not stack with itself.
+  prayed:
+    name: Prayed
+    changes:
+      - advantage: checks
+    maintenance:
+      - ends_on: run
+    again: ignored
   # Hand edit (rpg-project#990), a small proof scene for the Keep's hold: the
   # great hall guard stops a speaker who tries to shoulder past him. Held, the
   # speaker cannot move by their own will; they can still speak and fight,
@@ -2142,8 +2152,12 @@ room:
             check:
               - ability: persuasion
                 dc: 15
+            # Hand edit (rpg-project#989): and not to one he caught lying,
+            # who cannot say the same claim to him again.
             requires:
-              fact: king-burned-village
+              - fact: king-burned-village
+              - not:
+                  noted: caught-lying
             success:
               - say: …Gods forgive me. The garrison is yours. We take the keep.
                 fact: guards-turned
@@ -2174,8 +2188,11 @@ room:
             # Hand edit (rpg-project#929): he goes in once he has admitted
             # anyone, so the line reads the same at the gate or in the hall.
             say: Where will the feast be, captain?
+            # Hand edit (rpg-project#989): and not to one he caught lying.
             requires:
-              noted: admitted
+              - noted: admitted
+              - not:
+                  noted: caught-lying
             success:
               - say: In the great hall. You’re expected.
         behaviors:
@@ -2196,7 +2213,11 @@ room:
           back-to-gate:
             door: gate-wall-door
             against: entering
-            pass: { noted: admitted }
+            # Hand edit (rpg-project#989): admitted, and not caught lying.
+            pass:
+              - noted: admitted
+              - not:
+                  noted: caught-lying
             at:
               - q: -4
                 r: 8
@@ -2595,6 +2616,15 @@ room:
                 fact: king-is-cultist
             failure:
               - say: Old stone, old candles.
+          # Hand edit (rpg-project#1036): no check, the full prayer puzzle is the
+          # design's and is not built; reciting it leaves the speaker prayed
+          # until their run ends.
+          - id: pray
+            do: You recite the prayer at the altar.
+            seen: recites a prayer at the altar
+            success:
+              - say: The candles steady. Something is listening.
+                apply_status: { status: prayed, to: speaker }
 # Hand edit (rpg-project#922, Gate S2 of #769): the entrance remembers. The
 # front gate is one run-wide interaction every gate speaker reads and steps:
 # a failed claim warns and closes that claim, the other claim's failure then
@@ -3145,6 +3175,14 @@ behaviorDefinitions:
             - on: turn
               do:
                 - pick: time
+    # Hand edit (rpg-project#989): entering `back-to-gate`, the captain notes
+    # `caught-lying` about the one he heard lie to him.
+    outcomes:
+      back-to-gate:
+        - give:
+            topic: caught-lying
+            to: itself
+            about: the_one_named
     table:
       approached:
         - say: You there. Nobody passes this gate without my say. Speak.

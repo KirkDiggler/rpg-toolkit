@@ -788,6 +788,20 @@ type RunEndEvent struct {
 	SubjectID string // whoever the run just ended for
 }
 
+// StatusLapsedEvent is published when the rounds a status was given for have
+// run out.
+//
+// ONE PER LAPSE, about its holder: every attached effect hears every publish
+// on the interaction's single bus, and answers "is this about me?" by comparing
+// the subject against its own holder. ApplicationID is the one application
+// whose rounds are up, so a holder with two timed statuses loses only the one.
+//
+// Nothing in this module publishes it: the party that keeps world time does.
+type StatusLapsedEvent struct {
+	SubjectID     string // the holder whose status lapsed
+	ApplicationID string // the one application whose rounds are up
+}
+
 // =============================================================================
 // Death Save Events
 // =============================================================================
@@ -1070,6 +1084,9 @@ var (
 
 	// RunEndTopic provides typed pub/sub for a member's run ending
 	RunEndTopic = events.DefineTypedTopic[RunEndEvent]("dnd5e.run.end")
+
+	// StatusLapsedTopic provides typed pub/sub for a status's rounds running out
+	StatusLapsedTopic = events.DefineTypedTopic[StatusLapsedEvent]("dnd5e.status.lapsed")
 
 	// PatientDefenseActivatedTopic provides typed pub/sub for patient defense activation events
 	PatientDefenseActivatedTopic = events.DefineTypedTopic[PatientDefenseActivatedEvent](

@@ -66,6 +66,7 @@ var kindTable = map[generic.KindName]kindDefinition{
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
 	KindDuration:   {class: PartClassMaintenance, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
 	KindUntilEmpty: {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindLapse:      {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindLapsePart, inspectPart: inspectLapsePart},
 	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
 	KindRollModifier: {class: PartClassBenefit, validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},

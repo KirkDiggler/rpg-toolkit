@@ -804,6 +804,17 @@ const (
 	// holder's fight starts is gone before anybody acts (rpg-project#990).
 	// Round is the fight's round at that moment.
 	CombatStarted BoundaryKind = "combat_started"
+
+	// StatusLapsed marks a status a member was given for a number of rounds
+	// having had them (rpg-project#1080): the world clock reached the round
+	// its timer ([Encounter.ArmStatusLapse]) was due. About ONE holder and ONE
+	// application ([Boundary.Application]), never everyone each round.
+	//
+	// THIS IS NOT A ROUND BOUNDARY, which the paragraph above refuses: it is
+	// one holder's status timing out, and its first subscriber (the rules'
+	// `lapse` part) arrives with it. Its Round is 0, because a world round is
+	// not a fight round.
+	StatusLapsed BoundaryKind = "status_lapsed"
 )
 
 // Boundary is one temporal boundary this composition crossed, in this
@@ -831,6 +842,11 @@ type Boundary struct {
 	// round to compare against a later one is only sound if it cannot outlive
 	// the clock the number came from — which is what CombatEnded is for.
 	Round int
+
+	// Application is the application whose rounds are up: the host's id for
+	// one status on one holder, as armed. Set for [StatusLapsed] only; empty
+	// for every other kind.
+	Application string
 }
 
 // Announcer publishes the temporal boundaries a clock advance crossed.

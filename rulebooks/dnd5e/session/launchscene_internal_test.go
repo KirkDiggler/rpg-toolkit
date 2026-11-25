@@ -91,4 +91,6 @@ func authorTurnClock(t *testing.T, stored *encounter.EncounterData, order []stri
 	}{{Order: ids, ActiveIdx: active, Round: 1}})
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &stored.Bubbles))
+	// A fight nobody rolled for: the save says so and loads (rpg-project#1068).
+	stored.Initiative = make([]encounter.BubbleInitiativeData, len(stored.Bubbles))
 }

@@ -204,11 +204,11 @@ func (s *WorldClockDoorsSuite) TestAFreeRoamActivationIsAdmitted() {
 	again := s.row("alice", session.VerbActivate, ref)
 	s.False(again.Available)
 	s.Require().NotNil(again.Why)
-	// The ability's own words, exactly as on the turn clock: the uses are
-	// gone. Never a turn currency.
-	s.Equal(session.ShortfallUnavailable, again.Why.Reason)
-	s.Contains(again.Why.Text, "uses remaining")
-	s.Empty(again.Why.Currency, "no turn currency falls short on the world clock")
+	// The pool's own shortfall (rulebook v0.227.0 reports Second Wind's real
+	// numbers, as a spent Rage already does): out of budget in "charges".
+	// Before the pins: unavailable, "uses remaining", no currency.
+	s.Equal(session.ShortfallNoBudget, again.Why.Reason)
+	s.Equal("charges", string(again.Why.Currency))
 	_, err = s.mgr.Activate(context.Background(), &session.ActivateInput{
 		Session: "sess", Member: "alice", DeclarationID: row.ID,
 	})

@@ -231,8 +231,27 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		}
 	}
 
+	// A CREATURE HAILS FOR ITSELF (ownhail.go, rpg-project#1139): after the
+	// conversation's hail, under the same conditions, a creature whose own
+	// machine hails at a distance the step crossed in to.
+	var hailed ownHailOutput
+	if fired == nil && e.outcome == nil {
+		hailed, err = e.ownHailAfterStep(in.Member, action.from, action.to)
+		if err != nil {
+			return nil, fmt.Errorf("step own hail: %w", err)
+		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, hailed.deltas)
+		if hailed.formed != nil {
+			formed = hailed.formed
+		}
+		if e.outcome != nil {
+			fired = e.outcome
+		}
+	}
+
 	out := &StepOutput{
 		Addressed:   addressed.addressed,
+		Hailed:      hailed.hailed,
 		Doors:       action.doors,
 		IntelDeltas: intelDeltas,
 		Seq:         moved.Seq,

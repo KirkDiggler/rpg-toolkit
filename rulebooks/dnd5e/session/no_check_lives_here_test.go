@@ -105,6 +105,11 @@ var conditionReaders = map[string]bool{
 	// sheet's stored conditions (tier 3 close-out R2) and attaches nothing: the
 	// seam writes a list somebody else stated, which is projecting a fact.
 	"FreeReactions": true,
+	// InitiativeContribution is the shape a sheet's Initiative() answers with:
+	// what adds to initiative, by ref, name and amount (rpg-project#1035). The
+	// seam reads it to hand the rulebook's own roll its sources; it holds,
+	// builds and runs nothing.
+	"InitiativeContribution": true,
 }
 
 // checkMachinery are the entries in the rulebook's events package that stand a

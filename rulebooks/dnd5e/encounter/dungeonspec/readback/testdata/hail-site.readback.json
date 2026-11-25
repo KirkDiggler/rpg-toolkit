@@ -414,7 +414,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.",
+              "sentence": "In the state `ready`, when someone's step brings them within Guard (porter)'s distance (the step's own `within`) and Guard (porter) sees them; or, when Guard (porter) carries a conversation that declares an approach, under that conversation's hail rule, Guard (porter) acts from its own `approached` rows.",
               "path": "behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]",
               "connects": [
                 {

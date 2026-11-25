@@ -43,7 +43,6 @@ var recordOnly = map[string]bool{
 	// told to nobody, for the run's record.
 	encounter.BeatSceneContent:      true,
 	encounter.BeatJoinedAt:          true,
-	encounter.BeatTransferred:       true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
 	encounter.BeatSneaking:          true,
@@ -99,7 +98,7 @@ func familyOf(beat string) (Family, bool) {
 	case encounter.BeatTick, encounter.BeatTurnEnded, encounter.BeatFightStarted, encounter.BeatFightEnded,
 		encounter.BeatJoined, encounter.BeatExited, encounter.BeatArrived, encounter.BeatSceneOpened,
 		encounter.BeatEnded, encounter.BeatWindowOpened, encounter.BeatRollWindowOpened,
-		encounter.BeatWakeCut:
+		encounter.BeatWakeCut, encounter.BeatTransferred:
 		return FamilyClock, true
 	default:
 		return "", false
@@ -1273,6 +1272,11 @@ func cellsLearned(payload []byte) (*CellsLearned, error) {
 //
 //nolint:gocyclo // one arm per clock beat
 func clockPieces(beat string, payload []byte) ([]piece, error) {
+	if beat == encounter.BeatTransferred {
+		// Read apart from the rest: a transfer's "to" is a clock's name, and
+		// on the window-opened beat the same key is a position.
+		return joinPieces(payload)
+	}
 	var p struct {
 		Tick      uint64           `json:"tick"`
 		Member    string           `json:"member"`
@@ -1288,10 +1292,16 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		Cell      spatial.Position `json:"cell"`
 		From      spatial.Position `json:"from"`
 		To        spatial.Position `json:"to"`
-		Ending    string           `json:"ending"`
-		Outcome   string           `json:"outcome"`
-		Ended     json.RawMessage  `json:"ended"`
-		Windows   []struct {
+		Rolls     []struct {
+			Member      string          `json:"member"`
+			Roll        int             `json:"roll"`
+			Total       int             `json:"total"`
+			Calculation json.RawMessage `json:"calculation"`
+		} `json:"rolls"`
+		Ending  string          `json:"ending"`
+		Outcome string          `json:"outcome"`
+		Ended   json.RawMessage `json:"ended"`
+		Windows []struct {
 			Audience string       `json:"audience"`
 			Reaction beatReaction `json:"reaction"`
 		} `json:"windows"`
@@ -1322,7 +1332,15 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 	case encounter.BeatTurnEnded:
 		entry.Mark, entry.Turn = ClockTurnEnded, &TurnPassed{Member: member(p.Member), Next: member(p.Next)}
 	case encounter.BeatFightStarted:
-		entry.Mark, entry.Fight = ClockFightFormed, &FightFormed{Order: parties(p.Order), Surprised: parties(p.Surprised)}
+		fight := &FightFormed{Order: parties(p.Order), Surprised: parties(p.Surprised)}
+		for _, r := range p.Rolls {
+			roll, err := rollOf(r.Calculation, facesOf(r.Roll), r.Total, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			fight.Rolls = append(fight.Rolls, InitiativeRoll{Member: member(r.Member), Roll: roll})
+		}
+		entry.Mark, entry.Fight = ClockFightFormed, fight
 	case encounter.BeatFightEnded:
 		entry.Mark, entry.Dissolved = ClockFightDissolved, &FightDissolved{Members: parties(p.Members), Cause: p.Cause}
 	case encounter.BeatJoined:
@@ -1561,4 +1579,40 @@ func interactPiece(payload []byte) (piece, error) {
 		return piece{}, fmt.Errorf("interacted %q: view %q", p.Actor, p.View)
 	}
 	return piece{family: FamilyAct, body: act}, nil
+}
+
+// joinPieces folds a transfer: to the turn clock it is a creature joining a
+// fight under way (rpg-project#1068), to the world it is one leaving, which
+// has no act.
+func joinPieces(payload []byte) ([]piece, error) {
+	var t struct {
+		Member     string `json:"member"`
+		To         string `json:"to"`
+		Round      int    `json:"round"`
+		FirstRound int    `json:"first_round"`
+		Rolls      []struct {
+			Member      string          `json:"member"`
+			Roll        int             `json:"roll"`
+			Total       int             `json:"total"`
+			Calculation json.RawMessage `json:"calculation"`
+		} `json:"rolls"`
+	}
+	if err := json.Unmarshal(payload, &t); err != nil {
+		return nil, err
+	}
+	if t.To != string(encounter.ClockTurn) {
+		return nil, nil
+	}
+	if len(t.Rolls) > 1 {
+		return nil, fmt.Errorf("a join carries %d rolls, want at most one", len(t.Rolls))
+	}
+	joined := &FightJoined{Member: member(t.Member), Round: t.Round, FirstRound: t.FirstRound}
+	for _, r := range t.Rolls {
+		roll, err := rollOf(r.Calculation, facesOf(r.Roll), r.Total, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		joined.Roll = &InitiativeRoll{Member: member(r.Member), Roll: roll}
+	}
+	return []piece{{family: FamilyClock, body: ClockEntry{Mark: ClockFightJoined, Joined: joined}}}, nil
 }

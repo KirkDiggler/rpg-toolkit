@@ -435,7 +435,7 @@ type EquipAct struct {
 	Change string
 }
 
-// StayAct is a driven word that did nothing (stayed).
+// StayAct is a driven word that did nothing, or a player's wait (stayed).
 type StayAct struct {
 	// Member is who stayed (stayed `member`).
 	Member Party
@@ -830,6 +830,9 @@ const (
 	// ClockWakeCut is a raise cut short at the bound on the beats one pass
 	// matches (wake-cut, rpg-project#766).
 	ClockWakeCut ClockMark = "wake_cut"
+	// ClockFightJoined is a creature joining a fight under way (transferred,
+	// to the turn clock).
+	ClockFightJoined ClockMark = "fight_joined"
 )
 
 // WakeCut is a raise cut short (wake-cut): how many landed beats the pass
@@ -855,6 +858,30 @@ type FightFormed struct {
 	Order []Party
 	// Surprised are the surprised (bubble-formed `surprised`).
 	Surprised []Party
+	// Rolls are the initiative rolls behind Order (bubble-formed `rolls`), in
+	// the entry's order; empty when nobody rolled.
+	Rolls []InitiativeRoll
+}
+
+// FightJoined is a creature joining a fight under way (transferred, to the
+// turn clock).
+type FightJoined struct {
+	// Member is who joined.
+	Member Party
+	// Roll is the joiner's initiative roll; nil when it was placed without one.
+	Roll *InitiativeRoll
+	// Round is the round the creature joined in (transferred `round`).
+	Round int
+	// FirstRound is the round of its first turn (transferred `first_round`).
+	FirstRound int
+}
+
+// InitiativeRoll is one member's roll for its place in a fight's order.
+type InitiativeRoll struct {
+	// Member is who rolled.
+	Member Party
+	// Roll is the roll as the fight recorded it.
+	Roll *Roll
 }
 
 // FightDissolved is a fight ending (bubble-dissolved).
@@ -961,6 +988,8 @@ type ClockEntry struct {
 	RollWindow *RollWindowOpened
 	// WakeCut is set for ClockWakeCut.
 	WakeCut *WakeCut
+	// Joined is set for ClockFightJoined.
+	Joined *FightJoined
 }
 
 func (WalkAct) isActBody()      {}

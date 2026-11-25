@@ -66,24 +66,40 @@ func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 		}
 	}
 	require.NotNil(t, line, "the captain carries the line for whom he recognises")
-	require.Equal(t, []encounter.Trigger{encounter.TriggerRecognized{Topic: "admitted"}}, line.Requires)
+	// And not to the one he caught lying (rpg-project#989).
+	require.Equal(t, []encounter.Trigger{
+		encounter.TriggerRecognized{Topic: "admitted"},
+		encounter.TriggerNot{Inner: encounter.TriggerRecognized{Topic: "caught-lying"}},
+	}, line.Requires)
 }
 
 func TestDungeonspec_APassStillTakesAFact(t *testing.T) {
-	// The captain keeps one post in `ready` and the same in `back-to-gate`
-	// (rpg-project#1000): both take the password.
-	const captainsPass = `            pass: { noted: admitted }
+	// The captain keeps one post in `ready` and one in `back-to-gate`
+	// (rpg-project#1000): both take the password. Back at the gate his pass
+	// also bars the one he caught lying (rpg-project#989), so the castle
+	// writes the two passes differently.
+	const captainsReadyPass = `            pass: { noted: admitted }
+            at:
+              - q: -4
+                r: 8
+`
+	const captainsGatePass = `            pass:
+              - noted: admitted
+              - not:
+                  noted: caught-lying
+            at:
+              - q: -4
+                r: 8
+`
+	const password = `            pass: password
             at:
               - q: -4
                 r: 8
 `
 	source := castleSource(t)
-	require.Equal(t, 2, strings.Count(source, captainsPass), "the castle writes the captain's post twice")
-	c := loadSource(t, strings.ReplaceAll(source, captainsPass, `            pass: password
-            at:
-              - q: -4
-                r: 8
-`))
+	require.Equal(t, 1, strings.Count(source, captainsReadyPass), "the castle writes the captain's `ready` post once")
+	require.Equal(t, 1, strings.Count(source, captainsGatePass), "and his `back-to-gate` post once")
+	c := loadSource(t, strings.ReplaceAll(strings.ReplaceAll(source, captainsReadyPass, password), captainsGatePass, password))
 	require.Len(t, monsterNamed(t, c, "captain").Posts, 2)
 	for _, p := range monsterNamed(t, c, "captain").Posts {
 		require.Equal(t, []encounter.Trigger{encounter.TriggerFact{Fact: "password"}}, p.Pass, "a bare word is the password it always was")
@@ -119,10 +135,10 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 	}
 
 	t.Run("a line asking for a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, castleWith(t, "            requires:\n              noted: admitted\n",
-			"            requires:\n              noted: welcome\n"))
+		errs := refusals(t, castleWith(t, "            requires:\n              - noted: admitted\n",
+			"            requires:\n              - noted: welcome\n"))
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.noted"), errs[0].Path)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".requires[0].noted"), errs[0].Path)
 		require.Contains(t, errs[0].Message, `"welcome" is a topic no interaction's`)
 	})
 
@@ -209,8 +225,8 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 	})
 
 	t.Run("heard_by on a line that names no interaction", func(t *testing.T) {
-		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              noted: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
-			"            say: Where will the feast be, captain?\n            requires:\n              noted: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { topic: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
+		text := castleWith(t, "            requires:\n              - noted: admitted\n              - not:\n                  noted: caught-lying\n            success:\n              - say: In the great hall. You’re expected.\n",
+			"            requires:\n              - noted: admitted\n              - not:\n                  noted: caught-lying\n            success:\n              - say: In the great hall. You’re expected.\n                give: { topic: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
 		errs := refusals(t, text)
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".success[0].give.heard_by"), errs[0].Path)

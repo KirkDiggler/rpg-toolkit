@@ -130,7 +130,7 @@ type Encounter struct {
 	// rpg-project#928, #929): its interactions' outcomes and its members'
 	// lines' grants. A `recognized` requirement or pass on any other is one
 	// nobody could ever meet, and refused. Kept so a joiner's grants add to it.
-	granted map[TopicID]bool
+	granted topicGrants
 
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
@@ -164,11 +164,19 @@ type Encounter struct {
 	// reached through a member, which R6 makes a total function ("an entity
 	// belongs to at most one clock"). Inventing an ID would create a second
 	// thing to keep true.
-	bubbles     []*clock.Turn
-	intelLog    *perception.Perception
-	story       *record.Log
-	members     map[MemberID]*memberRecord
-	everMembers map[MemberID]bool // Track all members who have ever joined (for Story access)
+	bubbles []*clock.Turn
+	// initiativeTotals is each member's initiative total in each running
+	// bubble, for the members who rolled one. It is a rule's number, so the
+	// fight keeps it here and the clock never sees it (play/clock stays
+	// rulebook-agnostic). Keyed by the bubble pointer so it cannot drift out of
+	// step with bubbles: dropBubbleIfIdle is the one place a bubble leaves, and
+	// it forgets the map there. A member placed without a roll has no entry
+	// and is never outranked by a joiner (join.go, rpg-project#1068).
+	initiativeTotals map[*clock.Turn]map[MemberID]int
+	intelLog         *perception.Perception
+	story            *record.Log
+	members          map[MemberID]*memberRecord
+	everMembers      map[MemberID]bool // Track all members who have ever joined (for Story access)
 
 	// reserve is every member held back by an arrival predicate
 	// (rpg-project#375, reserve.go): not on the roster, on no clock, in no
@@ -295,11 +303,23 @@ type Encounter struct {
 	// [Encounter.disarm] alone; never persisted.
 	dueAt map[MemberID]uint64
 
+	// lapses is which status timers are due at which world round
+	// (status_lapse.go, rpg-project#1080): one per application, keyed by the
+	// host's application id. lapseAt holds each armed timer's record, and IS
+	// saved ([EncounterData.Lapses]); the heap is rebuilt from it at load.
+	lapses  machine.Due[string]
+	lapseAt map[string]StatusLapseData
+
 	// listeners is who listens for which beat, from every machine's current
 	// state ([machine.Program.Listens]). Derived like due and never
 	// persisted. The default recipe listens for nothing but time, which the
 	// heap answers, so it is empty until a recipe listens (S4).
 	listeners machine.Listeners[MemberID]
+	// seenWants is what each member's current `seen` steps require of the one
+	// seen, kept beside what it listens for (rpg-project#1126). Derived, never
+	// saved: rebuilt wherever the listens are, a load included. A member
+	// with no entry is woken for anyone.
+	seenWants map[MemberID]seenWants
 
 	// participation answers who is down and who counts as present. Required at
 	// both constructors and never defaulted; see [Participation].
@@ -880,7 +900,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
 			Options:            m.Options, Table: m.Table, Machine: m.Machine, Behaviors: m.Behaviors,
-			BlockingStates: m.BlockingStates, Posts: m.Posts,
+			BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -917,10 +937,15 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// pick up (option.go) — asked against the compiled field, so after it —
 	// and a line naming an interaction must name one this run has.
 	memberLines := make([][]Option, 0, len(in.Members))
+	machineNotes := make([]map[string][]Consequence, 0, len(in.Members))
 	for _, m := range in.Members {
 		memberLines = append(memberLines, m.Options)
+		machineNotes = append(machineNotes, m.Outcomes)
 	}
-	granted := grantedTopics(interactions, memberLines...)
+	granted := grantedTopics(interactions, machineNotes, memberLines...)
+	if err := checkTopicValues(granted); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
@@ -1126,6 +1151,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 		if err = e.usePosts(member, mi.Posts, f.cellAt(mi.Position)); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+		if err = e.useStateOutcomes(member, mi.Outcomes); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 
@@ -2799,16 +2827,17 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
 		Options:            in.Options, Table: in.Table, Machine: in.Machine, Behaviors: in.Behaviors,
-		BlockingStates: in.BlockingStates, Posts: in.Posts,
+		BlockingStates: in.BlockingStates, Posts: in.Posts, Outcomes: in.Outcomes,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
 	if err := e.field.validateOptionHolds(in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
-	joinGranted := grantedTopics(nil, in.Options)
-	for topic := range e.granted {
-		joinGranted[topic] = true
+	joinGranted := grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
+	joinGranted.merge(e.granted)
+	if err := checkTopicValues(joinGranted); err != nil {
+		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 	if err := validateOptionInteractions(e.interactions, joinGranted, in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
@@ -2908,11 +2937,13 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	// A JOINER'S GRANTS JOIN THE RUN'S (rpg-project#929), before its own
 	// posts are judged against them; a refused post puts them back.
 	wasGranted := e.granted
-	e.granted = grantedTopics(nil, in.Options)
-	for topic := range wasGranted {
-		e.granted[topic] = true
-	}
+	e.granted = grantedTopics(nil, []map[string][]Consequence{in.Outcomes}, in.Options)
+	e.granted.merge(wasGranted)
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
+		e.granted = wasGranted
+		return nil, nil, fmt.Errorf("join: %w", err)
+	}
+	if err := e.useStateOutcomes(member, in.Outcomes); err != nil {
 		e.granted = wasGranted
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
@@ -3116,6 +3147,8 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// roster changing is the graph's declaration changing too (world.go).
 	leaverKind := e.members[in.Member].Kind
 	delete(e.members, in.Member)
+	// NOTHING FIRES ABOUT A MEMBER WHO IS GONE (status_lapse.go).
+	e.dropLapsesOf(in.Member)
 	// A LINE WAITING ON THE LEAVER'S ROLL IS DROPPED (rpg-project#924,
 	// interaction_hold.go): nobody is left to decide on it, and the exit beat
 	// tells it. A line said TO the leaver is released by the sweep below.

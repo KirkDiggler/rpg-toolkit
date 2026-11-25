@@ -136,7 +136,11 @@ const (
 	// KindRoutineFlag is one flag a routine's machine remembers: its bag's
 	// key, its kind and its starting value (rpg-project#1001).
 	KindRoutineFlag Kind = "routine.flag"
-	KindRoutineRow  Kind = "routine.row"
+	// KindRoutineOutcome is one thing a routine's machine gives on entering a
+	// state (rpg-project#989): the topic it notes, about whom, and the state
+	// it is entered at.
+	KindRoutineOutcome Kind = "routine.outcome"
+	KindRoutineRow     Kind = "routine.row"
 )
 
 // EngineRule is the path of a statement that says how the engine runs what
@@ -163,9 +167,11 @@ type Connection struct {
 	// difficulty of a check on a `method` connection; zero means none.
 	Value int `json:"value,omitempty"`
 
-	// Is, Op, Not and At belong to a [ConnCondition] connection only.
+	// Op, Not and At belong to a [ConnCondition] connection only.
 
 	// Is is the value a condition compares, as text: "failed", "true", "3".
+	// On a `topic` connection it is the value a note carries, given or
+	// asked (rpg-project#1007), empty for a note with no value.
 	Is string `json:"is,omitempty"`
 	// Op is the comparison where it is not equality ("gte"; "lte" for
 	// `within` and `regions`, at most); the plain words for each are the

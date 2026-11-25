@@ -227,7 +227,7 @@ func (s *AttachRollbackTestSuite) TestLenientAttachStillDropsAndContinues() {
 func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: "rollback-second-wind", Name: "Second Wind",
-		CharacterID: "rollback-fighter", Uses: 0, MaxUses: 1,
+		CharacterID: "rollback-fighter",
 	})
 	s.Require().NoError(err)
 	actionSurge, err := json.Marshal(features.ActionSurgeData{
@@ -237,9 +237,14 @@ func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
 	s.Require().NoError(err)
 
 	return &Data{RaceID: "human", Level: 1,
-		ID:       "rollback-fighter",
-		ClassID:  classes.Fighter,
-		Features: []json.RawMessage{secondWind, actionSurge},
+		ID:      "rollback-fighter",
+		ClassID: classes.Fighter,
+		// Action Surge first: it is the one feature that still subscribes,
+		// and Second Wind's count is the shared pool on the sheet.
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
+		},
+		Features: []json.RawMessage{actionSurge, secondWind},
 	}
 }
 
@@ -259,14 +264,14 @@ func (s *AttachRollbackTestSuite) featureUses(char *Character, ref string) int {
 }
 
 // Features are applied after the keeper in persisted order. If a later feature
-// cannot subscribe, an earlier one and the keeper both come back off; the
+// cannot subscribe, the keeper comes back off; the
 // strict sheet remains byte-identical and can be attached again.
 func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedFeature() {
 	char, err := Load(s.ctx, s.fighterFeatureSheet())
 	s.Require().NoError(err)
 	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
-	bus := newFailingBus(7) // five keeper hooks, Second Wind, then Action Surge
+	bus := newFailingBus(6) // five keeper hooks, then Action Surge
 	err = Attach(s.ctx, char, bus)
 
 	s.Require().Error(err)
@@ -278,22 +283,24 @@ func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedFeature() {
 	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
 		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
 	}))
-	s.Zero(s.featureUses(char, refs.Features.SecondWind().String()),
-		"the first feature is not left listening after rollback")
+	s.Zero(s.featureUses(char, refs.Features.ActionSurge().String()),
+		"the keeper is not left listening after rollback")
+	s.Zero(mustToData(s.T(), char).Resources[resources.SecondWind].Current,
+		"nothing refills the shared pool after rollback")
 
 	good := events.NewEventBus()
 	s.Require().NoError(Attach(s.ctx, char, good))
-	s.Require().NoError(dnd5eEvents.RestTopic.On(good).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
-	}))
-	s.Equal(1, s.featureUses(char, refs.Features.SecondWind().String()))
+	_, err = char.LongRest(s.ctx)
+	s.Require().NoError(err)
+	s.Equal(1, mustToData(s.T(), char).Resources[resources.SecondWind].Current,
+		"the keeper refills the shared Second Wind pool")
 	s.Equal(1, s.featureUses(char, refs.Features.ActionSurge().String()))
 }
 
 // A lenient load drops only the attachable feature whose Apply fails and keeps
 // attaching later features, matching its existing per-blob drop policy.
 func (s *AttachRollbackTestSuite) TestLenientAttachDropsFailedFeatureAndContinues() {
-	bus := newFailingBus(6) // first feature after the five keeper hooks
+	bus := newFailingBus(6) // Action Surge, the first feature to subscribe after the five keeper hooks
 
 	char, err := LoadFromData(s.ctx, s.fighterFeatureSheet(), bus)
 
@@ -302,12 +309,12 @@ func (s *AttachRollbackTestSuite) TestLenientAttachDropsFailedFeatureAndContinue
 	for _, feature := range char.GetFeatures() {
 		featureRefs = append(featureRefs, feature.Ref().String())
 	}
-	s.Require().Contains(featureRefs, refs.Features.ActionSurge().String())
-	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
-		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
-	}))
-	s.Equal(1, s.featureUses(char, refs.Features.ActionSurge().String()),
-		"the later feature still attached")
+	s.Require().NotContains(featureRefs, refs.Features.ActionSurge().String(), "the failed feature is dropped")
+	s.Require().Contains(featureRefs, refs.Features.SecondWind().String(), "the later feature still loads")
+	_, err = char.LongRest(s.ctx)
+	s.Require().NoError(err)
+	s.Equal(1, mustToData(s.T(), char).Resources[resources.SecondWind].Current,
+		"the sheet is still attached and refills the shared pool")
 }
 
 func TestAttachRollbackSuite(t *testing.T) {

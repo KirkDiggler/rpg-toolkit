@@ -199,7 +199,7 @@ func (b *builder) convStepWords(id, state string, tr machine.Transition) string 
 // outcomeStatement says what entering a conversation's state gives: who is
 // given the topic, about whom they note it, and who else hears it.
 func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, path string) Statement {
-	topic := quote(string(r.Topic))
+	topic := topicWords(string(r.Topic), r.As)
 	holder := "the creature the deciding line was said to"
 	var holders []string
 	for _, site := range b.lineSites() {
@@ -212,7 +212,7 @@ func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, pa
 	// WHICHEVER CARRIER THE DECIDING LINE WAS SAID TO judges; the others
 	// hear: each carrier is named under both, the way it notes depending
 	// on whom the line was said to.
-	give := noteGive{topic: string(r.Topic), about: string(r.About), cause: Connection{Kind: "conversation", ID: id, Role: "enters", Is: state},
+	give := noteGive{topic: string(r.Topic), as: r.As, about: string(r.About), cause: Connection{Kind: "conversation", ID: id, Role: "enters", Is: state},
 		takers: []noteTaker{{word: string(encounter.RecognitionSpokenTo), creatures: holders}}}
 	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) is given the topic %s, and notes it about %s.",
 		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"))

@@ -9,47 +9,51 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // SecondWind represents the fighter's Second Wind feature.
-// It implements core.Action[FeatureInput] for activation and events.BusEffect for resource management.
+// It implements core.Action[FeatureInput] for activation. Its uses are counted
+// in the owner's shared resources.SecondWind pool, as Rage's are; the feature
+// spends from that pool and keeps no counter of its own.
 // It stores no fighter level: activation asks its owner, and heals 1d10 plus
 // the level the owner answers.
 type SecondWind struct {
 	id          string
 	name        string
-	characterID string                           // Character this feature belongs to
-	resource    *dnd5eCombat.RecoverableResource // Tracks second wind uses (1 per short/long rest)
+	characterID string // Character this feature belongs to
 }
 
-// SecondWindData is the JSON structure for persisting Second Wind state. A
-// blob saved with the old "level" key loads and the copy is ignored.
+// SecondWindData is the JSON structure for persisting Second Wind state. The
+// uses live in the owner's shared pool, not here. A blob saved with the old
+// "level", "uses" or "max_uses" keys loads and the copies are ignored.
 type SecondWindData struct {
 	Ref         *core.Ref `json:"ref"`
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	CharacterID string    `json:"character_id"`
-	Uses        int       `json:"uses"`
-	MaxUses     int       `json:"max_uses"`
 }
 
 // Ref returns the unique ref for the Second Wind feature.
 func (s *SecondWind) Ref() *core.Ref { return refs.Features.SecondWind() }
 
-// Status reports the feature's privately-owned Second Wind resource through
-// the non-mutating status surface, without serializing ToJSON. The owner is
-// not required: Second Wind owns its own [RecoverableResource].
-func (s *SecondWind) Status(*StatusInput) (*StatusOutput, error) {
-	if s.resource == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "second wind feature has no resource")
+// Status reports the fighter's character-owned SecondWind pool through the
+// non-mutating status surface, without serializing ToJSON. Second Wind does not
+// own its resource — the Character does — so a non-nil [StatusInput.Owner]
+// that carries resources.SecondWind is required.
+func (s *SecondWind) Status(in *StatusInput) (*StatusOutput, error) {
+	if in == nil || in.Owner == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "second wind status requires an owner resource reader")
+	}
+	current, maximum, ok := in.Owner.ResourceStatus(resources.SecondWind)
+	if !ok {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not carry second_wind")
 	}
 	name := s.name
 	if name == "" {
@@ -61,8 +65,8 @@ func (s *SecondWind) Status(*StatusInput) (*StatusOutput, error) {
 		Resource: &ResourceStatus{
 			Key:     resources.SecondWind,
 			Name:    "Second Wind",
-			Current: s.resource.Current(),
-			Maximum: s.resource.Maximum(),
+			Current: current,
+			Maximum: maximum,
 		},
 	}}, nil
 }
@@ -73,6 +77,33 @@ func (s *SecondWind) Name() string { return s.name }
 // Description returns what activating this feature does, in the player's voice.
 func (s *SecondWind) Description() string {
 	return "Spend a use to regain 1d10 hit points plus your fighter level."
+}
+
+// Definition describes Second Wind as data, with this owner's numbers: a bonus
+// action and one point of the shared pool, to heal the user 1d10 plus the
+// owner's fighter level. This is the one way to use it: the resolver pays the
+// cost at the gate and resolves the healing, and [SecondWind.Activate] refuses.
+// An owner with no fighter level is refused, as [SecondWind.CanActivate] refuses
+// it.
+func (s *SecondWind) Definition(owner core.Entity) (*actions.Definition, error) {
+	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
+	if err != nil {
+		return nil, err
+	}
+	parameters := fmt.Sprintf(`{"level": %d}`, level)
+	definition, err := DescribeFromRef(&DescribeFromRefInput{
+		Ref:        *refs.Features.SecondWind(),
+		Parameters: json.RawMessage(parameters),
+		Giver: dnd5eEvents.RollSource{
+			Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter level", SourceID: owner.GetID(),
+		},
+		Pools: map[coreResources.ResourceKey]int{resources.SecondWind: 1},
+	})
+	if err != nil {
+		return nil, err
+	}
+	definition.Description = s.Description()
+	return definition, nil
 }
 
 // GetID implements core.Entity
@@ -96,8 +127,12 @@ func (s *SecondWind) CanActivate(_ context.Context, owner core.Entity, _ Feature
 		return rpgerr.New(rpgerr.CodeInvalidState, "dead characters cannot use second wind")
 	}
 
-	// Check if we have uses remaining
-	if !s.resource.IsAvailable() {
+	// Check the owner's shared pool has a use remaining
+	accessor, ok := owner.(coreResources.ResourceAccessor)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
+	}
+	if !accessor.IsResourceAvailable(resources.SecondWind) {
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no second wind uses remaining")
 	}
 
@@ -111,132 +146,24 @@ func (s *SecondWind) CanActivate(_ context.Context, owner core.Entity, _ Feature
 	return nil
 }
 
-// Apply subscribes the recoverable resource to the event bus for automatic rest recovery.
-// This should be called when the feature is granted to a character.
-func (s *SecondWind) Apply(ctx context.Context, bus events.EventBus) error {
-	return s.resource.Apply(ctx, bus)
+// Activate implements core.Action[FeatureInput] by refusing: Second Wind is
+// used from its description. Build the action with [SecondWind.Definition] and
+// pay its cost at the gate; nothing here spends, rolls or announces.
+func (s *SecondWind) Activate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+	return rpgerr.Wrapf(ErrUsedFromItsDescription, "second wind")
 }
 
-// Remove unsubscribes the recoverable resource from the event bus.
-// This should be called when the feature is removed from a character.
-func (s *SecondWind) Remove(ctx context.Context, bus events.EventBus) error {
-	return s.resource.Remove(ctx, bus)
-}
-
-// Activate implements core.Action[FeatureInput]. CanActivate has already
-// refused an owner with no fighter levels; the level is asked again here, at
-// the moment it is used, before the use is spent.
-func (s *SecondWind) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-	// Check if we can activate
-	if err := s.CanActivate(ctx, owner, input); err != nil {
-		return err
-	}
-	level, err := ownerClassLevel(owner, classes.Fighter, "second wind")
-	if err != nil {
-		return err
-	}
-
-	// Consume a use
-	if err := s.resource.Use(1); err != nil {
-		return rpgerr.Wrapf(err, "failed to use second wind")
-	}
-
-	// Roll healing: 1d10 + fighter level, authored as one sourced calculation.
-	// The interaction-scoped roller comes from the input; nil retains the
-	// production default for direct non-resolution callers.
-	pool, err := dice.ParseNotation("1d10")
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to parse healing dice")
-	}
-
-	result := pool.RollContext(ctx, input.Roller)
-	if result.Error() != nil {
-		return rpgerr.Wrapf(result.Error(), "failed to roll healing dice")
-	}
-
-	faces := append([]int(nil), result.Rolls()[0]...)
-	modifier := level // Fighter level is the modifier
-	// The published event graph is mutable and handed to strangers: publish
-	// fresh copies of the identity refs, never the package singletons, so a
-	// receiver mutating a published ref cannot corrupt refs.Features.SecondWind()
-	// or refs.Classes.Fighter() for everyone else.
-	sourceRef := *refs.Features.SecondWind()
-	diceSourceRef := *refs.Features.SecondWind()
-	modifierSourceRef := *refs.Classes.Fighter()
-	calculation := &dnd5eEvents.RollCalculation{
-		Components: []dnd5eEvents.RollComponent{
-			{
-				Source: dnd5eEvents.RollSource{
-					Ref: &diceSourceRef, Name: "Second Wind", SourceID: owner.GetID(),
-				},
-				Dice: &dnd5eEvents.DiceTrace{
-					Notation:      "1d10",
-					DieSize:       10,
-					OriginalRolls: faces,
-					FinalRolls:    append([]int(nil), faces...),
-					Subtotal:      result.Total(),
-				},
-			},
-			{
-				Source: dnd5eEvents.RollSource{
-					Ref:   &modifierSourceRef,
-					Name:  "Fighter",
-					Label: "Fighter level",
-				},
-				Modifier: &modifier,
-			},
-		},
-		Total: result.Total() + modifier,
-	}
-
-	// Publish healing received event with the sourced calculation.
-	if input.Bus != nil {
-		topic := dnd5eEvents.HealingReceivedTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5eEvents.HealingReceivedEvent{
-			TargetID:    owner.GetID(),
-			Amount:      calculation.Total,
-			Calculation: calculation,
-			Source:      sourceRef.ID,
-			SourceRef:   &sourceRef,
-			SourceName:  "Second Wind",
-		})
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to publish healing event")
-		}
-	}
-
-	return nil
-}
-
-// loadJSON loads Second Wind state from JSON, rejecting negative or
-// over-maximum persisted uses before constructing its private resource.
+// loadJSON loads Second Wind state from JSON. Old "uses" and "max_uses" keys
+// are not read: the count is the owner's pool.
 func (s *SecondWind) loadJSON(data json.RawMessage) error {
 	var secondWindData SecondWindData
 	if err := json.Unmarshal(data, &secondWindData); err != nil {
 		return fmt.Errorf("failed to unmarshal second wind data: %w", err)
 	}
 
-	if err := validateResourceBounds("second wind", secondWindData.Uses, secondWindData.MaxUses); err != nil {
-		return err
-	}
-
 	s.id = secondWindData.ID
 	s.name = secondWindData.Name
 	s.characterID = secondWindData.CharacterID
-
-	// Set up recoverable resource with current and max uses
-	s.resource = dnd5eCombat.NewRecoverableResource(dnd5eCombat.RecoverableResourceConfig{
-		ID:          refs.Features.SecondWind().ID,
-		Maximum:     secondWindData.MaxUses,
-		CharacterID: secondWindData.CharacterID,
-		ResetType:   coreResources.ResetShortRest,
-	})
-	// Restore to the saved state
-	if secondWindData.Uses < secondWindData.MaxUses {
-		if err := s.resource.Use(secondWindData.MaxUses - secondWindData.Uses); err != nil {
-			return fmt.Errorf("failed to set resource uses: %w", err)
-		}
-	}
 
 	return nil
 }
@@ -248,8 +175,6 @@ func (s *SecondWind) ToJSON() (json.RawMessage, error) {
 		ID:          s.id,
 		Name:        s.name,
 		CharacterID: s.characterID,
-		Uses:        s.resource.Current(),
-		MaxUses:     s.resource.Maximum(),
 	}
 
 	bytes, err := json.Marshal(data)

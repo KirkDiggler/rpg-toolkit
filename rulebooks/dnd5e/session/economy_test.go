@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -90,7 +91,9 @@ func aFight(
 
 	// initiativeRolls is one die per member of the bubble the launch forms.
 	const initiativeRolls = 2
-	scripted := append(make([]int, initiativeRolls), rolls...)
+	// Each die is a 1, a legal d20 face; every member moves up by the same 1,
+	// so the order is what it was with 0s.
+	scripted := append(slices.Repeat([]int{1}, initiativeRolls), rolls...)
 	roller := &sequenceDice{rolls: scripted}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},

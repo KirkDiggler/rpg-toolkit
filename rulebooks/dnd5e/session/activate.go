@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -95,13 +97,22 @@ type ActivateOutput struct {
 // Pinned in translate_internal_test.go, where the reachability is written down
 // beside it.
 //
-// # Nothing is charged here
+// # Which activations pay at the door
 //
-// [resolution.Input.Cost] stays nil, deliberately. The ability spends its own
-// slot, so a Cost passed alongside would charge the same ledger twice and the
-// second charge would look exactly like the first. This is the one executing
-// verb at this seam that does not pay at the door, and it is not free — see
-// [resolution.NewActivation].
+// An ability whose feature carries a description (the sheet answers
+// AbilityDefinition: Second Wind is the only one) is built with
+// [resolution.NewAction] and resolved with the description's own cost, so it
+// is paid at the door like every other verb here. Every other feature (Rage,
+// Action Surge, the combat abilities) still goes through
+// [resolution.NewActivation] with [resolution.Input.Cost] nil, deliberately:
+// the ability spends its own slot, so a Cost passed alongside would charge the
+// same ledger twice and the second charge would look exactly like the first.
+// Those are the executing activations that do not pay at the door, and they
+// are not free — see [resolution.NewActivation].
+//
+// The row an offer shows is still the feature's, and it is compiled before the
+// door is reached, so a spent ability is refused as a stale selector first;
+// the door's own refusal is the backstop for a row and a price that disagree.
 //
 // # Everyone is in the cast
 //
@@ -220,17 +231,73 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 			ErrBadActivation, selected.declaration.Ability.Ref, err)
 	}
 
-	machine, err := resolution.NewActivation(&resolution.ActivationInput{
-		MemberID: in.Member,
-		Ability:  ability,
-		TargetID: in.Target,
-		// A machine that rolls carries its own roller (resolution's rule):
-		// Second Wind is the one activation that rolls, and it rolls with the
-		// HOST'S dice through the same seam every other roll takes. A nil here
-		// is refused before anything is paid, and there is no process-global
-		// fallback for this verb to inherit (rpg-toolkit#1427).
-		Roller: &diceSeam{roller: m.dice},
-	})
+	// A FEATURE THAT CARRIES A DESCRIPTION IS RUN FROM IT AND PAID AT THE DOOR
+	// (rpg-project#1131). The sheet is asked for the ability's description with
+	// the character's own numbers; one that has none keeps the activation
+	// machine, which spends for itself.
+	//
+	// A ROW WITH A GIVER IS ASKED OF THE ITEM (rpg-project#850): the sheet
+	// describes the item's grant, whose cost names the item's own pool, and
+	// the payer's own sheet pays it. Nothing else is passed.
+	var (
+		definition *combatActions.Definition
+		described  bool
+	)
+	if giver := selected.declaration.Ability.Giver; giver != nil {
+		granted, grantErr := selected.sheet.GrantedAbility(&character.GrantedAbilityInput{
+			ItemID: giver.ItemID, Grant: giver.Grant,
+		})
+		if grantErr != nil {
+			return nil, fmt.Errorf("activate: %w: %v", ErrCannotActivate, grantErr)
+		}
+		definition, described = granted.Definition, true
+	} else {
+		definition, described, err = selected.sheet.AbilityDefinition(*ability)
+		if err != nil {
+			return nil, fmt.Errorf("activate: %w: %v", ErrCannotActivate, err)
+		}
+	}
+	// A machine that rolls carries its own roller (resolution's rule): Second
+	// Wind rolls with the HOST'S dice through the same seam every other roll
+	// takes. A nil here is refused before anything is paid, and there is no
+	// process-global fallback for this verb to inherit (rpg-toolkit#1427).
+	roller := &diceSeam{roller: m.dice}
+	var (
+		machine resolution.Machine
+		cost    *resolution.Cost
+	)
+	if described {
+		var targets []string
+		if in.Target != "" {
+			targets = []string{in.Target}
+		}
+		machine, err = resolution.NewAction(&resolution.ActionInput{
+			AttackerID: in.Member,
+			Definition: *definition,
+			TargetIDs:  targets,
+			Roller:     roller,
+		})
+		// The price is the description's own, priced the way a swing is: the
+		// fight's round on the turn clock, the one lent round on the world
+		// clock (economy.go, priceSwing), with the profile cloned as a cast
+		// clones it (cast.go) so the charge and the description cannot alias.
+		round := clock.Round
+		if ClockKind(clock.Kind) != ClockTurn {
+			round = worldRoundNumber
+		}
+		cost = &resolution.Cost{
+			PayerID: in.Member,
+			Profile: combatActions.CloneSpendProfile(definition.Cost),
+			Turn:    &resolution.Turn{Number: round, Speed: selected.sheet.GetSpeed()},
+		}
+	} else {
+		machine, err = resolution.NewActivation(&resolution.ActivationInput{
+			MemberID: in.Member,
+			Ability:  ability,
+			TargetID: in.Target,
+			Roller:   roller,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", translateResolution(err))
 	}
@@ -251,11 +318,13 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// THE VERB'S OWN ENCOUNTER, lent: resolution reads it rather than
 	// loading a second one from its data (rpg-project#753, T12).
 	lent := scope.enc
-	// Cost is nil ON PURPOSE — see this verb's own doc.
+	// Cost is nil for a feature that spends for itself and the description's
+	// own price for one that carries a description — see this verb's own doc.
 	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
 		Live:         lent,
 		Participants: cast,
 		Machine:      machine,
+		Cost:         cost,
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("activate: %w", translateResolution(err))

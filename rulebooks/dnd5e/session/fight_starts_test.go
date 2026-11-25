@@ -191,8 +191,9 @@ func (s *FightStartsTestSuite) TestTheFightStopsTheWalk() {
 // roll landed on the member the seam meant it to.
 //
 // IT RUNS THE SAME FIGHT EIGHT TIMES, and that is the half Copilot's review
-// earned. The rulebook's RollForOrder iterates a map, so asking it for the
-// whole fight at once assigns the scripted rolls to whoever comes up first.
+// earned. The seam asks one member at a time, in sorted order; asking for the
+// whole fight at once through a map would assign the scripted rolls to
+// whoever comes up first.
 // A single run catches that only sometimes — measured at 4 kills in 20 against
 // the mutant, because Go's iteration of a small map is a rotation rather than a
 // fresh permutation and lands on insertion order more often than not. Eight
@@ -267,10 +268,10 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 // TestADiceFailureAbortsTheFight pins that a host whose randomness is down gets
 // a refused verb rather than a wrong fight.
 //
-// It is not automatic. The rulebook's RollForOrder discards its roller's error
-// (`roll, _ := roller.Roll(...)`) and would hand back a member who rolled zero
-// — an order that looks fine and is not. The seam keeps the error the rulebook
-// threw away, and a fight that cannot be ordered does not half-start.
+// It is not automatic. A die that failed must not become a member who rolled
+// zero — an order that looks fine and is not. The rulebook's initiative.RollOne
+// returns the roller's error itself, the seam returns it, and a fight that
+// cannot be ordered does not half-start.
 func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,

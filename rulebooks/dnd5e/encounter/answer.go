@@ -96,6 +96,9 @@ const BeatAnswered = "answered"
 // nothing. A refused attack carries `encounter:intent:attack` and the reason
 // ("target out of reach"); a `toward` already in reach carries the table's
 // own cause and "already in reach".
+//
+// A player's Wait (rpg-project#1079) is a round spent on purpose and is told
+// the same way, with cause `encounter:intent:wait` and no reason.
 const BeatStayed = "stayed"
 
 // BeatTempered is the "beat" value appended when a faction's authored mix

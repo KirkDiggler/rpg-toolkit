@@ -8,7 +8,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.25.0
 	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0
-	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0
+	github.com/KirkDiggler/rpg-toolkit/play/clock v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.17.0

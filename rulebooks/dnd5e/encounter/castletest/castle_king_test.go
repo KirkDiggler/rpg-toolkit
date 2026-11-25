@@ -266,7 +266,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		if slices.Contains(host.postedLike, encounter.MemberID(m.MemberID)) {
 			for _, g := range compiled.Monsters {
 				if encounter.MemberID(g.MemberID) == kingGate1 {
-					m.Behaviors, m.BlockingStates, m.Posts = g.Behaviors, g.BlockingStates, g.Posts
+					m.Behaviors, m.BlockingStates, m.Posts, m.Outcomes = g.Behaviors, g.BlockingStates, g.Posts, g.Outcomes
 				}
 			}
 		}
@@ -280,7 +280,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 			Arrives:   m.Arrives,
 			// The posted body's blocking states (rpg-project#836), as the
 			// session's launch hands them beside the recipe.
-			BlockingStates: m.BlockingStates, Posts: postsOf(host, m),
+			BlockingStates: m.BlockingStates, Posts: postsOf(host, m), Outcomes: m.Outcomes,
 			Temper: soldierProfiles(m.Temper),
 			Holds:  holds,
 			Facing: m.FacingDegrees,

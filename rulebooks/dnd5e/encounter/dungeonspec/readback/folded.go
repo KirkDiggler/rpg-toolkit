@@ -758,6 +758,7 @@ func foldRoutine(g Group) Item {
 	rows := map[string][]Item{}
 	var keys []string
 	memory := Item{Text: "Memory (it is the runner):", Base: base + ".recipe.bag."}
+	gives := Item{Text: "What entering a state gives:", Base: base + ".outcomes."}
 	for _, st := range g.Statements {
 		switch st.Kind {
 		case KindRoutineFlag:
@@ -785,6 +786,8 @@ func foldRoutine(g Group) Item {
 			}
 			w.states = append(w.states, st.fold.state)
 			w.paths = append(w.paths, st.Path)
+		case KindRoutineOutcome:
+			gives.Items = append(gives.Items, Item{Text: st.fold.text, Paths: []string{st.Path}})
 		case KindRoutineRow:
 			if _, ok := rows[st.fold.state]; !ok {
 				keys = append(keys, st.fold.state)
@@ -808,6 +811,9 @@ func foldRoutine(g Group) Item {
 	}
 	if len(states.Items) > 0 {
 		head.Items = append(head.Items, states)
+	}
+	if len(gives.Items) > 0 {
+		head.Items = append(head.Items, gives)
 	}
 	table := Item{Text: "Rows (one whose conditions are true is picked by weight):", Base: base + ".table."}
 	for _, k := range keys {

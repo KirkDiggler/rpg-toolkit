@@ -23,6 +23,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
 
+// BubbleInitiativeData is one running bubble's initiative totals: the number
+// each member who rolled got. A member placed without a roll has none.
+type BubbleInitiativeData struct {
+	// Totals maps a member of the bubble to its initiative total.
+	Totals map[MemberID]int `json:"totals,omitempty"`
+}
+
 // EncounterData is the persistent representation of an Encounter.
 // Outcome is omitted when the encounter is open; present when closed.
 // All leaves (Clock, Intel, Log) embed their Data types verbatim.
@@ -57,6 +64,16 @@ type EncounterData struct {
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
 	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
+	// Initiative is each running bubble's initiative totals, one entry per
+	// Bubbles entry at the same index (rpg-project#1068). A creature that
+	// joins the fight is placed against them. A fight saved without them is
+	// refused on load, never loaded as if nobody had rolled.
+	Initiative []BubbleInitiativeData `json:"initiative,omitempty"`
+	// Lapses is each armed status timer (rpg-project#1080), sorted by
+	// application: a status given for a number of rounds, and the world round
+	// it is due. Omitted when none is armed, which is every run saved before
+	// this field.
+	Lapses []StatusLapseData `json:"lapses,omitempty"`
 	// Landed is every beat landed for the listeners that no raise has
 	// matched yet (wakebeats.go, rpg-project#766 S4), in landing order.
 	// Omitted when nothing waits, which is every run whose content authored
@@ -555,6 +572,9 @@ type ReserveData struct {
 	// Posts is [MemberData.Posts] for a member still waiting, refused at
 	// load as the member's are.
 	Posts map[string]PostData `json:"posts,omitempty"`
+	// Outcomes is [MemberData.Outcomes] for a member still waiting, refused
+	// at load as the member's are.
+	Outcomes map[string][]Consequence `json:"outcomes,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -658,6 +678,10 @@ type TriggerData struct {
 	// Topic is a `recognized` trigger's topic (rpg-project#928); written
 	// only for that kind.
 	Topic TopicID `json:"topic,omitempty"`
+
+	// As is a `recognized` trigger's value (rpg-project#1007); written only
+	// for that kind, and only when it asks for one.
+	As string `json:"as,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -690,7 +714,7 @@ func triggerDataFrom(t Trigger) TriggerData {
 	case TriggerInteraction:
 		return TriggerData{Kind: "interaction", Interaction: t.Interaction, States: slices.Clone(t.In)}
 	case TriggerRecognized:
-		return TriggerData{Kind: "recognized", Topic: t.Topic}
+		return TriggerData{Kind: "recognized", Topic: t.Topic, As: t.As}
 	}
 	return TriggerData{}
 }
@@ -730,7 +754,7 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 	case "interaction":
 		return TriggerInteraction{Interaction: td.Interaction, In: slices.Clone(td.States)}, nil
 	case "recognized":
-		return TriggerRecognized{Topic: td.Topic}, nil
+		return TriggerRecognized{Topic: td.Topic, As: td.As}, nil
 	case "not":
 		if td.Not == nil {
 			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
@@ -2315,6 +2339,13 @@ type MemberData struct {
 	// (ErrInvalidData).
 	Posts map[string]PostData `json:"posts,omitempty"`
 
+	// Outcomes is memberRecord.Outcomes (rpg-project#989): by state of
+	// Recipe, the consequences done once each time a step enters it. Omitted
+	// when the member has none, which is what a record from before them loads
+	// as. A state the recipe lacks, an entry nothing steps into, or a
+	// consequence a machine may not give is refused at load (ErrInvalidData).
+	Outcomes map[string][]Consequence `json:"outcomes,omitempty"`
+
 	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
 	// omitted for the world clock. This build knows the world clock alone,
 	// so any other name is refused at load (ErrInvalidData).
@@ -2494,6 +2525,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Behaviors:          m.behaviors.toData(),
 			BlockingStates:     slices.Clone(m.BlockingStates),
 			Posts:              postsDataFrom(m.Posts),
+			Outcomes:           cloneOutcomes(m.Outcomes),
 			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
@@ -2555,10 +2587,20 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 	}
 
 	var bubblesData []clock.TurnData
+	var initiativeData []BubbleInitiativeData
 	if len(e.bubbles) > 0 {
 		bubblesData = make([]clock.TurnData, 0, len(e.bubbles))
+		initiativeData = make([]BubbleInitiativeData, 0, len(e.bubbles))
 		for _, b := range e.bubbles {
 			bubblesData = append(bubblesData, b.ToData())
+			entry := BubbleInitiativeData{}
+			if kept := e.initiativeTotals[b]; len(kept) > 0 {
+				entry.Totals = make(map[MemberID]int, len(kept))
+				for id, total := range kept {
+					entry.Totals[id] = total
+				}
+			}
+			initiativeData = append(initiativeData, entry)
 		}
 	}
 
@@ -2585,6 +2627,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Behaviors:          rm.record.behaviors.toData(),
 			BlockingStates:     slices.Clone(rm.record.BlockingStates),
 			Posts:              postsDataFrom(rm.record.Posts),
+			Outcomes:           cloneOutcomes(rm.record.Outcomes),
 			BlocksMovement:     rm.record.BlocksMovement,
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
@@ -2600,6 +2643,8 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
+		Initiative:         initiativeData,
+		Lapses:             e.lapsesData(),
 		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
@@ -3244,6 +3289,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Machine:            r.Recipe,
 			Behaviors:          behaviorInputOf(r.Behaviors),
 			BlockingStates:     r.BlockingStates,
+			Outcomes:           r.Outcomes,
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3309,15 +3355,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		for _, r := range data.Reserve {
 			taught = append(taught, taughtFactsOf(r.Behaviors)...)
 			taught = append(taught, taughtOptionFactsOf(r.Options)...)
-		}
-		for _, interaction := range data.Interactions {
-			for _, outcomes := range interaction.Outcomes {
-				for _, outcome := range outcomes {
-					if outcome.SceneMove != nil {
-						taught = append(taught, outcome.SceneMove.Leave)
-					}
-				}
-			}
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
@@ -3387,6 +3424,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	}
 
 	var loadedBubbles []*clock.Turn
+	if len(data.Bubbles) > 0 && len(data.Initiative) == 0 {
+		return nil, fmt.Errorf("load encounter: a fight saved without its initiative totals: %w", ErrSavedByOlderVersion)
+	}
+	if len(data.Initiative) != len(data.Bubbles) {
+		return nil, fmt.Errorf("load encounter: %d initiative entries for %d bubbles: %w",
+			len(data.Initiative), len(data.Bubbles), ErrInvalidData)
+	}
 	if len(data.Bubbles) > 0 {
 		loadedBubbles = make([]*clock.Turn, 0, len(data.Bubbles))
 		for i := range data.Bubbles {
@@ -3404,6 +3448,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			loadedBubbles = append(loadedBubbles, b)
 		}
 	}
+	loadedTotals := make(map[*clock.Turn]map[MemberID]int, len(loadedBubbles))
 
 	// R6 — an entity belongs to at most one clock. Validated HERE rather than
 	// trusted, because this is the trust boundary for persisted bytes: a blob
@@ -3457,6 +3502,22 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			}
 			onAClock[id] = struct{}{}
 		}
+		inOrder := make(map[MemberID]bool, len(order))
+		for _, id := range order {
+			inOrder[MemberID(id)] = true
+		}
+		for id := range data.Initiative[i].Totals {
+			if !inOrder[id] {
+				return nil, fmt.Errorf(
+					"load encounter bubble %d: an initiative total for %q, who is not in the order: %w",
+					i, id, ErrInvalidData)
+			}
+		}
+		kept := make(map[MemberID]int, len(data.Initiative[i].Totals))
+		for id, total := range data.Initiative[i].Totals {
+			kept[id] = total
+		}
+		loadedTotals[b] = kept
 	}
 
 	// The pause, validated before anything is constructed (R5) and against
@@ -3507,7 +3568,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		savedLines = append(savedLines, memberOptions[id])
 	}
 	savedLines = append(savedLines, reserveOptions...)
-	granted := grantedTopics(interactions, savedLines...)
+	savedNotes := make([]map[string][]Consequence, 0, len(data.Members)+len(data.Reserve))
+	for _, m := range data.Members {
+		savedNotes = append(savedNotes, m.Outcomes)
+	}
+	for _, r := range data.Reserve {
+		savedNotes = append(savedNotes, r.Outcomes)
+	}
+	granted := grantedTopics(interactions, savedNotes, savedLines...)
+	if err := checkTopicValues(granted); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
 		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
@@ -3643,6 +3714,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
 	e.bubbles = loadedBubbles
+	e.initiativeTotals = loadedTotals
 	e.landed = wakeBeatsFrom(data.Landed)
 	e.intelLog = loadedIntel
 	e.story = loadedLog
@@ -3677,6 +3749,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
 		}
 		if perr := e.loadPosts(member, m.Posts); perr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
+		}
+		if perr := e.useStateOutcomes(member, m.Outcomes); perr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
 		}
 		e.members[m.ID] = member
@@ -3735,6 +3810,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if perr := e.loadPosts(&rm.record, r.Posts); perr != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, perr)
 		}
+		if perr := e.useStateOutcomes(&rm.record, r.Outcomes); perr != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, perr)
+		}
 		e.reserveMember(rm)
 	}
 
@@ -3755,6 +3833,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// placement index.
 	if err = e.rebuildWake(); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	// The status timers, armed from the saved record (status_lapse.go).
+	if err = e.restoreLapses(data.Lapses); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
 
 	// The pause, restored exactly as it was stored — validated above, before

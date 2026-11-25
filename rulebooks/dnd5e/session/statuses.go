@@ -72,6 +72,15 @@ func statusApplicationID(session, statusID string, member encounter.MemberID) st
 // A status that does not compile is refused here as it is at launch
 // ([ErrUnknownContent]); launch refuses it first, so this is a site changed
 // under a running session.
+// untilOf is what the author wrote on a giving, in the rules' words; nil for
+// a giving with no end of its own.
+func untilOf(u *encounter.StatusUntil) *status.Until {
+	if u == nil {
+		return nil
+	}
+	return &status.Until{Rounds: u.Rounds}
+}
+
 func (m *Manager) giveStatuses(
 	ctx context.Context, scope *writeScope, source string, granted []encounter.GrantedStatus,
 ) error {
@@ -97,6 +106,23 @@ func (m *Manager) giveStatuses(
 			if _, err := m.land(ctx, scope, a.out.Resolved, &landing{Live: scope.enc}); err != nil {
 				return fmt.Errorf("status %q for %q: %w", a.grant.Grant.ID, a.grant.Member, err)
 			}
+			// A FRESH GIVING ARMS OR CLEARS ITS TIMER, and only a fresh one.
+			// The session does this, not the encounter, because only the
+			// rules know whether a giving was fresh. Clearing matters: a
+			// status ended early by another ending (a fight starting) leaves
+			// its timer behind, and the application id is reused when it is
+			// given again, so a stale timer would end the new giving early.
+			application := statusApplicationID(scope.session, a.grant.Grant.ID, a.grant.Member)
+			if a.grant.Grant.Until != nil {
+				if err := scope.enc.ArmStatusLapse(&encounter.ArmStatusLapseInput{
+					Member: a.grant.Member, Status: a.grant.Grant.ID,
+					Application: application, Rounds: a.grant.Grant.Until.Rounds,
+				}); err != nil {
+					return fmt.Errorf("status %q for %q: %w", a.grant.Grant.ID, a.grant.Member, translate(err))
+				}
+			} else if err := scope.enc.ClearStatusLapse(&encounter.ClearStatusLapseInput{Application: application}); err != nil {
+				return fmt.Errorf("status %q for %q: %w", a.grant.Grant.ID, a.grant.Member, translate(err))
+			}
 		}
 		answered = nil
 		return nil
@@ -107,7 +133,7 @@ func (m *Manager) giveStatuses(
 				return err
 			}
 		}
-		compiled, err := status.Compile(&status.CompileInput{ID: g.Grant.ID, Status: g.Grant.Status})
+		compiled, err := status.Compile(&status.CompileInput{ID: g.Grant.ID, Status: g.Grant.Status, Until: untilOf(g.Grant.Until)})
 		if err != nil {
 			return fmt.Errorf("%w: status %q: %w", ErrUnknownContent, g.Grant.ID, err)
 		}
@@ -178,7 +204,7 @@ func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
 	out := &CheckContentOutput{}
 	grants := siteStatusGrants(in.Dungeon)
 	for _, id := range sortedGrantIDs(grants) {
-		if _, err := status.Compile(&status.CompileInput{ID: id, Status: grants[id].Status}); err != nil {
+		if _, err := status.Compile(&status.CompileInput{ID: id, Status: grants[id].Status, Until: untilOf(grants[id].Until)}); err != nil {
 			out.Refusals = append(out.Refusals, StatusRefusal{StatusID: id, Path: "statuses." + id, Message: err.Error()})
 		}
 	}

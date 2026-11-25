@@ -2020,6 +2020,18 @@ func buildClassResources(
 			built[resources.RageCharges] = rageResource
 		}
 
+	case classes.Fighter:
+		// Second Wind uses - the number the class grant carries, recovered on
+		// a short rest like Ki. The Second Wind feature spends from this pool.
+		if uses := secondWindGrantUses(level); uses > 0 {
+			built[resources.SecondWind] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.SecondWind),
+				Maximum:     uses,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetShortRest,
+			})
+		}
+
 	case classes.Cleric:
 		if char.subclassID == classes.TempestDomain || char.subclassID == classes.LightDomain {
 			key := resources.WrathOfTheStorm
@@ -2079,6 +2091,32 @@ func buildClassResources(
 	})
 
 	return built
+}
+
+// secondWindGrantUses reads the uses the fighter's Second Wind grant carries
+// at this class level, zero when the class level holds no such grant. A grant
+// whose config names no uses means one, as the feature's factory always did.
+func secondWindGrantUses(classLevel int) int {
+	for _, grant := range classes.GetGrantsForLevel(classes.Fighter, classLevel) {
+		for _, ref := range grant.Features {
+			if ref.Ref != refs.Features.SecondWind().String() {
+				continue
+			}
+			var cfg struct {
+				Uses int `json:"uses"`
+			}
+			if len(ref.Config) > 0 {
+				if err := json.Unmarshal(ref.Config, &cfg); err != nil {
+					return 0
+				}
+			}
+			if cfg.Uses == 0 {
+				return 1
+			}
+			return cfg.Uses
+		}
+	}
+	return 0
 }
 
 // addSpellSlots sizes a caster's slot pools from its class progression table,

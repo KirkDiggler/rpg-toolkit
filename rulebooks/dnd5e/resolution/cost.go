@@ -178,6 +178,15 @@ func (c *Cost) validate() error {
 //     construction — a bonus strike that needs a bonus action and a ki point
 //     cannot take the action and then discover there is no ki.
 func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
+	return payAtTheDoorFrom(ctx, cost, nil, cast)
+}
+
+// payAtTheDoorFrom is payAtTheDoor with a second budget the payer does not
+// own: the pools the budget owns are paid from it and everything else from the
+// payer, in one payment. A nil budget is exactly payAtTheDoor. Only the
+// opening payment of an interaction passes one; a frozen reaction's cost, a
+// movement, an equip and a contest's reaction never do.
+func payAtTheDoorFrom(ctx context.Context, cost *Cost, budget combat.PoolSource, cast *Participants) error {
 	if cost == nil {
 		return nil
 	}
@@ -188,6 +197,8 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 	}
 
 	if mon != nil {
+		// A monster is refused anything but one reaction, with or without a
+		// budget; the sentence is the existing one.
 		return chargeMonster(mon, cost)
 	}
 
@@ -201,7 +212,9 @@ func payAtTheDoor(ctx context.Context, cost *Cost, cast *Participants) error {
 		}
 	}
 
-	if err := combat.Pay(ch, cost.Profile); err != nil {
+	// One payment: the budget pays the pools it owns, the character the rest,
+	// and the gate checks every part before it spends any.
+	if err := combat.Pay(combat.WithPools(ch, budget), cost.Profile); err != nil {
 		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
 	}
 
@@ -230,10 +243,15 @@ func chargeMonster(mon *monster.Monster, cost *Cost) error {
 // second caller-authored copy in the price. Nil Cost retains the explicitly
 // ungated mechanical-resolution API; a free combat spell supplies a Cost with
 // a nil Profile so that its casting history is still recorded.
-func payForMachine(ctx context.Context, cost *Cost, machine Machine, cast *Participants) error {
+func payForMachine(
+	ctx context.Context, cost *Cost, budget combat.PoolSource, machine Machine, cast *Participants,
+) error {
 	spell, ok := machine.(*castMachine)
 	if !ok || cost == nil {
-		return payAtTheDoor(ctx, cost, cast)
+		return payAtTheDoorFrom(ctx, cost, budget, cast)
+	}
+	if budget != nil {
+		return fmt.Errorf("%w: a spell's cost cannot be paid from a second budget", ErrBadCost)
 	}
 	if cost.PayerID != spell.casterID {
 		return fmt.Errorf("%w: spell payer must be its caster", ErrBadCost)

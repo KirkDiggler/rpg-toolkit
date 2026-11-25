@@ -48,10 +48,11 @@ const (
 	ShapePositiveWholeNumber Shape = "positive whole number"
 	// ShapeText takes non-empty text.
 	ShapeText Shape = "text"
-	// ShapeList takes a list of entries, each written with the words of
-	// another place.
+	// ShapeList takes a list of entries. Each entry holds exactly one word of
+	// the word's Holds place, plus any word marked Narrows beside it.
 	ShapeList Shape = "list"
-	// ShapeEntries takes an object written with the words of another place.
+	// ShapeEntries takes an object of one or more words of the word's Holds
+	// place, each once.
 	ShapeEntries Shape = "entries"
 )
 
@@ -61,10 +62,28 @@ type Word struct {
 	Word string
 	// Place is where it may appear.
 	Place Place
+	// WrittenIn is the place whose object the word is written in. It equals
+	// Place for every word except again, which is a word of its own place but
+	// is written on the status itself.
+	WrittenIn Place
 	// Shape is what it takes as its value.
 	Shape Shape
 	// Values are the words it accepts, for a closed shape; nil otherwise.
 	Values []Value
+	// Holds is, for a list or entries word, the place whose words write each
+	// entry; empty otherwise.
+	Holds Place
+	// Required is whether the status must write the word.
+	Required bool
+	// Narrows is whether the word narrows the change it sits beside rather
+	// than being a change itself.
+	Narrows bool
+	// When is the when words a change word may use, when that does not depend
+	// on its value; nil for a word whose values say it (see Value.When) and
+	// for words that take none.
+	When []string
+	// Bounds is the range a number word accepts; nil for any other shape.
+	Bounds *Bounds
 	// Label is how a studio reads it to a person, lower-case first, with
 	// {value} where its value goes.
 	Label string
@@ -76,12 +95,24 @@ type Value struct {
 	Word string
 	// Label is how a studio reads the word with this value.
 	Label string
+	// When is, for an advantage value, the when words it may use; nil
+	// otherwise.
+	When []string
+}
+
+// Bounds is the range a number word accepts, both ends included.
+type Bounds struct {
+	Min, Max int
+	// ZeroAllowed is whether zero is accepted inside the range.
+	ZeroAllowed bool
 }
 
 // WordsInput asks for the table of words. It has no fields today.
 type WordsInput struct{}
 
-// WordsOutput is the table of words, ordered by place and then by word.
+// WordsOutput is the table of words, in the table's order: the places in the
+// order status, again, change, when, maintenance rule, when given, and each
+// place's words in the order the table lists them.
 type WordsOutput struct {
 	Words []Word
 }
@@ -91,9 +122,18 @@ type WordsOutput struct {
 func Words(_ *WordsInput) *WordsOutput {
 	out := &WordsOutput{}
 	for _, entry := range table {
-		word := Word{Word: entry.word, Place: entry.place, Shape: entry.shape, Label: entry.label}
+		word := Word{
+			Word: entry.word, Place: entry.place, WrittenIn: entry.writtenIn(), Shape: entry.shape, Label: entry.label,
+			Holds: entry.holds, Required: entry.required, Narrows: entry.word == wordWhen && entry.place == PlaceChange,
+		}
+		if entry.place == PlaceChange {
+			word.When = slices.Clone(changeWhen[entry.word])
+		}
+		if b, ok := numberBounds[entry.shape]; ok {
+			word.Bounds = &Bounds{Min: b.min, Max: b.max, ZeroAllowed: b.zero}
+		}
 		for _, v := range entry.values {
-			word.Values = append(word.Values, Value{Word: v.word, Label: v.label})
+			word.Values = append(word.Values, Value{Word: v.word, Label: v.label, When: slices.Clone(v.when)})
 		}
 		out.Words = append(out.Words, word)
 	}
@@ -129,11 +169,26 @@ const (
 // entry is one row of the table: a word, where it goes, what it takes, and
 // what each value maps to in the engine's definition library.
 type entry struct {
-	place  Place
+	place Place
+	// in is the place whose object the word is written in, when that is not
+	// its own place (again, written on the status).
+	in     Place
 	word   string
 	shape  Shape
 	label  string
 	values []value
+	// holds is the place whose words write each entry of a list or entries.
+	holds Place
+	// required is whether the status must write the word.
+	required bool
+}
+
+// writtenIn is the place whose object the word is written in.
+func (e entry) writtenIn() Place {
+	if e.in != "" {
+		return e.in
+	}
+	return e.place
 }
 
 // value is one closed value and its engine mapping. For an advantage it is the
@@ -148,11 +203,11 @@ type value struct {
 }
 
 var table = []entry{
-	{place: PlaceStatus, word: wordName, shape: ShapeText, label: "the name players see"},
-	{place: PlaceStatus, word: wordChanges, shape: ShapeList, label: "what the status changes"},
-	{place: PlaceStatus, word: wordMaintenance, shape: ShapeList, label: "what ends the status; any one rule ends it"},
-	{place: PlaceStatus, word: wordWhenGiven, shape: ShapeList, label: "what happens once, when the status is first given"},
-	{place: PlaceAgain, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
+	{place: PlaceStatus, word: wordName, shape: ShapeText, label: "the name players see", required: true},
+	{place: PlaceStatus, word: wordChanges, shape: ShapeList, holds: PlaceChange, required: true, label: "what the status changes"},
+	{place: PlaceStatus, word: wordMaintenance, shape: ShapeList, holds: PlaceMaintenance, required: true, label: "what ends the status; any one rule ends it"},
+	{place: PlaceStatus, word: wordWhenGiven, shape: ShapeList, holds: PlaceWhenGiven, label: "what happens once, when the status is first given"},
+	{place: PlaceAgain, in: PlaceStatus, required: true, word: wordAgain, shape: ShapeOneOf, label: "what a second giving does", values: []value{
 		{word: "ignored", label: "a second giving is ignored"},
 	}},
 
@@ -169,7 +224,7 @@ var table = []entry{
 	{place: PlaceChange, word: wordCannot, shape: ShapeListOf, label: "the holder cannot {value}", values: []value{
 		{word: "move", label: "cannot move by its own will", to: "move"},
 	}},
-	{place: PlaceChange, word: wordWhen, shape: ShapeEntries, label: "narrows the change it sits beside"},
+	{place: PlaceChange, word: wordWhen, shape: ShapeEntries, holds: PlaceWhen, label: "narrows the change it sits beside"},
 
 	{place: PlaceWhen, word: wordAbility, shape: ShapeOneOf, label: "only when the ability is {value}", values: abilityValues()},
 	{place: PlaceWhen, word: wordAttack, shape: ShapeOneOf, label: "only for {value} attacks", values: []value{
@@ -281,17 +336,26 @@ func changeKinds() string {
 	return strings.Join(words, ", ")
 }
 
-// topWords lists the words a status itself is written with: its own place's
-// and again's, for a refusal.
+// topWords lists the words a status itself is written with, for a refusal:
+// every word written in the status place, again among them.
 func topWords() string {
-	return wordsAt(PlaceStatus) + ", " + wordsAt(PlaceAgain)
+	var words []string
+	for _, e := range table {
+		if e.writtenIn() == PlaceStatus {
+			words = append(words, e.word)
+		}
+	}
+	return strings.Join(words, ", ")
 }
 
 // isTopWord reports whether word is written on the status itself.
 func isTopWord(word string) bool {
-	_, status := lookup(PlaceStatus, word)
-	_, again := lookup(PlaceAgain, word)
-	return status || again
+	for _, e := range table {
+		if e.writtenIn() == PlaceStatus && e.word == word {
+			return true
+		}
+	}
+	return false
 }
 
 // valueOf returns the value entry a word accepts.

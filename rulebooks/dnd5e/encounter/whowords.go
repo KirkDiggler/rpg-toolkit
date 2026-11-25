@@ -56,6 +56,11 @@ const (
 	WhoInPass        = "pass"
 	WhoInNoted       = "noted:"
 	WhoInNotedAnyone = "noted.anyone:"
+	WhoInNotedAs     = "noted.as:"
+	// WhoInStateGiveTo and WhoInStateGiveAbout are a machine state's note:
+	// who comes to hold it and whom it is about (rpg-project#989).
+	WhoInStateGiveTo    = "state.give.to"
+	WhoInStateGiveAbout = "state.give.about"
 	// WhoInApplyStatusTo is who receives a status effect: a row's
 	// `apply_status: { status, to }` (rpg-project#990).
 	WhoInApplyStatusTo = "apply_status.to"
@@ -82,6 +87,10 @@ const (
 	WhoAnyone      = "anyone"
 )
 
+// WhoItself is the creature whose machine stepped, at `state.give.to`
+// (rpg-project#989).
+const WhoItself = "itself"
+
 var whoWords = []WhoWord{
 	{Word: string(RecognitionSpokenTo), Role: WhoTaker, Label: "the one the line is said to", Allowed: WhoInGiveTo, Way: ChannelJudgement},
 	{Word: string(RecognitionCarriersWhoWitnessed), Role: WhoTaker, Label: "the other carriers who caught the words", Allowed: WhoInGiveHeardBy, Way: ChannelHeard},
@@ -90,9 +99,14 @@ var whoWords = []WhoWord{
 	{Word: string(RecognitionSpeaker), Role: WhoAbout, Label: "the speaker, if it sees them", Allowed: WhoInGiveAbout},
 	{Word: WhoTheTaken, Role: WhoAbout, Label: "the ones taken", Allowed: WhoInEngine},
 	{Word: WhoTheGone, Role: WhoAbout, Label: "the party members it saw who are not there now", Allowed: WhoInEngine},
+	{Word: WhoItself, Role: WhoTaker, Label: "the creature whose machine stepped", Allowed: WhoInStateGiveTo, Way: ChannelJudgement},
+	{Word: WhoTheOneNamed, Role: WhoAbout, Label: "the one the beat names", Allowed: WhoInStateGiveAbout},
+	{Word: string(RecognitionPartyInSight), Role: WhoAbout, Label: "the party of the one the beat names that it sees", Allowed: WhoInStateGiveAbout},
+	{Word: WhoTheGone, Role: WhoAbout, Label: "the party of the one the beat names that it saw and does not see now", Allowed: WhoInStateGiveAbout},
 	{Word: WhoTheSpeaker, Role: WhoRead, Label: "the speaker", Allowed: WhoInRequires},
 	{Word: WhoTheWalker, Role: WhoRead, Label: "the walker", Allowed: WhoInPass},
 	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNoted},
+	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNotedAs},
 	{Word: WhoAnyone, Role: WhoRead, Label: "anyone", Allowed: WhoInNotedAnyone},
 	// WHO RECEIVES A STATUS EFFECT (rpg-project#990). `speaker` here is
 	// UNCONDITIONAL — the speaker receives it whether or not anyone sees

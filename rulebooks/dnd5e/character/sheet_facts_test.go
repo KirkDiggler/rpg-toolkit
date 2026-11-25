@@ -19,7 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -180,30 +180,21 @@ func (s *SheetFactsTestSuite) TestALevelThreeRogueSavedWithOneDieRollsTwo() {
 }
 
 // TestAFighterAdvancedToTwoHealsOneD10PlusTwo: Second Wind, granted at level
-// 1, asks its owner's fighter level when it is used, so after advancing it
-// heals 1d10 + 2 with nothing rewritten.
+// 1, asks its owner's fighter level when its description is built, so after
+// advancing the description heals 1d10 + 2 with nothing rewritten.
 func (s *SheetFactsTestSuite) TestAFighterAdvancedToTwoHealsOneD10PlusTwo() {
 	char := s.finalize(newFighterDraft(s.T()), "advancing-fighter")
-	var healed []int
-	_, err := dnd5eEvents.HealingReceivedTopic.On(s.bus).Subscribe(s.ctx,
-		func(_ context.Context, event dnd5eEvents.HealingReceivedEvent) error {
-			healed = append(healed, event.Amount)
-			return nil
-		})
-	s.Require().NoError(err)
-
-	var secondWind features.Feature
-	for _, feature := range char.GetFeatures() {
-		if feature.Ref().Equals(refs.Features.SecondWind()) {
-			secondWind = feature
-		}
-	}
-	s.Require().NotNil(secondWind)
 
 	s.advance(char, classes.Fighter, 1)
-	s.Require().NoError(secondWind.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus, Roller: &scriptedD10{face: 6}}))
+	definition, ok, err := char.AbilityDefinition(*refs.Features.SecondWind())
+	s.Require().NoError(err)
+	s.Require().True(ok)
+	resolved, err := healing.Resolve(s.ctx, *definition.Effect.Healing,
+		dnd5eEvents.RollSource{Ref: refs.Features.SecondWind(), Name: "Second Wind", SourceID: char.GetID()},
+		&scriptedD10{face: 6})
+	s.Require().NoError(err)
 
-	s.Equal([]int{6 + 2}, healed, "the level-1 grant heals with the level-2 fighter's level")
+	s.Equal(6+2, resolved.Total, "the level-1 grant heals with the level-2 fighter's level")
 }
 
 // TestNoWrittenEffectCarriesALevel: no condition or feature JSON a finalized

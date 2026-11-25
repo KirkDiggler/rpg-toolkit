@@ -241,6 +241,12 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		// holds his one cell and the party steps through the opening beside
 		// him. Nil holds nothing.
 		join.Posts = monster.placement.Posts
+		// What a state gives on entering it (rpg-project#989, #1106): bound
+		// beside the posts, from the same compiled creature. Dropped here, no
+		// launched creature would ever note what its machine gives, and a
+		// line requiring that topic would refuse the launch, the engine
+		// seeing a required topic nothing gives. Nil gives nothing.
+		join.Outcomes = monster.placement.Outcomes
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees

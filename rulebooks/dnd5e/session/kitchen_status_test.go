@@ -37,6 +37,7 @@ type KitchenStatusSuite struct {
 	suite.Suite
 	characters *fakeCharacters
 	mgr        *session.Manager
+	stream     *fakeStream
 }
 
 func TestKitchenStatusSuite(t *testing.T) { suite.Run(t, new(KitchenStatusSuite)) }
@@ -54,7 +55,8 @@ func cookLine(id, statusID, status string) encounter.Option {
 
 func (s *KitchenStatusSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
+	s.stream = &fakeStream{}
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(),
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
 	})
@@ -92,6 +94,34 @@ func (s *KitchenStatusSuite) walk() []string {
 func (s *KitchenStatusSuite) TestAHeldInitiativeStatusActsFirst() {
 	s.say("warm")
 	s.Equal([]string{"alice", "a-goblin"}, s.walk())
+}
+
+// Catches a held status missing from the roll everyone reads: alice's roll
+// shows Dexterity and then Warmed up, the goblin's shows no Warmed up.
+func (s *KitchenStatusSuite) TestAHeldInitiativeStatusShowsInTheRoll() {
+	s.say("warm")
+	s.walk()
+	entry, ok := fightFormedFor(s.stream, "alice")
+	s.Require().True(ok, "alice is told the fight formed")
+	s.Require().NotNil(entry.Fight)
+	alice := rollOfMember(entry.Fight.Rolls, "alice")
+	s.Require().NotNil(alice)
+	var names []string
+	for _, m := range alice.Modifiers {
+		names = append(names, m.Source)
+	}
+	s.Equal([]string{"Dexterity", "Warmed up"}, names)
+	warm := modifierNamed(alice, "Warmed up")
+	s.Require().NotNil(warm, "alice's roll shows Warmed up")
+	s.Equal(1, warm.Value)
+	sum := alice.Dice[0]
+	for _, m := range alice.Modifiers {
+		sum += m.Value
+	}
+	s.Equal(sum, alice.Total)
+	goblin := rollOfMember(entry.Fight.Rolls, "a-goblin")
+	s.Require().NotNil(goblin)
+	s.Nil(modifierNamed(goblin, "Warmed up"))
 }
 
 // Catches the bonus outliving its status: after a rest ends Warmed up, the

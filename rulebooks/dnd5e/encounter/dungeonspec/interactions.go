@@ -134,16 +134,6 @@ func outcomesOf(
 			case kinds(c) > 1:
 				fail(itemAt, "a consequence is one kind: `give`, `arrest` or `jail`, not two")
 				continue
-			case c.SceneMove != nil:
-				move := &encounter.SceneMove{Leave: encounter.FactID(c.SceneMove.Leave)}
-				for _, guard := range c.SceneMove.Guards {
-					move.Guards = append(move.Guards, encounter.MemberID(guard))
-				}
-				for _, cell := range c.SceneMove.Anchors {
-					move.Anchors = append(move.Anchors, axialOffset(cell, spatial.HexOrientationPointyTop))
-				}
-				out[state] = append(out[state], encounter.Consequence{SceneMove: move})
-				continue
 			case c.Jail != nil:
 				switch {
 				case c.Jail.Words == "":
@@ -191,13 +181,7 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to", strings.Join(tos, "`, `")))
 	}
 	if !slices.Contains(abouts, r.About) {
-		// Joined from the table, whatever it holds: each word with its label.
-		said := make([]string, 0, len(abouts))
-		for _, w := range abouts {
-			wd, _ := encounter.WhoWordAt(encounter.WhoInGiveAbout, w)
-			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
-		}
-		fail(at+".about", "the subjects are "+strings.Join(said, ", or "))
+		fail(at+".about", subjectsSentence(encounter.WhoInGiveAbout))
 	}
 	switch {
 	case r.HeardBy != "" && !slices.Contains(hearers, r.HeardBy):
@@ -207,16 +191,40 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 			"omit heard_by, or give the line an interaction it requires or advances")
 	}
 	return encounter.Recognition{
-		Topic: encounter.TopicID(r.Topic), Holder: encounter.RecognitionHolder(r.To),
+		Topic: encounter.TopicID(r.Topic), As: r.As, Holder: encounter.RecognitionHolder(r.To),
 		About: encounter.RecognitionSubjects(r.About), HeardBy: encounter.RecognitionHearers(r.HeardBy),
 	}
 }
 
+// subjectsSentence says whom a note may be about where the who-word table
+// allows `about`, joined from the table whatever it holds: each word with its
+// label. THE ONE SENTENCE a conversation's give and a machine state's give
+// share.
+func subjectsSentence(place string) string {
+	said := []string{}
+	for _, w := range encounter.WhoWordsIn(place) {
+		wd, _ := encounter.WhoWordAt(place, w)
+		said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
+	}
+	return "the subjects are " + strings.Join(said, ", or ")
+}
+
 // lineGrantedTopics is every topic a line's success or failure row gives
 // (rpg-project#929, #932), read straight off the document: a creature's own lines
-// and its faction's.
+// and its faction's, and every topic a behaviour definition's `outcomes` give
+// on entering a state (rpg-project#989), since a topic a state gives counts as
+// given.
 func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	out := map[string]bool{}
+	for _, def := range s.BehaviorDefinitions {
+		for _, consequences := range def.Outcomes {
+			for _, c := range consequences {
+				if c.Give != nil && c.Give.Topic != "" {
+					out[c.Give.Topic] = true
+				}
+			}
+		}
+	}
 	add := func(options []OptionSpec) {
 		for _, o := range options {
 			for _, row := range slices.Concat(o.Success, o.Failure) {
@@ -263,7 +271,7 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 // it reads is refused in the engine's sentence ([encounter.GuardWordsRefusal],
 // rpg-project#1000).
 func topicGuards(s *SingleRoomSpec, add errSink) {
-	granted := grantedTopicsOf(s)
+	granted, values := grantedTopicsOf(s), givenValuesOf(s)
 	for _, id := range sortedKeys(s.BehaviorDefinitions) {
 		def := s.BehaviorDefinitions[id]
 		if def.Body != nil && bytes.Contains(def.Body.raw, []byte(`"`+retiredTopicGuardPrefix)) {
@@ -289,7 +297,7 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 				if refusal, leaf := encounter.GuardWordsRefusalAt(t.On, t.When); refusal != "" {
 					add(strings.TrimSuffix(at, ".when")+leafPath(leaf), refusal)
 				}
-				held, retired := guardTopics(t.When)
+				held, retired, valued := guardTopics(t.When)
 				for _, name := range retired {
 					add(at, topicGuardRetired(name))
 				}
@@ -297,6 +305,13 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 					if !granted[topic] {
 						add(at, fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success or failure row gives, "+
 							"so nobody could ever note it", topic))
+					}
+				}
+				// A VALUE NOTHING GIVES (rpg-project#1007): a topic given, but
+				// never as the value the step waits for.
+				for _, v := range valued {
+					if granted[v.topic] && !values.givesAs(v.topic, v.as) {
+						add(at, errNothingGivesValue("this step", v.topic, v.as))
 					}
 				}
 			}
@@ -317,15 +332,22 @@ func topicGuardRetired(name string) string {
 		name, notedAnyonePrefix, id, id, notedAnyonePrefix)
 }
 
-// guardTopics is every topic a guard asks `noted.anyone:<topic>` or
-// `noted:<topic>` (rpg-project#1000) of, nested included, and every guard
-// fact still written in the retired `topic:<id>`.
-func guardTopics(g *machine.Guard) (held, retired []string) {
+// guardTopics is every topic a guard asks `noted.anyone:<topic>`,
+// `noted:<topic>` (rpg-project#1000) or `noted.as:<topic>` (rpg-project#1007)
+// of, nested included, every value a `noted.as:<topic>` waits for, and every
+// guard fact still written in the retired `topic:<id>`.
+func guardTopics(g *machine.Guard) (held, retired []string, valued []topicValue) {
 	if g == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
+		if id, ok := strings.CutPrefix(name, string(encounter.MachineNotedAs(""))); ok && id != "" {
+			held = append(held, id)
+			if as, isWord := g.Fact.Value.(string); isWord && as != "" {
+				valued = append(valued, topicValue{topic: id, as: as})
+			}
+		}
 		if id, ok := strings.CutPrefix(name, notedAnyonePrefix); ok && id != "" {
 			held = append(held, id)
 		}
@@ -344,10 +366,132 @@ func guardTopics(g *machine.Guard) (held, retired []string) {
 		children = append(children, &g.Any[i])
 	}
 	for _, c := range children {
-		h, r := guardTopics(c)
-		held, retired = append(held, h...), append(retired, r...)
+		h, r, v := guardTopics(c)
+		held, retired, valued = append(held, h...), append(retired, r...), append(valued, v...)
 	}
-	return held, retired
+	return held, retired, valued
+}
+
+// topicValue is one value a topic is given with or asked as; the empty value
+// is a give with none.
+type topicValue struct{ topic, as string }
+
+// topicValues is every value each topic is given with, the document read
+// straight off (rpg-project#1007): a topic with a value everywhere it is
+// given, or nowhere. A give with none counts under the empty value, and so
+// does an arrest or a jail, which give the engine's own topics with none.
+type topicValues map[string]map[string]bool
+
+// add records one give of topic as value.
+func (v topicValues) add(topic, as string) {
+	if v[topic] == nil {
+		v[topic] = map[string]bool{}
+	}
+	v[topic][as] = true
+}
+
+// givesAs reports whether some give carries topic with exactly the value
+// asked. A nil index gives nothing, and so judges nothing.
+func (v topicValues) givesAs(topic, as string) bool { return v[topic][as] }
+
+// givenAt is one give where it is written: the path of the give, its topic and
+// its value. An arrest and a jail are gives with no path to carry a value.
+type givenAt struct {
+	at, topic, as string
+}
+
+// givesOf is every give the document writes, in file order, with the path of
+// each: the lines' success and failure rows, a behaviour definition's state
+// outcomes and a root interaction's outcomes, whose arrest and jail give the
+// engine's own topics with none.
+func givesOf(s *SingleRoomSpec) []givenAt {
+	var out []givenAt
+	for _, id := range sortedKeys(s.BehaviorDefinitions) {
+		def := s.BehaviorDefinitions[id]
+		for _, state := range sortedKeys(def.Outcomes) {
+			for i, c := range def.Outcomes[state] {
+				if c.Give != nil && c.Give.Topic != "" {
+					at := fmt.Sprintf("behaviorDefinitions.%s.outcomes.%s[%d].give", id, state, i)
+					out = append(out, givenAt{at: at, topic: c.Give.Topic, as: c.Give.As})
+				}
+			}
+		}
+	}
+	lines := func(path string, options []OptionSpec) {
+		for j, o := range options {
+			for _, verdict := range []struct {
+				key  string
+				rows []AnswerSpec
+			}{{"success", o.Success}, {"failure", o.Failure}} {
+				for k, row := range verdict.rows {
+					if row.Give != nil && row.Give.Topic != "" {
+						at := fmt.Sprintf("%s.options[%d].%s[%d].give", path, j, verdict.key, k)
+						out = append(out, givenAt{at: at, topic: row.Give.Topic, as: row.Give.As})
+					}
+				}
+			}
+		}
+	}
+	for _, id := range sortedKeys(s.Room.Gameplay.MonsterBindings) {
+		lines("room.room.monsterBindings."+id, s.Room.Gameplay.MonsterBindings[id].Options)
+	}
+	for i, f := range s.Factions {
+		lines(fmt.Sprintf("factions[%d]", i), f.Options)
+	}
+	for _, id := range sortedKeys(s.Interactions) {
+		spec := s.Interactions[id]
+		for _, state := range sortedKeys(spec.Outcomes) {
+			for i, c := range spec.Outcomes[state] {
+				switch {
+				case c.Give != nil && c.Give.Topic != "":
+					at := fmt.Sprintf("interactions.%s.outcomes.%s[%d].give", id, state, i)
+					out = append(out, givenAt{at: at, topic: c.Give.Topic, as: c.Give.As})
+				case c.Arrest != nil:
+					out = append(out, givenAt{topic: string(encounter.TopicArrested)}, givenAt{topic: string(encounter.TopicWanted)})
+				case c.Jail != nil:
+					out = append(out, givenAt{topic: string(encounter.TopicJailed)})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// givenValuesOf is every value each topic the document gives is given with.
+func givenValuesOf(s *SingleRoomSpec) topicValues {
+	out := topicValues{}
+	for _, g := range givesOf(s) {
+		out.add(g.topic, g.as)
+	}
+	return out
+}
+
+// topicValueRefusals refuses a value where the engine would (rpg-project#1007),
+// at the `as` of the give that wrote it, in the engine's sentences: a value on
+// `arrested`, `wanted` or `jailed`, which are the engine's own and have none;
+// and a topic given with a value in one place and with none in another.
+func topicValueRefusals(s *SingleRoomSpec, add errSink) {
+	gives := givesOf(s)
+	values := topicValues{}
+	for _, g := range gives {
+		values.add(g.topic, g.as)
+	}
+	for _, g := range gives {
+		switch {
+		case g.as == "":
+		case slices.Contains([]string{string(encounter.TopicArrested), string(encounter.TopicWanted), string(encounter.TopicJailed)}, g.topic):
+			add(g.at+".as", fmt.Sprintf("this give gives %q as %q: %q is the engine's own topic and has no value", g.topic, g.as, g.topic))
+		case values[g.topic][""]:
+			add(g.at+".as", fmt.Sprintf("the topic %q is given as %q in one place and with no value in another: "+
+				"a topic has a value everywhere it is given, or nowhere", g.topic, g.as))
+		}
+	}
+}
+
+// errNothingGivesValue is the sentence for a question about a value no give of
+// the topic carries, in the engine's words.
+func errNothingGivesValue(what, topic, as string) string {
+	return fmt.Sprintf("%s asks whether %q is noted as %q, and nothing gives it that value", what, topic, as)
 }
 
 // retiredGuardNames is every guard fact name in a decoded native value still
@@ -418,7 +562,7 @@ func arrestOf(at string, a *ArrestSpec, regions map[string]bool, fail func(at, m
 // kinds is how many consequence kinds one outcome item names.
 func kinds(c OutcomeSpec) int {
 	n := 0
-	for _, set := range []bool{c.Give != nil, c.Arrest != nil, c.Jail != nil, c.SceneMove != nil} {
+	for _, set := range []bool{c.Give != nil, c.Arrest != nil, c.Jail != nil} {
 		if set {
 			n++
 		}

@@ -468,10 +468,13 @@ func (e *Encounter) formation(engaged map[MemberID]bool, contact map[MemberID]bo
 	// or forming a second bubble — is either a rule that stops working the
 	// moment a fight exists or two fights nobody asked for.
 	//
-	// Everyone in contact who is not already on a turn clock transfers in at
-	// the END of the order: they arrive after the creatures who were already
-	// trading blows, which is the only ordering that does not silently give a
-	// latecomer a turn ahead of somebody mid-fight.
+	// Everyone in contact who is not already on a turn clock joins by
+	// rolling initiative and is placed by that roll (join.go,
+	// rpg-project#1068): in the fight's first round among those who have not
+	// acted yet, in a later round at its rolled place with no turn in the
+	// round it joins. In the first round a joiner whose roll would put it
+	// earlier than where the round has got to lands straight after the one
+	// acting; it never acts before somebody who has already acted.
 	if len(e.bubbles) > 0 {
 		var joined []MemberID
 		for _, id := range form {
@@ -628,17 +631,11 @@ func (e *Encounter) applyVerdict(
 	var outputDeltas map[MemberID]*IntelDelta
 
 	if len(verdict.joined) > 0 {
-		for _, id := range verdict.joined {
-			transferred, err := e.Transfer(&TransferInput{
-				Member: id,
-				To:     ClockTurn,
-				Pos:    e.bubbleSize(),
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("trigger transfer %q: %w", id, err)
-			}
-			outputDeltas = mergeIntelDeltas(outputDeltas, transferred.IntelDeltas)
+		_, joinedDeltas, err := e.joinFight(verdict.joined)
+		if err != nil {
+			return nil, nil, fmt.Errorf("trigger join: %w", err)
 		}
+		outputDeltas = mergeIntelDeltas(outputDeltas, joinedDeltas)
 
 		return nil, outputDeltas, nil
 	}
@@ -669,16 +666,6 @@ func (e *Encounter) applyVerdict(
 		Surprised: verdict.surprised,
 		Seq:       formed.Seq,
 	}, outputDeltas, nil
-}
-
-// bubbleSize reports how many members the running bubble holds, which is the
-// slot a straggler lands in: the end of the order.
-func (e *Encounter) bubbleSize() int {
-	if len(e.bubbles) == 0 {
-		return 0
-	}
-
-	return len(e.bubbles[0].ToData().Order)
 }
 
 // contactBetween names what one opposed pair's two first-contact answers

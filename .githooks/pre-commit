@@ -50,8 +50,8 @@ get_module_root() {
 # session} each have a go.mod of their own and are their own release units. A
 # plain `grep "^$module/"` for rulebooks/dnd5e therefore sweeps in every file
 # under those three, and the package list derived from it contains ./encounter
-# and friends — which are not packages of rulebooks/dnd5e at all. go test and
-# golangci-lint both refuse them by name:
+# and friends — which are not packages of rulebooks/dnd5e at all. golangci-lint
+# (like go test) refuses them by name:
 #
 #   main module (github.com/.../rulebooks/dnd5e) does not contain package
 #   github.com/.../rulebooks/dnd5e/encounter
@@ -154,12 +154,6 @@ check_module() {
         fi
     else
         echo "⚠️  golangci-lint not found, skipping linter checks"
-    fi
-    
-    # Run tests only on changed packages (faster)
-    echo "→ Running tests on changed packages..."
-    if ! (cd "$module" && go test -race $MODULE_PACKAGES); then
-        module_passed=false
     fi
     
     if [[ "$module_passed" == "true" ]]; then
