@@ -73,8 +73,10 @@ func (m *Manager) buildActivationOffers(
 
 		slot := slotOfEconomySlot(ability.EconomySlot)
 		ref := ability.Ref.String()
+		giver, name := activationGiver(ability)
 
-		id, variant, err := selectorIDFor(session, member, VerbActivate, slot, nil, nil, ref, "")
+		id, variant, err := selectorIDFor(session, member, VerbActivate, slot, nil, nil,
+			activationIdentity(ref, giver), "")
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +85,7 @@ func (m *Manager) buildActivationOffers(
 			Verb:       VerbActivate,
 			Slot:       slot,
 			Available:  ability.CanUse,
-			Ability:    &AbilityRef{Ref: ref, Name: ability.Name},
+			Ability:    &AbilityRef{Ref: ref, Name: name, Giver: giver},
 			TargetKind: targetKindOfAbility(ability.TargetKind),
 			ID:         id,
 			Candidates: []TargetCandidate{},
@@ -133,9 +135,58 @@ func (m *Manager) buildActivationOffers(
 	// within-verb tiebreak that verb ranking alone cannot provide now that one
 	// verb has seven rows.
 	sort.SliceStable(offers, func(i, j int) bool {
-		return offers[i].declaration.Ability.Ref < offers[j].declaration.Ability.Ref
+		return abilityRowLess(offers[i].declaration.Ability, offers[j].declaration.Ability)
 	})
 	return offers, nil
+}
+
+// activationGiver is who gives an ability and the name its row carries.
+//
+// An entry the rulebook marks with a giver is a worn item's grant: its row
+// names the item after the ability ("Second Wind · Lieutenant's cloak") so two
+// givers of one ability read as two things. An entry with none is the
+// member's own and keeps the ability's own name, as it always did.
+func activationGiver(ability character.AvailableAbility) (*AbilityGiver, string) {
+	if ability.Giver == nil {
+		return nil, ability.Name
+	}
+	giver := &AbilityGiver{
+		ItemID:   ability.Giver.ItemID,
+		ItemName: ability.Giver.ItemName,
+		Grant:    ability.Giver.Grant,
+	}
+	return giver, ability.Name + " · " + giver.ItemName
+}
+
+// activationIdentity is the selector material of one Activate row: the
+// ability's ref, and for an item's grant the item and the grant as well, so
+// the same ability from two givers has two ids. The member's own is the ref
+// alone, byte for byte what it was before a row could have a giver. The
+// parts are length-prefixed so no pair of values can read as another.
+func activationIdentity(ref string, giver *AbilityGiver) string {
+	if giver == nil {
+		return ref
+	}
+	return fmt.Sprintf("%s|item:%d:%s|grant:%d:%s",
+		ref, len(giver.ItemID), giver.ItemID, len(giver.Grant), giver.Grant)
+}
+
+// abilityRowLess orders Activate rows: by ability ref, the member's own before
+// an item's, then by item id and grant. One order for both places that sort.
+func abilityRowLess(a, b *AbilityRef) bool {
+	if a.Ref != b.Ref {
+		return a.Ref < b.Ref
+	}
+	if (a.Giver == nil) != (b.Giver == nil) {
+		return a.Giver == nil
+	}
+	if a.Giver == nil {
+		return false
+	}
+	if a.Giver.ItemID != b.Giver.ItemID {
+		return a.Giver.ItemID < b.Giver.ItemID
+	}
+	return a.Giver.Grant < b.Giver.Grant
 }
 
 // activationWhy turns the rulebook's prose refusal into the structured one this

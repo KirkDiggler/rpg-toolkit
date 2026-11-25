@@ -1472,7 +1472,7 @@ func sortDeclarations(decls []Declaration) {
 		}
 		// Activate rows sort by the ability ref the character carries.
 		if decls[i].Ability != nil && decls[j].Ability != nil {
-			return decls[i].Ability.Ref < decls[j].Ability.Ref
+			return abilityRowLess(decls[i].Ability, decls[j].Ability)
 		}
 		// Cast rows sort by the spell ref, the same within-verb tiebreak and
 		// for the same reason: one verb, several rows, and the panel's order

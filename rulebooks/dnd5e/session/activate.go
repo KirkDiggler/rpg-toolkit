@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -234,9 +235,27 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 	// (rpg-project#1131). The sheet is asked for the ability's description with
 	// the character's own numbers; one that has none keeps the activation
 	// machine, which spends for itself.
-	definition, described, err := selected.sheet.AbilityDefinition(*ability)
-	if err != nil {
-		return nil, fmt.Errorf("activate: %w: %v", ErrCannotActivate, err)
+	//
+	// A ROW WITH A GIVER IS ASKED OF THE ITEM (rpg-project#850): the sheet
+	// describes the item's grant, whose cost names the item's own pool, and
+	// the payer's own sheet pays it. Nothing else is passed.
+	var (
+		definition *combatActions.Definition
+		described  bool
+	)
+	if giver := selected.declaration.Ability.Giver; giver != nil {
+		granted, grantErr := selected.sheet.GrantedAbility(&character.GrantedAbilityInput{
+			ItemID: giver.ItemID, Grant: giver.Grant,
+		})
+		if grantErr != nil {
+			return nil, fmt.Errorf("activate: %w: %v", ErrCannotActivate, grantErr)
+		}
+		definition, described = granted.Definition, true
+	} else {
+		definition, described, err = selected.sheet.AbilityDefinition(*ability)
+		if err != nil {
+			return nil, fmt.Errorf("activate: %w: %v", ErrCannotActivate, err)
+		}
 	}
 	// A machine that rolls carries its own roller (resolution's rule): Second
 	// Wind rolls with the HOST'S dice through the same seam every other roll
