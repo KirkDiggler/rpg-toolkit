@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S5 second wind's own activate code retires
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1149](https://github.com/KirkDiggler/rpg-project/issues/1149) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`8d5123f1`](https://github.com/KirkDiggler/rpg-toolkit/commit/8d5123f14c12a3379489cfe80da770d19e0c8b34).
 
 ## Shipped

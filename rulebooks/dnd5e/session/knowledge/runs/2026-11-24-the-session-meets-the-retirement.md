@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S: the session meets the retirement
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1152](https://github.com/KirkDiggler/rpg-project/issues/1152) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`2cba334e`](https://github.com/KirkDiggler/rpg-toolkit/commit/2cba334e).
 
 ## Shipped

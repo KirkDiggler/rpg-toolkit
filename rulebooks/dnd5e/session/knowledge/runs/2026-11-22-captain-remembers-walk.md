@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — Captain remembers who lied: a walk site
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1109](https://github.com/KirkDiggler/rpg-project/issues/1109) of story [rpg-project#989](https://github.com/KirkDiggler/rpg-project/issues/989). Base: `rpg-toolkit` `main` at [`b9eba855`](https://github.com/KirkDiggler/rpg-toolkit/commit/b9eba855).
 
 ## Shipped

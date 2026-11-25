@@ -1,5 +1,7 @@
 # Run — 2026-11-25 — one way to pay for an ability: second wind is a named ability
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1156](https://github.com/KirkDiggler/rpg-project/issues/1156) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`6c766ce1`](https://github.com/KirkDiggler/rpg-toolkit/commit/6c766ce1).
 
 ## Shipped

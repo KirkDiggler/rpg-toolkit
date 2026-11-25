@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — machine story: the captain remembers who lied to him
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1105](https://github.com/KirkDiggler/rpg-project/issues/1105) of story [rpg-project#989](https://github.com/KirkDiggler/rpg-project/issues/989). Base: `rpg-toolkit` `main` at [`6483132d`](https://github.com/KirkDiggler/rpg-toolkit/commit/6483132d).
 
 ## Shipped

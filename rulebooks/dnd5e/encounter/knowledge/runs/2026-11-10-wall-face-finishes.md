@@ -1,5 +1,7 @@
 # Run — 2026-11-10 — Courtyard S5 captured wall-face finishes
 
+processed: 2026-11-25T190427Z
+
 Work [Project #919](https://github.com/KirkDiggler/rpg-project/issues/919), implementation [Web #1402](https://github.com/KirkDiggler/rpg-dnd5e-web/issues/1402), design [Project #915](https://github.com/KirkDiggler/rpg-project/pull/915).
 
 ## Shipped

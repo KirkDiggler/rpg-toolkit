@@ -1,5 +1,7 @@
 # Run — 2026-11-20 — a conversation's line keeps the note edges of its copies
 
+processed: 2026-11-25T190427Z
+
 Follow-up to [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/2479) under [rpg-project#1025](https://github.com/KirkDiggler/rpg-project/issues/1025). Found while rewriting the castle onto `conversations:`. Base: `rpg-toolkit` `main` at [`dcccad8a`](https://github.com/KirkDiggler/rpg-toolkit/commit/dcccad8a).
 
 ## Shipped

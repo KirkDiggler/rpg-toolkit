@@ -1,5 +1,7 @@
 # Run — 2026-11-20 — a conversation's lines are written once and applied to carriers
 
+processed: 2026-11-25T190427Z
+
 Engine slice [rpg-project#1025](https://github.com/KirkDiggler/rpg-project/issues/1025) of the conversation shape ruled on [rpg-project#987](https://github.com/KirkDiggler/rpg-project/issues/987) (R20–R24). Base: `rpg-toolkit` `main` at [`072af96c`](https://github.com/KirkDiggler/rpg-toolkit/commit/072af96c). PR [rpg-toolkit#2479](https://github.com/KirkDiggler/rpg-toolkit/pull/2479).
 
 ## Shipped

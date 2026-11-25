@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S1 second wind uses the shared pool
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1144](https://github.com/KirkDiggler/rpg-project/issues/1144) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`c5a8e9a1`](https://github.com/KirkDiggler/rpg-toolkit/commit/c5a8e9a1).
 
 One line per entry. Every line ends with a link.

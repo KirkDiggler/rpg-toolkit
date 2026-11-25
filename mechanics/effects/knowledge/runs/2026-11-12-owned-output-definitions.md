@@ -1,5 +1,7 @@
 # Run — 2026-11-12 — Composable conditions S17
 
+processed: 2026-11-25T190427Z
+
 Slice [project#950](https://github.com/KirkDiggler/rpg-project/issues/950), supporting [#946](https://github.com/KirkDiggler/rpg-project/issues/946).
 
 ## Shipped
