@@ -147,14 +147,14 @@ func TestAWizardWearingTheCloakHasOnlyTheCloaksSecondWind(t *testing.T) {
 	assert.Equal(t, "Lieutenant's cloak", mod.Source.Label)
 	assert.Equal(t, "cloak-1", mod.Source.SourceID)
 	assert.Equal(t, map[coreCombat.ActionType]int{coreCombat.ActionBonus: 1}, out.Definition.Cost.Slots)
-	assert.Equal(t, map[coreResources.ResourceKey]int{"charges": 1}, out.Definition.Cost.Pools)
+	assert.Equal(t, map[coreResources.ResourceKey]int{ItemPoolKey("cloak-1", "charges"): 1}, out.Definition.Cost.Pools)
 }
 
 func payCloak(t *testing.T, c *Character, id string) error {
 	t.Helper()
 	out, err := c.GrantedAbility(&GrantedAbilityInput{ItemID: id, Grant: "second-wind"})
 	require.NoError(t, err)
-	return combat.Pay(combat.WithPools(c, out.Budget), out.Definition.Cost)
+	return combat.Pay(c, out.Definition.Cost)
 }
 
 func chargesOf(c *Character, id string) int { return cloakOf(c, id).Left["charges"] }
@@ -249,22 +249,12 @@ func TestGrantedAbilityRefusesWhatItCannotAnswerNamingTheItem(t *testing.T) {
 
 	out, err := c.GrantedAbility(&GrantedAbilityInput{ItemID: "cloak-1", Grant: "second-wind"})
 	require.NoError(t, err)
-	assert.Equal(t, 1, out.Budget.PoolLeft("charges"))
 	require.NoError(t, c.UnequipItem(SlotCloak))
-	assert.Equal(t, 0, out.Budget.PoolLeft("charges"), "an item taken off reads 0")
-	out.Budget.SpendPool("charges", 1)
+	err = combat.Pay(c, out.Definition.Cost)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), string(ItemPoolKey("cloak-1", "charges")))
 	assert.Equal(t, 1, chargesOf(c, "cloak-1"), "an item taken off spends nothing")
-}
-
-func TestTheBudgetOwnsExactlyTheItemsPools(t *testing.T) {
-	cloak := newItem(t, "cloak-1", cloakDescription())
-	c := wearer(t, classes.Fighter, map[InventorySlot]string{SlotCloak: "cloak-1"}, cloak)
-	out, err := c.GrantedAbility(&GrantedAbilityInput{ItemID: "cloak-1", Grant: "second-wind"})
-	require.NoError(t, err)
-	assert.True(t, out.Budget.HasPool("charges"))
-	assert.False(t, out.Budget.HasPool(resources.SecondWind))
-	out.Budget.SpendPool("charges", 5)
-	assert.Equal(t, 0, chargesOf(c, "cloak-1"), "never below zero")
+	assert.Equal(t, 1, c.actionEconomy.BonusActionsRemaining, "and nothing else is spent")
 }
 
 func emptied(t *testing.T, c *Character, id string) {
@@ -353,4 +343,38 @@ func TestACharacterWithNoItemsHasNoGiver(t *testing.T) {
 	for _, a := range c.AvailableAbilities() {
 		assert.Nil(t, a.Giver, a.Name)
 	}
+}
+
+// Test 11. The count follows the saved data: the resolver loads its own
+// character from what the session saved, and pays on that one.
+func TestTheCloaksCountFollowsTheSavedData(t *testing.T) {
+	cloak := newItem(t, "cloak-1", cloakDescription())
+	first := wearer(t, classes.Fighter, map[InventorySlot]string{SlotCloak: "cloak-1"}, cloak)
+	out, err := first.GrantedAbility(&GrantedAbilityInput{ItemID: "cloak-1", Grant: "second-wind"})
+	require.NoError(t, err)
+
+	saved, err := first.ToData()
+	require.NoError(t, err)
+	second, err := LoadFromData(context.Background(), saved, events.NewEventBus())
+	require.NoError(t, err)
+	_, err = second.StartTurn(context.Background(), &StartTurnInput{TurnNumber: 1, Speed: 30})
+	require.NoError(t, err)
+
+	require.NoError(t, combat.Pay(second, out.Definition.Cost))
+
+	assert.Equal(t, 0, chargesOf(second, "cloak-1"))
+	assert.Equal(t, 1, chargesOf(first, "cloak-1"), "the first copy is not the one paid")
+	d, err := second.ToData()
+	require.NoError(t, err)
+	assert.Equal(t, 0, d.Items[0].Left["charges"])
+}
+
+func TestAnItemPoolKeyNeverShadowsAClassPool(t *testing.T) {
+	cloak := newItem(t, "cloak-1", cloakDescription())
+	c := wearer(t, classes.Fighter, map[InventorySlot]string{SlotCloak: "cloak-1"}, cloak)
+	assert.Equal(t, 1, c.PoolLeft(resources.SecondWind))
+	assert.Equal(t, 0, c.PoolLeft("item:cloak-1/nothing"))
+	assert.Equal(t, 0, c.PoolLeft("charges"))
+	c.SpendPool("item:cloak-1/nothing", 1)
+	assert.Equal(t, 1, chargesOf(c, "cloak-1"))
 }

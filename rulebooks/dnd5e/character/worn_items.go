@@ -10,7 +10,6 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -23,18 +22,25 @@ type GrantedAbilityInput struct {
 	Grant  string
 }
 
-// GrantedAbilityOutput is what the gate needs: the description to run and the
-// item's own budget to pay from.
+// GrantedAbilityOutput is what the gate needs: the description to run. Its
+// cost names the item's pool by [ItemPoolKey], which the character's own
+// ledger answers while the item is worn.
 type GrantedAbilityOutput struct {
 	Definition *actions.Definition
-	Budget     combat.PoolSource
+}
+
+// ItemPoolKey is the key of a pool an owned item keeps, as a cost names it
+// and as the character's ledger answers it. It is compared whole, never
+// parsed back.
+func ItemPoolKey(itemID, pool string) coreResources.ResourceKey {
+	return coreResources.ResourceKey("item:" + itemID + "/" + pool)
 }
 
 // GrantedAbility answers for one grant of one WORN item: the description the
-// gate runs, asked of the rulebook's named ability like a class feature's, and
-// the item's own budget. Pay both in one payment:
+// gate runs, asked of the rulebook's named ability like a class feature's. Its
+// cost names the item's pool, so one call pays the slot and the item's use:
 //
-//	combat.Pay(combat.WithPools(character, out.Budget), out.Definition.Cost)
+//	combat.Pay(character, out.Definition.Cost)
 //
 // An item not owned, an item not worn and a grant the item does not have are
 // refused, each naming the item. [Character.AbilityDefinition] is untouched:
@@ -54,7 +60,7 @@ func (c *Character) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutp
 	if err != nil {
 		return nil, err
 	}
-	return &GrantedAbilityOutput{Definition: definition, Budget: &itemBudget{c: c, id: item.ID, pools: poolKeys(item)}}, nil
+	return &GrantedAbilityOutput{Definition: definition}, nil
 }
 
 // isWorn reports whether an item's id is in an equipment slot.
@@ -86,7 +92,7 @@ func itemDefinition(item magicitems.Data, grantName string) (*actions.Definition
 		},
 	}
 	if grant.Pool != "" {
-		in.Pools = map[coreResources.ResourceKey]int{coreResources.ResourceKey(grant.Pool): grant.Uses}
+		in.Pools = map[coreResources.ResourceKey]int{ItemPoolKey(item.ID, grant.Pool): grant.Uses}
 	}
 	definition, err := features.DescribeFromRef(in)
 	if err != nil {
@@ -95,55 +101,21 @@ func itemDefinition(item magicitems.Data, grantName string) (*actions.Definition
 	return definition, nil
 }
 
-func poolKeys(item magicitems.Data) map[coreResources.ResourceKey]string {
-	keys := make(map[coreResources.ResourceKey]string, len(item.Description.Pools))
-	for name := range item.Description.Pools {
-		keys[coreResources.ResourceKey(name)] = name
+// itemPool finds the live record behind an item pool key: the index of a WORN
+// owned item and the pool's name. ok is false for any other key.
+func (c *Character) itemPool(key coreResources.ResourceKey) (index int, pool string, ok bool) {
+	for i := range c.items {
+		for name := range c.items[i].Description.Pools {
+			if ItemPoolKey(c.items[i].ID, name) != key {
+				continue
+			}
+			if !c.isWorn(c.items[i].ID) {
+				return 0, "", false
+			}
+			return i, name, true
+		}
 	}
-	return keys
-}
-
-// itemBudget is a worn item's own pools, read and debited on the character's
-// live record of the item.
-type itemBudget struct {
-	c     *Character
-	id    string
-	pools map[coreResources.ResourceKey]string // key to the item's pool name
-}
-
-var _ combat.PoolSource = (*itemBudget)(nil)
-
-func (b *itemBudget) HasPool(key coreResources.ResourceKey) bool {
-	_, ok := b.pools[key]
-	return ok
-}
-
-// index is the item's place in the live record, or -1 when it is no longer
-// owned or no longer worn.
-func (b *itemBudget) index() int {
-	if !b.c.isWorn(b.id) {
-		return -1
-	}
-	return slices.IndexFunc(b.c.items, func(i magicitems.Data) bool { return i.ID == b.id })
-}
-
-func (b *itemBudget) PoolLeft(key coreResources.ResourceKey) int {
-	name, ok := b.pools[key]
-	i := b.index()
-	if !ok || i < 0 {
-		return 0
-	}
-	return b.c.items[i].Left[name]
-}
-
-func (b *itemBudget) SpendPool(key coreResources.ResourceKey, n int) {
-	name, ok := b.pools[key]
-	i := b.index()
-	if !ok || i < 0 || n <= 0 {
-		return
-	}
-	b.c.items[i].Left[name] = max(0, b.c.items[i].Left[name]-n)
-	b.c.poolChanged()
+	return 0, "", false
 }
 
 // wornItemAbilities lists one entry for each grant of each worn item, in item
