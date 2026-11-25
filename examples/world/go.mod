@@ -11,11 +11,11 @@ require (
 )
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.10.0 // indirect
+	github.com/KirkDiggler/rpg-toolkit/core v0.11.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 // indirect
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 // indirect
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.5.2-0.20260804104806-a8a4dd3fc92a // indirect
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
