@@ -181,7 +181,7 @@ type PlacedPropInput struct {
 	// It is refused together with Holdable by the site format, not here: a
 	// thing is held in the hands or taken as an item, and which of the two a
 	// placement is is the author's word.
-	Item *ItemGrant
+	Item *ItemGrant `json:"Item,omitempty"`
 }
 
 // placedContributor is one compiled placed prop: the input's facts, deep

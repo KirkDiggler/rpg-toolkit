@@ -18,4 +18,6 @@
 
 ## Mistaken
 
+- A later base merge selected main's castle hash instead of the combined schema's hash. A detached diagnostic reproduced main's expectation by removing only the24 empty section fields from the encoding, proving the mismatch. Incorporated the final upstream empty-item fix, recomputed the combined pin and restored its explanation; all content pictures, the full race suite and lint pass without changing the encoder or persisted SiteHash — [PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2503).
+
 - The first full module race gate exposed six atlas characterization changes and the compiler-content hash pin. Every JSON change was proved to be only `Sections:null`; the content encoder deliberately includes every compiled struct field and is engine-version-local. Updated those pictures and its pin without changing the encoder. Persisted legacy SiteHash remains separately protected by omitted empty data — [slice](https://github.com/KirkDiggler/rpg-project/issues/1022).
