@@ -311,6 +311,16 @@ func TestCheckContentJudgesEveryCustomItem(t *testing.T) {
 		"slot: cloak", "slot: cape")
 	require.Len(t, check(both).Items, 1, "judged once")
 
+	// A prop alone is read too: the compiled site carries a placed prop's
+	// item, and the check finds it with no creature naming it.
+	propOnly := cloakSite(t,
+		"        equipment: [lieutenants-cloak]\n", "",
+		"    items: []\n", "    items:\n      - id: cloak-on-the-peg\n        kind: prop\n        assetRef: dnd5e:props:scroll\n        label: The Cloak\n        transform: {x: -1.5, y: 0, z: 0.75, rotationY: 0}\n",
+		"    propDeclarations: {}\n", "    propDeclarations:\n      cloak-on-the-peg:\n        blocksMovement: false\n        blocksLineOfSight: false\n        footprint: {width: 0.3, depth: 0.3, offsetX: 0, offsetZ: 0}\n",
+		"    doorBindings:", "    propBindings:\n      cloak-on-the-peg:\n        item: lieutenants-cloak\n    doorBindings:",
+		"slot: cloak", "slot: cape")
+	require.Len(t, check(propOnly).Items, 1, "a prop's item is judged with no creature naming it")
+
 	// Starting a session on such a site is refused.
 	compiled := compileCloakSite(t, cloakSite(t, "slot: cloak", "slot: cape"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: &actCapture{}, Seats: newFakeSeats(),
