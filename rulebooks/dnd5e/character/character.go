@@ -30,6 +30,7 @@ import (
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -97,6 +98,10 @@ type Character struct {
 	inventory      []InventoryItem
 	wallet         currency.Money
 	equipmentSlots EquipmentSlots
+
+	// items are the items this character owns that keep their own record,
+	// held as copies and read through Items.
+	items []magicitems.Data
 
 	// knownCantrips and knownSpells are the content refs this character knows.
 	// Parsed at load and kept as refs so a reader gets an identity rather than
@@ -1277,6 +1282,11 @@ func (c *Character) EquipItem(slot InventorySlot, itemID string) error {
 // return. The equip price reads it so the price is computed from the same
 // occupancy rules that will apply the change, never a second copy of them.
 func (c *Character) slotsAfterEquip(slot InventorySlot, itemID string) (EquipmentSlots, error) {
+	// An owned item with its own record is worn by its own rules.
+	if owned, ok := c.ownedItem(itemID); ok {
+		return c.slotsAfterWearing(slot, owned)
+	}
+
 	// Verify item exists in inventory and count how many copies are owned.
 	item, copies := c.ownedEquipment(itemID)
 	if item == nil {
@@ -1435,6 +1445,12 @@ func (c *Character) ToData() (*Data, error) {
 
 	// Copy equipment slots
 	data.EquipmentSlots = c.equipmentSlots
+
+	// Items keep their own record; a sheet with none writes the field away.
+	data.Items = c.Items()
+	if len(data.Items) == 0 {
+		data.Items = nil
+	}
 
 	// Copy languages slice
 	data.Languages = c.languages

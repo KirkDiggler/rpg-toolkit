@@ -23,6 +23,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/equipment"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -339,6 +340,28 @@ func loadSheet(d *Data, policy effectPolicy) (*Character, error) {
 	}
 	char.inventory = inventory
 
+	ownedItems, droppedItems, err := loadItems(d.Items, char.id, policy)
+	if err != nil {
+		return nil, err
+	}
+	char.items = ownedItems
+	if len(droppedItems) > 0 {
+		// A slot that named an item the lenient load dropped names nothing.
+		// The caller's map is copied before it is edited.
+		slots := maps.Clone(char.equipmentSlots)
+		for slot, id := range slots {
+			if _, gone := droppedItems[id]; gone {
+				// An id of the catalogue names the inventory's row, which a
+				// dropped item with that id never displaced.
+				if row, _ := char.ownedEquipment(id); row != nil {
+					continue
+				}
+				delete(slots, slot)
+			}
+		}
+		char.equipmentSlots = slots
+	}
+
 	loadedFeatures, err := loadFeatures(d.Features, char.id, policy)
 	if err != nil {
 		return nil, err
@@ -487,6 +510,49 @@ func loadInventory(items []InventoryItemData, characterID string, policy effectP
 	}
 
 	return inventory, nil
+}
+
+// loadItems validates the persisted items. The strict policy refuses the whole
+// sheet and names the item; the lenient one drops it with a warning, as
+// loadInventory does, and returns the ids it dropped so the caller can clear
+// any slot that named one. A repeated id keeps its first item: the later copy
+// is the one refused, and its id is not reported as dropped because the item
+// the slot names is still owned.
+func loadItems(items []magicitems.Data, characterID string, policy effectPolicy) ([]magicitems.Data, map[string]struct{}, error) {
+	if len(items) == 0 {
+		return nil, nil, nil
+	}
+
+	loaded := make([]magicitems.Data, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	dropped := make(map[string]struct{})
+
+	for i, item := range items {
+		err := acceptItem(item)
+		if err == nil {
+			if _, dup := seen[item.ID]; dup {
+				err = rpgerr.Newf(rpgerr.CodeInvalidArgument, "item %q is owned twice: an item id names one item", item.ID)
+			}
+		}
+		if err != nil {
+			if policy == strictEffects {
+				return nil, nil, rpgerr.Wrapf(err, "item %d (%q) cannot be loaded", i, item.ID)
+			}
+
+			warnDropped(characterID, "item", item.Description.Ref, err,
+				slog.Int("index", i), slog.String("item", item.ID))
+			if _, kept := seen[item.ID]; !kept {
+				dropped[item.ID] = struct{}{}
+			}
+
+			continue
+		}
+
+		seen[item.ID] = struct{}{}
+		loaded = append(loaded, item.Clone())
+	}
+
+	return loaded, dropped, nil
 }
 
 // loadFeatures reconstitutes persisted features by routing each blob's ref to
