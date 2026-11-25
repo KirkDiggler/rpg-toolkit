@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — hook linter only
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-toolkit#2517](https://github.com/KirkDiggler/rpg-toolkit/issues/2517), no story. Base: `rpg-toolkit` `main` at [`ca0c08eb`](https://github.com/KirkDiggler/rpg-toolkit/commit/ca0c08ebfdfcd6e52fae9829d82dc6ab0dbe833a).
 
 ## Shipped

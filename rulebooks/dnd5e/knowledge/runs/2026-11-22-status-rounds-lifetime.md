@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — Status rounds lifetime S1 the rules
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1081](https://github.com/KirkDiggler/rpg-project/issues/1081) of story [rpg-project#1080](https://github.com/KirkDiggler/rpg-project/issues/1080). Base: `rpg-toolkit` `main` at [`d0262574`](https://github.com/KirkDiggler/rpg-toolkit/commit/d0262574).
 
 ## Shipped

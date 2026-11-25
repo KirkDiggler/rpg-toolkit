@@ -24,16 +24,16 @@ import (
 // saidKeys is, for each kind of authored mapping, the keys the read-back
 // says or summarises. A key absent from its list is not yet said.
 var saidKeys = map[string][]string{
-	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments", "statuses", "conversations"},
+	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments", "statuses", "customItems", "conversations"},
 	"concealment":        {"checks", "cells", "props"},
 	"party":              {"sharing"},
 	"room":               {"version", "id", "name", "coordinateFrame", "scene", "room"},
 	"room.room":          {"implicitRegionId", "walls", "regions", "propDeclarations", "arrangementDeclarations", "monsterDeclarations", "partyStart", "monsterBindings", "doorBindings", "propBindings"},
 	"monsterDeclaration": {"id", "ref", "startingCell", "appearanceRef", "defaultActivityRef"},
-	"monsterBinding":     {"faction", "options", "behaviors", "behaviorState", "blockingStates", "posts", "holds", "arrives", "temper"},
+	"monsterBinding":     {"faction", "options", "behaviors", "behaviorState", "blockingStates", "posts", "holds", "equipment", "arrives", "temper"},
 	"faction":            {"id", "mind", "temper", "options"},
 	"disposition":        {"between", "stance", "until"},
-	"propBinding":        {"holdable", "holds", "options", "arrives"},
+	"propBinding":        {"holdable", "holds", "item", "options", "arrives"},
 	"doorBinding":        {"closed", "locked", "opened"},
 	"behaviorDefinition": {"recipe", "table", "outcomes"},
 	"interaction":        {"recipe", "approach", "outcomes"},

@@ -498,6 +498,10 @@ type PlacedPropData struct {
 	// Options mirrors [PlacedPropInput.Options], persisted for
 	// [PropData.Options]' reason.
 	Options []OptionData `json:"options,omitempty"`
+
+	// Item mirrors [PlacedPropInput.Item] (rpg-project#850): the custom item
+	// this placement is, as its author wrote it. Omitted when it is none.
+	Item *ItemGrant `json:"item,omitempty"`
 }
 
 // PlacementData is the persistent representation of a
@@ -580,6 +584,10 @@ type ReserveData struct {
 	Faction        FactionID   `json:"faction,omitempty"`
 	Holds          []IntelID   `json:"holds,omitempty"`
 	Arrives        TriggerData `json:"arrives"`
+
+	// Equipment is [MemberData.Equipment] for a member still waiting to
+	// arrive: its facts are the same facts, and a save must not lose them.
+	Equipment []ItemGrant `json:"equipment,omitempty"`
 
 	// Facing is the way the waiting member will face when it arrives —
 	// [MemberData.Facing]'s key and rule, kept across a save for the same
@@ -2372,6 +2380,13 @@ type MemberData struct {
 	// roster are byte-identical, and both load into the same two-faction
 	// world.
 	Faction FactionID `json:"faction,omitempty"`
+
+	// Equipment is memberRecord.Equipment (rpg-project#850): the custom items
+	// this member has equipped, each as its author wrote it. Omitted when
+	// there are none, which is what a blob from before items loads as. A grant
+	// with no id, a block that is not a JSON object, or an id twice is refused
+	// at load (ErrInvalidData).
+	Equipment []ItemGrant `json:"equipment,omitempty"`
 }
 
 // EndingData is the persistent representation of a declared ending.
@@ -2530,6 +2545,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
+			Equipment:          cloneEquipment(m.Equipment),
 		})
 	}
 
@@ -2632,6 +2648,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
 			Arrives:            triggerDataFrom(rm.arrives),
+			Equipment:          cloneEquipment(rm.record.Equipment),
 			Facing:             &facing,
 		})
 	}
@@ -2754,6 +2771,7 @@ func fieldDataFrom(f *field) FieldData {
 				Holdable:          p.holdable,
 				Holds:             append([]IntelID(nil), p.holds...),
 				Options:           optionsDataFrom(p.options),
+				Item:              cloneItem(p.item),
 			}
 			if p.arrives != nil {
 				td := triggerDataFrom(p.arrives)
@@ -3161,6 +3179,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: duplicate member %q: %w: %w", m.ID, ErrInvalidData, ErrDuplicateMember)
 		}
 		seenIDs[m.ID] = true
+		if eqerr := validateEquipment(fmt.Sprintf("member %q", m.ID), m.Equipment); eqerr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, eqerr)
+		}
 
 		// A missing cell is how the pre-#1106 dialect announces itself: that
 		// blob's "room" and "position" keys land nowhere on today's shape, so
@@ -3263,6 +3284,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, ErrInvalidData, ErrDuplicateMember)
 		}
 		seenIDs[r.ID] = true
+		if eqerr := validateEquipment(fmt.Sprintf("reserve %q", r.ID), r.Equipment); eqerr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, eqerr)
+		}
 		cell := spatial.Position{X: r.Cell.X, Y: r.Cell.Y}
 		if !isIntegralHexCell(cell) {
 			return nil, fmt.Errorf("load encounter: reserve %q cell is not an integral axial cell: %w: %w",
@@ -3744,6 +3768,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
+			Equipment:          cloneEquipment(m.Equipment),
 		}
 		if rerr := e.useBehaviors(member, nil, m.Behaviors, m.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
@@ -3799,6 +3824,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Facing:             seedFacing(r.Facing),
 				BlocksMovement:     r.BlocksMovement,
 				Faction:            r.Faction,
+				Equipment:          cloneEquipment(r.Equipment),
 			},
 			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
 			holds:   append([]IntelID(nil), r.Holds...),
@@ -4269,6 +4295,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			BlocksLineOfSight: ppd.BlocksLineOfSight,
 			Holdable:          ppd.Holdable,
 			Holds:             append([]IntelID(nil), ppd.Holds...),
+			Item:              cloneItem(ppd.Item),
 		}
 		if ppd.Arrives != nil {
 			t, err := triggerFromData(*ppd.Arrives)

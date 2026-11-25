@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -55,17 +56,38 @@ type LootInput struct {
 	Range int
 }
 
-// LootOutput acknowledges that the loot happened, and deliberately nothing
-// more.
+// LootOutput is what the host needs from a loot, and nothing a bystander may
+// learn.
 //
-// ACK-ONLY, and the beat is the answer — the shape of the other ack-only verbs, chosen for
-// symmetry (design Q1's lean). A `Transferred` count was weighed: it says
-// nothing about WHAT moved, and it would let a client tell "this body carried
-// nothing" from "the beat has not arrived yet". Neither is a secret worth
-// keeping on its own, but the two verbs answering differently about the same
-// question is how a law with one exception becomes a law with two. Revisit
-// when the parchment shelf (design §9) makes loot yield an item.
-type LootOutput struct{}
+// THE `looted` BEAT IS STILL THE PUBLIC ANSWER, and it says nothing of what
+// moved: it is byte-identical whether the body carried everything or nothing
+// (design P3). Nothing here is a second way to say it. A `Transferred` count
+// was weighed and refused for the same reason: it would let a client tell "this
+// body carried nothing" from "the beat has not arrived yet".
+//
+// Items IS FOR THE HOST, the way [SpeakOutput.Statuses] is: the custom items
+// the looter took off the body (rpg-project#850), each with who is to receive
+// it. The encounter applies nothing to a sheet; its host hands the items over,
+// and must never show this list to anyone but the looter it names. The looter
+// is told in their own `taken` beats ([BeatTaken]), to them alone. Nil when
+// nothing was taken, which is also what a body with nothing, a second loot of
+// the same body and a looter that is not a player all answer.
+type LootOutput struct {
+	// Items is the custom items to hand over, in item id order. Each grant is
+	// a deep copy. Nil when nothing was taken.
+	Items []TakenItem `json:"items,omitempty"`
+}
+
+// TakenItem is one custom item a loot took off a body: who is to receive it,
+// and the item as its author wrote it. The encounter has already taken it off
+// the body; delivering it is the host's.
+type TakenItem struct {
+	// Member is who receives the item: the looter.
+	Member MemberID `json:"member"`
+
+	// Grant is the item, a deep copy.
+	Grant ItemGrant `json:"grant"`
+}
 
 // Loot moves everything a downed member holds to the looter — for free, no
 // check (R1).
@@ -153,6 +175,14 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 		return nil, fmt.Errorf("loot: %w", err)
 	}
 
+	// WHAT THE BODY HAD EQUIPPED comes off it, after holdings and before
+	// presence, so a loot's own consequences read: looted, what the intel
+	// reveals, taken.
+	items, err := e.takeEquipment(in.Member, in.Target, at)
+	if err != nil {
+		return nil, fmt.Errorf("loot: %w", err)
+	}
+
 	// And presence, for [Encounter.Hold]'s reason: a record looted in the
 	// chief's own hut is a record standing in the chief's presence now.
 	if err := e.sweepPresence(at); err != nil {
@@ -167,7 +197,57 @@ func (e *Encounter) Loot(in *LootInput) (*LootOutput, error) {
 		return nil, err
 	}
 
-	return &LootOutput{}, nil
+	return &LootOutput{Items: items}, nil
+}
+
+// takeEquipment is what looting a body does with the custom items it had
+// equipped (rpg-project#850, rpg-project#1167), and the first use of the word
+// "take" [Encounter.Hold] reserved for the act that lands a thing in inventory.
+//
+// Only a PLAYER takes: a creature looting a creature leaves the items where
+// they are. Every item leaves the body in item id order, one `taken` beat each
+// to the looter ALONE (the way a reveal is one member's, revealbeat.go), and the
+// host is handed each as a deep copy. The `looted` beat is already written and
+// says nothing of this; the law that it is byte for byte the same whether the
+// body carried anything is loot.go's, and this is where it is kept: what the
+// looter gained is the looter's own beat and the host's output, never the
+// public one.
+//
+// Nothing to take is not a special case: a body with none, a body already
+// looted and a looter that takes none all run this and answer nil.
+func (e *Encounter) takeEquipment(looter, body MemberID, at uint64) ([]TakenItem, error) {
+	taker, bodyRecord := e.members[looter], e.members[body]
+	if taker == nil || bodyRecord == nil || taker.Kind != KindPlayer || len(bodyRecord.Equipment) == 0 {
+		return nil, nil
+	}
+
+	gear := cloneEquipment(bodyRecord.Equipment)
+	sort.SliceStable(gear, func(i, j int) bool { return gear[i].ID < gear[j].ID })
+	bodyRecord.Equipment = nil
+
+	items := make([]TakenItem, 0, len(gear))
+	for _, grant := range gear {
+		payload, err := json.Marshal(map[string]interface{}{
+			"beat":   BeatTaken,
+			"member": string(looter),
+			"item":   grant.ID,
+			"name":   grant.Name,
+			"from":   string(body),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal taken beat: %w", err)
+		}
+		if _, err := e.appendBeat(&record.AppendInput{
+			At:       at,
+			Audience: []MemberID{looter},
+			Tags:     map[string]string{"tag": "loot"},
+			Payload:  payload,
+		}); err != nil {
+			return nil, fmt.Errorf("append taken beat: %w", err)
+		}
+		items = append(items, TakenItem{Member: looter, Grant: cloneItemGrant(grant)})
+	}
+	return items, nil
 }
 
 // transferHoldings moves EVERY holding of one member to another — the one

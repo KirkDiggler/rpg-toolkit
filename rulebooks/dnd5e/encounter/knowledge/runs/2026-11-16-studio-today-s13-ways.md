@@ -1,5 +1,7 @@
 # Run — 2026-11-16 — studio today S13 the engine says the ways
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981) of story [rpg-project#966](https://github.com/KirkDiggler/rpg-project/issues/966). Base: `rpg-toolkit` `main` at [`11384cd3`](https://github.com/KirkDiggler/rpg-toolkit/commit/11384cd3).
 
 ## Shipped

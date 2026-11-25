@@ -1,5 +1,7 @@
 # Run — 2026-11-12 — Composable conditions S16
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#946](https://github.com/KirkDiggler/rpg-project/issues/946), story [#703](https://github.com/KirkDiggler/rpg-project/issues/703). Design and checked plan: [toolkit#2399](https://github.com/KirkDiggler/rpg-toolkit/pull/2399).
 
 ## Shipped

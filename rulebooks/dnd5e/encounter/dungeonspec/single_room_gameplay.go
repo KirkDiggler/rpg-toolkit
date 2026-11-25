@@ -485,7 +485,7 @@ func reportArrivalRings(waitsOn map[string]string, g *grammar) {
 // The `arrives:` predicate is judged by [singleRoomArrivals] rather than
 // here, because a `{ stance }` needs the disposition table and this runs
 // before it.
-func propBindingValues(gp *RoomGameplaySource, g *grammar, declared map[string]bool) {
+func propBindingValues(gp *RoomGameplaySource, g *grammar, declared, items map[string]bool) {
 	templates := arrangementTemplateIDs(gp.ArrangementDeclarations)
 	for _, id := range sortedPropBindingIDs(gp.PropBindings) {
 		p := "room.room.propBindings." + id
@@ -503,6 +503,7 @@ func propBindingValues(gp *RoomGameplaySource, g *grammar, declared map[string]b
 		}
 
 		bindingHolds(g, p, id, binding.Holds, declared)
+		bindingItem(g, p, id, binding, items)
 		g.options(p, binding.Options, roomProps(gp), true)
 	}
 }
@@ -559,12 +560,16 @@ func sortedPropBindingIDs(bindings map[string]RoomPropBinding) []string {
 //
 // Mutates in place, because there is one list of placements and a second
 // copy of it would be a second answer about what is on the floor.
-func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings map[string]RoomPropBinding, statuses map[string]json.RawMessage) {
+func applyPropBindings(key string, props []encounter.PlacedPropInput, bindings map[string]RoomPropBinding, statuses, items map[string]json.RawMessage) {
 	for i := range props {
 		b := bindings[props[i].ID]
 		props[i].Holdable = b.Holdable
 		props[i].Holds = intelHoldingsOf(key, b.Holds)
 		props[i].Arrives = predicateOf(b.Arrives)
 		props[i].Options = optionsOf(key, b.Options, encounter.HexesArePointyTop(), statuses)
+		if b.Item != "" {
+			grant := itemGrantOf(b.Item, items)
+			props[i].Item = &grant
+		}
 	}
 }

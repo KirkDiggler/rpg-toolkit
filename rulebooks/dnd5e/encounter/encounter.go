@@ -947,6 +947,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 	for _, m := range in.Members {
+		if err := validateEquipment(fmt.Sprintf("member %q", m.ID), m.Equipment); err != nil {
+			return nil, fmt.Errorf("newencounter: %w: %w", err, ErrBadMember)
+		}
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
@@ -1146,6 +1149,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			Temper:             mi.Temper,
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
+			Equipment:          cloneEquipment(mi.Equipment),
 		}
 		if err = e.useBehaviors(member, mi.Behaviors, nil, mi.BlockingStates); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -2846,6 +2850,12 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		return fmt.Errorf("join: %w: %w", err, ErrBadMember)
 	}
 
+	// What it has equipped is refused exactly as construction refuses it
+	// ([JoinInput.Equipment]), before the first mutation.
+	if err := validateEquipment(fmt.Sprintf("member %q", in.Member), in.Equipment); err != nil {
+		return fmt.Errorf("join: %w: %w", err, ErrBadMember)
+	}
+
 	// A holder must name a record this field declares — the SAME refusal
 	// NewEncounter makes, and asked here for the reason the line above is:
 	// Join mutates a live encounter, so every refusal happens before the
@@ -2930,6 +2940,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Temper:             in.Temper,
 		BlocksMovement:     in.BlocksMovement,
 		Faction:            in.Faction,
+		Equipment:          cloneEquipment(in.Equipment),
 	}
 	if err := e.useBehaviors(member, in.Behaviors, nil, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)

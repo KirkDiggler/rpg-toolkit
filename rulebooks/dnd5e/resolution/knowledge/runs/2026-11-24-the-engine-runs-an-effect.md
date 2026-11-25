@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S3 the engine runs an effect
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1146](https://github.com/KirkDiggler/rpg-project/issues/1146) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`88bbe897`](https://github.com/KirkDiggler/rpg-toolkit/commit/88bbe89726c756e1329f0709c371a85e8f016914).
 
 ## Shipped

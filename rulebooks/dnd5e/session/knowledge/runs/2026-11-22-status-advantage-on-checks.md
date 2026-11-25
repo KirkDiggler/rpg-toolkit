@@ -1,5 +1,7 @@
 # Run — 2026-11-22 — status effect powers S-prayer: advantage on a line's check
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1098](https://github.com/KirkDiggler/rpg-project/issues/1098) of story [rpg-project#1036](https://github.com/KirkDiggler/rpg-project/issues/1036). Base: `rpg-toolkit` `main` at [`7e19fae4`](https://github.com/KirkDiggler/rpg-toolkit/commit/7e19fae4).
 
 ## Shipped

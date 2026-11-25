@@ -1,5 +1,7 @@
 # Run — 2026-11-23 — a wake says whom it is about S2b the seen filter
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1126](https://github.com/KirkDiggler/rpg-project/issues/1126) of story [rpg-project#1123](https://github.com/KirkDiggler/rpg-project/issues/1123). Base: `rpg-toolkit` `main` at [`6b302849`](https://github.com/KirkDiggler/rpg-toolkit/commit/6b302849629e68a03fa88e8ecfe1fd118b1d52d1).
 
 ## Shipped

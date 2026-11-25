@@ -16,9 +16,7 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-// The canonical compiled shape includes StructuralWallInput.Sections, even nil.
-// Content hashes are engine-version-local; legacy persisted SiteHash is separate.
-const castleContentHash = "c75b513c3a6d5fda43542c2711b55aceae48c9a16e7ec030bedac14581987f70"
+const castleContentHash = "e3b4252104424f014d2df14d2916a6998c3421d27d0131db4875c8a0a2585312"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -131,4 +133,26 @@ func validateGiver(giver dnd5eEvents.RollSource) error {
 		return fmt.Errorf("second wind giver requires a SourceID")
 	}
 	return nil
+}
+
+// namedAbilities are the described abilities by the plain name an author
+// writes. Every ref here is one DescribeFromRef and ValidateParameters know.
+var namedAbilities = map[string]func() core.Ref{
+	"second wind": func() core.Ref { return *refs.Features.SecondWind() },
+}
+
+// NamedAbility returns the ref of a described ability by the plain name an
+// author writes: "second wind". The name is matched exactly: lower case,
+// single spaces.
+func NamedAbility(name string) (core.Ref, bool) {
+	ref, ok := namedAbilities[name]
+	if !ok {
+		return core.Ref{}, false
+	}
+	return ref(), true
+}
+
+// NamedAbilities lists the plain names, sorted, for a refusal to offer.
+func NamedAbilities() []string {
+	return slices.Sorted(maps.Keys(namedAbilities))
 }

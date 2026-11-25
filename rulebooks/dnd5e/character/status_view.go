@@ -4,6 +4,8 @@
 package character
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -14,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -161,6 +164,9 @@ func (c *Character) StatusView(_ *StatusViewInput) (*StatusViewOutput, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A worn item's counts join after the character's own and outside the
+	// class's catalog: that list is for the character's own pools.
+	resourceViews = append(resourceViews, c.wornItemResources()...)
 
 	participation := c.ParticipationView()
 
@@ -560,4 +566,43 @@ func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
 		}
 	}
 	return nil
+}
+
+// wornItemResources is one row for each pool of each worn item, in item id then
+// pool order. The name is the ability the pool pays for and then the item when
+// exactly one grant is paid by the pool, and otherwise the item's name alone.
+func (c *Character) wornItemResources() []ResourceView {
+	var out []ResourceView
+	for _, item := range c.Items() {
+		if !c.isWorn(item.ID) {
+			continue
+		}
+		for _, pool := range slices.Sorted(maps.Keys(item.Description.Pools)) {
+			out = append(out, ResourceView{
+				Key:     ItemPoolKey(item.ID, pool),
+				Name:    itemPoolName(item, pool),
+				Current: item.Left[pool],
+				Maximum: item.Description.Pools[pool].Maximum,
+			})
+		}
+	}
+	return out
+}
+
+// itemPoolName names a pool by what it pays for when that is one grant.
+func itemPoolName(item magicitems.Data, pool string) string {
+	var paid []string
+	for name, grant := range item.Description.Grants {
+		if grant.Pool == pool {
+			paid = append(paid, name)
+		}
+	}
+	if len(paid) != 1 {
+		return item.Description.Name
+	}
+	definition, err := itemDefinition(item, paid[0])
+	if err != nil {
+		return item.Description.Name
+	}
+	return definition.Name + " · " + item.Description.Name
 }

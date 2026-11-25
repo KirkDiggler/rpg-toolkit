@@ -1,5 +1,7 @@
 # Run — 2026-11-24 — one way to pay for an ability S2 an action that does something to someone
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#1145](https://github.com/KirkDiggler/rpg-project/issues/1145) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`68459768`](https://github.com/KirkDiggler/rpg-toolkit/commit/684597682741eb799b2e7e18e2e3825244165a83).
 
 ## Shipped

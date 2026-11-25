@@ -1,5 +1,7 @@
 # Run — 2026-11-18 — draw a machine S1 the engine says a machine's shape
 
+processed: 2026-11-25T190427Z
+
 Slice [rpg-project#994](https://github.com/KirkDiggler/rpg-project/issues/994) of story [rpg-project#993](https://github.com/KirkDiggler/rpg-project/issues/993). Base: `rpg-toolkit` `main` at [`bb5806f7`](https://github.com/KirkDiggler/rpg-toolkit/commit/bb5806f7).
 
 ## Shipped
