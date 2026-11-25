@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"regexp"
 	"testing"
@@ -35,4 +36,33 @@ func TestDeliverTakenRefusesWhatTheRulesRefuse(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnknownContent)
 	require.Contains(t, err.Error(), "lieutenants-cloak")
 	require.Empty(t, sheet.Items)
+}
+
+// emptyCharacters holds no sheet and refuses every save.
+type emptyCharacters struct{ saved int }
+
+func (e *emptyCharacters) GetCharacter(context.Context, string) (*character.Data, error) {
+	return nil, ErrNotFound
+}
+
+func (e *emptyCharacters) SaveCharacter(context.Context, *character.Data) error {
+	e.saved++
+	return nil
+}
+
+// A looter with no sheet of its own (not a player) takes nothing from the
+// encounter, so Loot loads and saves no sheet for it and behaves as it did
+// before items: the encounter alone is saved. A sheet that is missing while
+// something WAS taken is an error.
+func TestALooterWithNoSheetSavesNoSheet(t *testing.T) {
+	repo := &emptyCharacters{}
+	m := &Manager{characters: repo}
+	in := &LootInput{Session: "sess", Member: "guard-2", Target: "guard"}
+
+	require.NoError(t, m.deliverLoot(context.Background(), nil, in, nil))
+	require.Zero(t, repo.saved, "no sheet was written")
+
+	err := m.deliverLoot(context.Background(), nil, in, []encounter.TakenItem{{Member: "guard-2",
+		Grant: encounter.ItemGrant{ID: "cloak", Item: json.RawMessage(`{}`)}}})
+	require.ErrorIs(t, err, ErrNoCharacter)
 }

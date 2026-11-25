@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/status"
 )
@@ -207,7 +208,10 @@ type ItemRefusal struct {
 // site's content, asked without launching anything, so a studio's save can
 // refuse what a launch would. Today it is every status a line of the site
 // can give, compiled with the rules ([status.Compile]); a status the rules
-// refuse is one [StatusRefusal], in status id order.
+// refuse is one [StatusRefusal], in status id order. It also reads every
+// custom item the site carries, on a creature's equipment or on a prop, once
+// per item id, with [magicitems.Compile]; an item the rules refuse is one
+// [ItemRefusal], in item id order.
 //
 // Errors: a nil input or dungeon.
 func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
@@ -221,21 +225,37 @@ func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
 			out.Refusals = append(out.Refusals, StatusRefusal{StatusID: id, Path: "statuses." + id, Message: err.Error()})
 		}
 	}
+	items := siteItemGrants(in.Dungeon)
+	ids := make([]string, 0, len(items))
+	for id := range items {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if _, err := magicitems.Compile(&magicitems.CompileInput{ID: id, Authored: items[id].Item}); err != nil {
+			out.Items = append(out.Items, ItemRefusal{ItemID: id, Path: "customItems." + id, Message: err.Error()})
+		}
+	}
 	return out, nil
 }
 
-// refuseLaunchStatuses is the content check as launch asks it: the first
-// refusal, as [ErrUnknownContent] naming the status and the rules' words.
-func refuseLaunchStatuses(dungeon *dungeonspec.Compiled) error {
+// refuseLaunchContent is the content check as launch asks it: the first
+// refusal, statuses before items, as [ErrUnknownContent] naming the status or
+// item and the rules' words.
+func refuseLaunchContent(dungeon *dungeonspec.Compiled) error {
 	checked, err := CheckContent(&CheckContentInput{Dungeon: dungeon})
 	if err != nil {
 		return err
 	}
-	if len(checked.Refusals) == 0 {
-		return nil
+	if len(checked.Refusals) > 0 {
+		r := checked.Refusals[0]
+		return fmt.Errorf("%w: status %q at %s: %s", ErrUnknownContent, r.StatusID, r.Path, r.Message)
 	}
-	r := checked.Refusals[0]
-	return fmt.Errorf("%w: status %q at %s: %s", ErrUnknownContent, r.StatusID, r.Path, r.Message)
+	if len(checked.Items) > 0 {
+		r := checked.Items[0]
+		return fmt.Errorf("%w: item %q at %s: %s", ErrUnknownContent, r.ItemID, r.Path, r.Message)
+	}
+	return nil
 }
 
 // siteStatusGrants is every status any line of the compiled site can give,
@@ -243,7 +263,28 @@ func refuseLaunchStatuses(dungeon *dungeonspec.Compiled) error {
 // line on a creature, a faction or a thing is never missed.
 func siteStatusGrants(dungeon *dungeonspec.Compiled) map[string]encounter.StatusGrant {
 	found := map[string]encounter.StatusGrant{}
-	grantType := reflect.TypeOf(encounter.StatusGrant{})
+	walkCompiled(dungeon, reflect.TypeOf(encounter.StatusGrant{}), func(v reflect.Value) {
+		g := v.Interface().(encounter.StatusGrant)
+		found[g.ID] = g
+	})
+	return found
+}
+
+// siteItemGrants is every custom item the compiled site carries, by id: a
+// creature's equipment and a placed prop's item, found the same way as the
+// statuses. An item named twice is one entry.
+func siteItemGrants(dungeon *dungeonspec.Compiled) map[string]encounter.ItemGrant {
+	found := map[string]encounter.ItemGrant{}
+	walkCompiled(dungeon, reflect.TypeOf(encounter.ItemGrant{}), func(v reflect.Value) {
+		g := v.Interface().(encounter.ItemGrant)
+		found[g.ID] = g
+	})
+	return found
+}
+
+// walkCompiled calls found for every value of type grantType in the compiled
+// site, without descending into it.
+func walkCompiled(dungeon *dungeonspec.Compiled, grantType reflect.Type, found func(reflect.Value)) {
 	seen := map[uintptr]bool{}
 	var walk func(v reflect.Value)
 	walk = func(v reflect.Value) {
@@ -260,8 +301,7 @@ func siteStatusGrants(dungeon *dungeonspec.Compiled) map[string]encounter.Status
 			}
 		case reflect.Struct:
 			if v.Type() == grantType {
-				g := v.Interface().(encounter.StatusGrant)
-				found[g.ID] = g
+				found(v)
 				return
 			}
 			for i := 0; i < v.NumField(); i++ {
@@ -281,7 +321,6 @@ func siteStatusGrants(dungeon *dungeonspec.Compiled) map[string]encounter.Status
 		}
 	}
 	walk(reflect.ValueOf(dungeon))
-	return found
 }
 
 func sortedGrantIDs(grants map[string]encounter.StatusGrant) []string {

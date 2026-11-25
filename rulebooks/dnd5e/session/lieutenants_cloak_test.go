@@ -241,7 +241,7 @@ func TestWhatTheLooterTookIsTheLootersAlone(t *testing.T) {
 			raw, err := json.Marshal(act)
 			require.NoError(t, err)
 			require.NotContains(t, string(raw), `"taken"`, "%s's act stream has no taken piece", member)
-			require.NotContains(t, strings.ToLower(string(raw)), "cloak", "%s's act stream names no item", member)
+			require.NotContains(t, strings.ToLower(string(raw)), strings.ToLower(cloakName), "%s's act stream names no item", member)
 		}
 	}
 }
@@ -322,4 +322,38 @@ func TestCheckContentJudgesEveryCustomItem(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrUnknownContent)
 	require.Contains(t, err.Error(), "lieutenants-cloak")
 	require.Contains(t, err.Error(), "customItems.lieutenants-cloak")
+}
+
+// A creature launched from the site carries its equipment in the encounter
+// the session saved, read from the saved data and not through a verb.
+func TestALaunchedCreatureCarriesItsEquipment(t *testing.T) {
+	ctx := context.Background()
+	compiled := compileCloakSite(t, cloakSite(t))
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: &actCapture{}, Seats: newFakeSeats(),
+		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: &secondWindDice{},
+		TurnDriver: session.Driver(), Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+		Characters: newFakeCharacters(secondWindFighter(t, "alice", 10, 40))})
+	require.NoError(t, err)
+	_, err = mgr.Launch(ctx, &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice"}})
+	require.NoError(t, err)
+
+	enc, err := mgr.LoadWorldForTest(ctx, "sess")
+	require.NoError(t, err)
+	var guard *encounter.MemberData
+	data := enc.ToData()
+	for i := range data.Members {
+		if data.Members[i].ID == "guard" {
+			guard = &data.Members[i]
+		}
+	}
+	require.NotNil(t, guard, "the guard is in the saved encounter")
+	require.Len(t, guard.Equipment, 1)
+	require.Equal(t, "lieutenants-cloak", guard.Equipment[0].ID)
+	require.Equal(t, cloakName, guard.Equipment[0].Name)
+	require.Contains(t, string(guard.Equipment[0].Item), `"slot":"cloak"`)
+	for _, m := range data.Members {
+		if m.ID != "guard" {
+			require.Empty(t, m.Equipment, "%s carries nothing", m.ID)
+		}
+	}
 }
