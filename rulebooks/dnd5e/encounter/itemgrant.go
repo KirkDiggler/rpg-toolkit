@@ -21,6 +21,12 @@ type ItemGrant struct {
 	// same item.
 	ID string `json:"id"`
 
+	// Name is the item's `name` word, copied out of its block by the site
+	// compiler so the encounter can tell somebody what they took without
+	// reading inside [ItemGrant.Item] (rpg-project#850). Empty only for a grant
+	// a host built by hand.
+	Name string `json:"name,omitempty"`
+
 	// Item is the authored block — {name, slot[, charges], lets} — as
 	// canonical JSON. The encounter never reads inside it.
 	Item json.RawMessage `json:"item"`
@@ -59,7 +65,7 @@ func validateEquipment(what string, equipment []ItemGrant) error {
 
 // cloneItemGrant is a grant whose block no caller's slice can reach.
 func cloneItemGrant(g ItemGrant) ItemGrant {
-	return ItemGrant{ID: g.ID, Item: append(json.RawMessage(nil), g.Item...)}
+	return ItemGrant{ID: g.ID, Name: g.Name, Item: append(json.RawMessage(nil), g.Item...)}
 }
 
 // cloneEquipment is a deep copy of a member's equipment; nil stays nil, so a
