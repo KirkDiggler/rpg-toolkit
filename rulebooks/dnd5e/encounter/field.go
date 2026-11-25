@@ -2091,6 +2091,16 @@ type JoinInput struct {
 	// none.
 	Holds []IntelID
 
+	// Equipment is the custom items this member has equipped —
+	// [MemberInput.Equipment] for a member who arrives mid-scene, which is how
+	// every placed creature enters a run: each as its author wrote it,
+	// carried unread ([ItemGrant], rpg-project#850). Optional; omitted means
+	// none. Refused at this door exactly as construction refuses it (a grant
+	// with no id, a block that is not a JSON object, one id twice:
+	// ErrBadMember), deep-copied onto the member's record, kept while a
+	// reserved join waits, saved, and given to a player who loots the body.
+	Equipment []ItemGrant
+
 	// Faction is the faction the joiner belongs to — [MemberInput.Faction]
 	// for a member who arrives mid-scene, which is how every monster
 	// actually enters a run (see Holds above). Optional: empty means the
