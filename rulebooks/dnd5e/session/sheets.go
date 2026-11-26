@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -198,6 +199,10 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 			// Nobody's zone is a character's (design R9, R14), so it states
 			// no arc; zero is the encounter's no-arc, all-round answer.
 			WatchArc: 0,
+			// Turn stays nil on purpose: a player's turn is paid through the
+			// player's own verbs from its own sheet's economy, and the
+			// encounter never drives a player's swing, Disengage or run, so
+			// it has nothing to ask the facts about. Nil is a full turn.
 		}, nil
 	case held.monster != nil:
 		bonusDisengage, err := bonusDisengageOf(held.monster, registryName)
@@ -222,6 +227,18 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 			// reason: it is a stored fact, and loading a sheet to read one
 			// field back would be the same number by a longer road.
 			PassivePerception: held.monster.Senses.PassivePerception,
+			// What is left of its turn, read off the stored sheet beside its
+			// speed for the speed's reason: it is a stored fact (rpg-project#1131,
+			// 2026-11-27). The encounter asks for a swing, a Disengage or a run
+			// only when these say the sheet can pay, and the door charges the
+			// same economy, so there is one count and it is the sheet's. The
+			// verb's facts memo forgets a monster the moment its sheet is
+			// written ([writeScope.replaceMonsterSheet]), so a second ask in
+			// the same verb reads the spent sheet.
+			Turn: &encounter.TurnFacts{
+				ActionsLeft:      held.monster.SlotsLeft(coreCombat.ActionStandard),
+				BonusActionsLeft: held.monster.SlotsLeft(coreCombat.ActionBonus),
+			},
 			// How far a sneaker must stand outside this watcher's zone
 			// before the pair re-arms (design R10, O6). SEEDED HERE until
 			// content states it on the stat block; the encounter picks no
@@ -309,6 +326,13 @@ func monsterCannotMove(ctx context.Context, id string, record *monster.Data) ([]
 //
 // A PLAYER IS NEVER ASKED: its bonus actions are its sheet's own economy,
 // spent through Activate, so [sheetSeam.factsOf] leaves its identity zero.
+//
+// WHETHER THE BONUS ACTION IS LEFT IS NOT THIS FUNCTION'S, AND NOT THE
+// ENCOUNTER'S (rpg-project#1131, 2026-11-27): the trait only says the monster
+// MAY Disengage as a bonus action. The encounter keeps no count of bonus
+// actions any more; it reads [encounter.SheetFacts.Turn], which
+// [sheetSeam.readFacts] fills from the stored sheet beside this answer, and
+// the door charges the same sheet.
 //
 // nameOf is the registry's name lookup — [registryName] in production —
 // taken as a parameter so the refusal below is testable against a registry

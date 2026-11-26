@@ -44,11 +44,11 @@ var _ encounter.Disengager = strikerSeam{}
 // PAID FROM THE SHEET AT THE DOOR (rpg-project#1131, 2026-11-26): the
 // activation carries the price [monster.CostOfDisengage] reads off the stored
 // sheet (a bonus action with Nimble Escape), and the door charges the
-// monster's own economy. THE STATE BETWEEN TWO SLICES: the encounter asks for
-// a Disengage only when its own count says a bonus action is left (its slice
-// is next, rpg-project#1131), so a sheet that cannot pay means the two counts
-// disagree. That is a malfunction: the error returns like any other, aborts
-// the caller's verb, tells nothing and saves nothing.
+// monster's own economy. The encounter asks for a Disengage only when the
+// facts [sheetSeam.readFacts] just gave it say a bonus action is left on this
+// very sheet (rpg-project#1131, 2026-11-27), so a sheet that cannot pay means
+// something malfunctioned: the error returns like any other, aborts the
+// caller's verb, tells nothing and saves nothing.
 //
 // Errors are malfunctions and abort the caller's verb: [ErrNoMember] for
 // somebody the encounter does not hold, [ErrNoSheet] for a member with no
