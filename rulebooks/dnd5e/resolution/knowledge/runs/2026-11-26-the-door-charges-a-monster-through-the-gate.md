@@ -29,6 +29,7 @@ One line per entry. Every line ends with a link.
 - Proof (b) Validate refusal back: fails Tests 6, 7 and 9 (a driven cost is refused with ErrBadActivation) — [issue 1194](https://github.com/KirkDiggler/rpg-project/issues/1194).
 - Proof (c) monster economy cleared when cost.Turn is set: fails TestATurnOnAMonstersCostRefreshesNothing — [issue 1194](https://github.com/KirkDiggler/rpg-project/issues/1194).
 - GAP: TestCloneCharacterDataOwnsEveryMutableField/Items fails at the new pin: "fixture must populate every mutable character.Data field; add Items and its clone policy". character.Data.Items arrived between v0.231.0 and v0.238.0; the fix is in long_rest.go and long_rest_clone_test.go, neither on the slice's file list. Suite at this head: everything passes except that one — [issue 1194](https://github.com/KirkDiggler/rpg-project/issues/1194).
+- The gap above was fixed on main by [rpg-toolkit#2586](https://github.com/KirkDiggler/rpg-toolkit/pull/2586) (resolution v0.82.1), and amendment 1 took the slice up again on that base, pinning v0.238.0 over main's v0.237.0 — [amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1194#issuecomment-7186108767).
 
 ## Mistaken
 

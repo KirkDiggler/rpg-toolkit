@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
@@ -173,6 +174,7 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	out.Resources = maps.Clone(in.Resources)
 	out.KnownCantrips = slices.Clone(in.KnownCantrips)
 	out.KnownSpells = slices.Clone(in.KnownSpells)
+	out.Items = cloneItems(in.Items)
 	out.Features = cloneRawMessages(in.Features)
 	out.Conditions = cloneRawMessages(in.Conditions)
 	if in.ActionEconomy != nil {
@@ -182,6 +184,20 @@ func cloneCharacterData(in *character.Data) *character.Data {
 	}
 
 	return &out
+}
+
+// cloneItems gives the copy its own items: a new slice whose every element
+// owns its description and its map of charges left. A nil list stays nil.
+func cloneItems(in []magicitems.Data) []magicitems.Data {
+	if in == nil {
+		return nil
+	}
+
+	out := make([]magicitems.Data, len(in))
+	for i := range in {
+		out[i] = in[i].Clone()
+	}
+	return out
 }
 
 func cloneRawMessages(in []json.RawMessage) []json.RawMessage {
