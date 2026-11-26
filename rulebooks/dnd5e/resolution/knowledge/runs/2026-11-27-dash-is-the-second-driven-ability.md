@@ -23,6 +23,7 @@ Slice [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207)
 - Proof (b), banking the walk speed on the sheet, failed the first test with expected 0, actual 30 on MovementRemaining — [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207).
 - Proof (c), removing the Dash case, failed the charge, no-action, run-and-Disengage and no-target tests with "not yet driven" — [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207).
 - The suite passed before the pin, after it, and at the final head — [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207).
+- Proof for amendment 1, removing the charges-nothing refusal, failed the empty-profile and grant-only cases with "Target error should be in err chain" — [amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1207#issuecomment-7200408611).
 
 ## Mistaken
 
