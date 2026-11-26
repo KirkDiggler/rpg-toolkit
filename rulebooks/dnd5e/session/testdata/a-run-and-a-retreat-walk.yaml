@@ -1,0 +1,141 @@
+# A RUN AND A RETREAT (rpg-project#1131, #1211): a small walk site, copied from
+# cloak-and-ring-walk.yaml, for a fight in which an NPC's own saved sheet decides
+# what it can still do on its turn. One open hall, a fighter at one end, and two
+# hostile creatures:
+#   1. The Runner stands 11 cells away in open sight. On his first turn he RUNS
+#      at the fighter and does not swing; the story names the run as the cause of
+#      his steps. After that he is beside her, and he swings once a turn.
+#   2. The Skirmisher is the bestiary goblin (scimitar, shortbow, Nimble Escape),
+#      one cell from the fighter. It is placed by its own ref and the story calls
+#      it Goblin, because a template cannot be made on a goblin today. If you
+#      stand still: round one it stabs you, slips away (Nimble Escape first) and
+#      walks off; round two it shoots you from range and walks out of sight with
+#      no Nimble Escape (it left nobody's reach); after that it waits where it
+#      is. Chase it and it does the first again.
+#   3. Every turn comes back at the next round: both act again, once each.
+# What the operator sees is meant to be exactly what they saw before this was
+# paid at the one gate (the sheet), so nothing here is new to look at: it is the
+# same fight, played on purpose. Issue: https://github.com/KirkDiggler/rpg-project/issues/1211
+version: 5
+key: a-run-and-a-retreat-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  runner:
+    base: dnd5e:monsters:human
+    name: Runner
+    hitDice: 2d8
+    actions: [dnd5e:weapons:mace]
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: hostile }
+
+behaviorDefinitions:
+  runner-policy:
+    recipe:
+      ref: site:behaviors:runner-policy
+      initial: fighting
+      states:
+        fighting:
+          transitions:
+            - { on: time, do: [{ pick: time }] }
+            - { on: turn, do: [{ pick: time }] }
+    table:
+      time:
+        - { when: { enemy: dash }, dash: enemy }
+        - { when: { enemy: walk }, toward: enemy }
+        - { when: { enemy: reach }, attack: enemy }
+  skirmisher-policy:
+    recipe:
+      ref: site:behaviors:skirmisher-policy
+      initial: fighting
+      states:
+        fighting:
+          transitions:
+            - { on: time, do: [{ pick: time }] }
+            - { on: turn, do: [{ pick: time }] }
+    table:
+      time:
+        - { when: { enemy: reach }, attack: enemy }
+        - { away: enemy }
+
+room:
+  version: 3
+  id: room-1
+  name: A Run and a Retreat
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: A Run and a Retreat
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-10, 4]] }
+          - { r: 4, q: [[-11, 3]] }
+          - { r: 5, q: [[-11, 3]] }
+          - { r: 6, q: [[-12, 2]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -8, r: 4 }
+    monsterDeclarations:
+      - id: runner
+        ref: dnd5e:monsters:runner
+        startingCell: { location: { q: 3, r: 4 }, facing: w }
+      - id: skirmisher
+        ref: dnd5e:monsters:goblin
+        startingCell: { location: { q: -7, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      runner:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: runner-policy
+        behaviorState: policy
+      skirmisher:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: skirmisher-policy
+        behaviorState: policy
