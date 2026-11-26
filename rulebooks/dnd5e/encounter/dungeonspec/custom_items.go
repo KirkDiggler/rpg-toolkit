@@ -20,6 +20,7 @@ import (
 //	  lieutenants-cloak:
 //	    name: Lieutenant's cloak
 //	    slot: cloak
+//	    unique: true
 //	    charges: { max: 1, refills: { on: [short rest, long rest] } }
 //	    lets:
 //	      - use: second wind
@@ -27,7 +28,7 @@ import (
 //	        cost: { charges: 1 }
 //
 // THIS FILE JUDGES THE SHAPE, NOT THE WORDS INSIDE IT, as statuses.go does.
-// The four top-level words are settled; which slots exist, what `charges`
+// The five top-level words are settled; which slots exist, what `charges`
 // holds and which abilities `lets` may name are the rules' own table, which
 // this module may not import. So an item is refused here for a missing or
 // misspelt top-level word and for an empty list, and carried as canonical JSON
@@ -36,7 +37,7 @@ import (
 // taking an item prop are the next slice.
 
 // CustomItemSpec is one authored custom item, kept in the author's words:
-// `name`, `slot`, `lets` and the optional `charges`. Only those keys and their
+// `name`, `slot`, `lets` and the optional `unique` and `charges`. Only those keys and their
 // shape are judged here.
 type CustomItemSpec map[string]any
 
@@ -44,11 +45,12 @@ type CustomItemSpec map[string]any
 const (
 	itemName    = "name"
 	itemSlot    = "slot"
+	itemUnique  = "unique"
 	itemCharges = "charges"
 	itemLets    = "lets"
 )
 
-var itemWords = []string{itemName, itemSlot, itemCharges, itemLets}
+var itemWords = []string{itemName, itemSlot, itemUnique, itemCharges, itemLets}
 
 // plainItem is an item with every map in it a plain map[string]any. YAML
 // decodes the maps nested inside a named map type as that same named type, and
@@ -139,6 +141,11 @@ func customItemsDeclared(items map[string]CustomItemSpec, add errSink) map[strin
 		}
 		if lets, ok := it[itemLets].([]any); !ok || len(lets) == 0 {
 			add(at+"."+itemLets, "a custom item needs lets as a non-empty list: what it lets its wearer do")
+		}
+		if unique, written := it[itemUnique]; written {
+			if _, ok := unique.(bool); !ok {
+				add(at+"."+itemUnique, `"unique" is true or false: true means a character owns at most one of this item`)
+			}
 		}
 		if charges, written := it[itemCharges]; written {
 			if _, ok := charges.(map[string]any); !ok {

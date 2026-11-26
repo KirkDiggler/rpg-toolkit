@@ -59,11 +59,22 @@ func (b *builder) itemStatements() []Statement {
 	out := make([]Statement, 0, len(ids))
 	for _, id := range ids {
 		s := fmt.Sprintf("The custom item %s, named %s. What it lets its wearer do is written in its own words under %s, "+
-			"and the rules judge them when a run starts.", quote(id), said(b.itemName(id)), quote("customItems."+id))
+			"and the rules judge them when a run starts. %s", quote(id), said(b.itemName(id)), quote("customItems."+id), b.itemOwnership(id))
 		out = append(out, b.fstmt(KindItem, Subject{Kind: ConnItem, ID: id}, "customItems."+id, s,
 			foldInfo{site: "the custom item " + quote(id)}))
 	}
 	return out
+}
+
+// itemOwnership is the sentence that says how many of an item a character can
+// own: at most one when the author wrote `unique: true`, any number otherwise.
+func (b *builder) itemOwnership(id string) string {
+	if it, ok := b.spec.CustomItems[id]; ok {
+		if unique, ok := it["unique"].(bool); ok && unique {
+			return "A character owns at most one of it: a looter who already has it leaves it on the body."
+		}
+	}
+	return "A character can own any number of it: each one looted is its own item."
 }
 
 // equipmentStatement says the items a creature has equipped, by name, or

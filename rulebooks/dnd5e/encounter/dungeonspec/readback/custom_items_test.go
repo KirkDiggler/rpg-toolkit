@@ -60,3 +60,42 @@ func TestCustomItemsAreSaid(t *testing.T) {
 		require.NotContains(t, un.Path, "customItems")
 	}
 }
+
+// Test 4 (rpg-project#1181): the statement for an item says whether a character
+// owns at most one of it or any number.
+func TestAnItemStatementSaysUniqueOrAnyNumber(t *testing.T) {
+	const (
+		one = "A character owns at most one of it: a looter who already has it leaves it on the body."
+		any = "A character can own any number of it: each one looted is its own item."
+	)
+	for name, tc := range map[string]struct{ file, old, replacement, want string }{
+		"unique true":  {"../testdata/unique-item/site.yaml", "", "", one},
+		"unique false": {"../testdata/unique-item/site.yaml", "unique: true", "unique: false", any},
+		"word absent":  {"../testdata/custom-items/site.yaml", "", "", any},
+		"false is any": {"../testdata/custom-items/site.yaml", "    slot: cloak\n", "    slot: cloak\n    unique: false\n", any},
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(tc.file) //nolint:gosec // a test reading its own fixture
+			require.NoError(t, err)
+			source := string(raw)
+			if tc.old != "" {
+				require.Equal(t, 1, strings.Count(source, tc.old))
+				source = strings.Replace(source, tc.old, tc.replacement, 1)
+			}
+			rb, err := readback.Of([]byte(source))
+			require.NoError(t, err)
+			for _, st := range rb.Statements() {
+				if st.Kind == readback.KindItem {
+					require.True(t, strings.HasSuffix(st.Sentence, tc.want), st.Sentence)
+					other := one
+					if tc.want == one {
+						other = any
+					}
+					require.NotContains(t, st.Sentence, other)
+					return
+				}
+			}
+			require.Fail(t, "no item statement")
+		})
+	}
+}

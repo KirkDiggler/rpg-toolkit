@@ -91,7 +91,7 @@ func TestDungeonspec_CustomItemsAreRefusedWhereTheyAreWrong(t *testing.T) {
 		old, replacement, path, message string
 	}{
 		"an unknown word": {"    slot: cloak\n", "    slot: cloak\n    colour: red\n",
-			item + ".colour", `"colour" is not a word of a custom item: a custom item is written with name, slot, charges, lets`},
+			item + ".colour", `"colour" is not a word of a custom item: a custom item is written with name, slot, unique, charges, lets`},
 		"no name": {"    name: Lieutenant's cloak\n", "",
 			item + ".name", "a custom item needs a name: the words a player sees"},
 		"an empty name": {"    name: Lieutenant's cloak\n", "    name: \"\"\n",
