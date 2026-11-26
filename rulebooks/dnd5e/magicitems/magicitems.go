@@ -30,6 +30,9 @@ type Description struct {
 	Name string `json:"name"`
 	// Slots are where it may be worn, as sheet slot names.
 	Slots []string `json:"slots"`
+	// Unique says a character owns at most one of this item. Absent reads as
+	// false: an item owned in number.
+	Unique bool `json:"unique,omitempty"`
 	// Pools are its own counts, by name.
 	Pools map[string]Pool `json:"pools,omitempty"`
 	// Grants are what it grants while worn, by name.

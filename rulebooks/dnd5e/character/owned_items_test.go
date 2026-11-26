@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -388,4 +389,40 @@ func TestPlanAndPriceReadAnOwnedItemLikeArmour(t *testing.T) {
 	out, err := c.PriceEquipment(&PriceEquipmentInput{Slot: SlotMainHand, ItemID: "longsword"})
 	require.NoError(t, err, "a weapon change is priced as before")
 	require.NotNil(t, out.Profile)
+}
+
+// Test 6. A character that owns a unique item saves and loads it still
+// unique; one that owns a plain item saves no `unique` key.
+func TestAUniqueItemStaysUniqueOnTheSavedSheet(t *testing.T) {
+	uniqueDesc := cloakDescription()
+	uniqueDesc.Unique = true
+	cases := []struct {
+		name   string
+		desc   magicitems.Description
+		unique bool
+	}{
+		{"unique", uniqueDesc, true},
+		{"plain", cloakDescription(), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := fighterData()
+			require.NoError(t, AddItem(d, newItem(t, "cloak-1", tc.desc)))
+			c, err := Load(context.Background(), d)
+			require.NoError(t, err)
+			saved, err := c.ToData()
+			require.NoError(t, err)
+			raw, err := json.Marshal(saved)
+			require.NoError(t, err)
+			assert.Equal(t, tc.unique, strings.Contains(string(raw), `"unique":true`))
+			if !tc.unique {
+				assert.NotContains(t, string(raw), "unique")
+			}
+
+			var loaded Data
+			require.NoError(t, json.Unmarshal(raw, &loaded))
+			require.Len(t, loaded.Items, 1)
+			assert.Equal(t, tc.unique, loaded.Items[0].Description.Unique)
+		})
+	}
 }
