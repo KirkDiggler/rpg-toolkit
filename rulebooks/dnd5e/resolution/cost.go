@@ -37,15 +37,17 @@ type Cost struct {
 	// cost is present — a price nobody pays is a free action wearing a cost's
 	// clothes, and nothing downstream would ever say so.
 	//
-	// It names a CHARACTER in the cast, charged through its ledger, or a
-	// MONSTER, which can be charged exactly one thing: its one reaction, through
-	// monster.Monster.SpendReaction. Any other monster price is refused by name
-	// rather than charged: a monster keeps no other economy on its sheet, so
-	// there is nothing else to debit, and this refusal is what keeps the day a
-	// monster takes a gated action from being a silent free swing.
+	// It names a CHARACTER in the cast or a MONSTER, and each is charged through
+	// its own sheet by the one gate (combat.Pay): a monster's sheet holds an
+	// action, a bonus action and a reaction for its turn, and the price is paid
+	// from them all or none. A monster has no pools, so a price naming one is
+	// refused whole unless a second budget owns it. Changed 2026-11-26 with
+	// rpg-project#1131 (an NPC's turn is owned by its sheet, as a player's is):
+	// the door used to charge a monster one reaction and nothing else.
 	PayerID string `json:"payer_id"`
 
-	// Profile is the price, compiled. Nil charges a character nothing.
+	// Profile is the price, compiled. Nil charges a character or a monster
+	// nothing.
 	Profile *combat.SpendProfile `json:"profile"`
 
 	// SpellTurn identifies the active creature's turn for a costed cast, even
@@ -86,13 +88,6 @@ func reactionCost(payer string, pool coreResources.ResourceKey) *Cost {
 		profile.Pools = map[coreResources.ResourceKey]int{pool: 1}
 	}
 	return &Cost{PayerID: payer, Profile: profile}
-}
-
-// isOneReaction reports whether a price is exactly one reaction and nothing
-// else — the only price a monster can pay.
-func isOneReaction(p *combat.SpendProfile) bool {
-	return p != nil && len(p.Slots) == 1 && p.Slots[coreCombat.ActionReaction] == 1 &&
-		len(p.Capacity) == 0 && len(p.Pools) == 0 && len(p.Grants) == 0 && len(p.Requires) == 0
 }
 
 // Turn is which turn the payer is acting in, and what a fresh one grants them.
@@ -170,7 +165,7 @@ func (c *Cost) validate() error {
 //   - The payer is found FIRST. A cost naming somebody who cannot be charged is
 //     a caller defect, and it should not refill anybody's bank on its way to
 //     being refused.
-//   - The refresh comes NEXT, because a bank left over from an earlier turn has
+//   - The refresh comes NEXT, for a character only, because a bank left over from an earlier turn has
 //     to be full before it is asked to pay. It is safe to ask at every door: an
 //     economy already filed under this turn is left exactly as it is, so a
 //     second swing cannot refill what the first one spent.
@@ -197,9 +192,20 @@ func payAtTheDoorFrom(ctx context.Context, cost *Cost, budget combat.PoolSource,
 	}
 
 	if mon != nil {
-		// A monster is refused anything but one reaction, with or without a
-		// budget; the sentence is the existing one.
-		return chargeMonster(mon, cost)
+		// A monster is charged through the same gate a character is: its own
+		// sheet pays its action, bonus action or reaction, all of a profile or
+		// none, and a second budget pays the pools it owns. A nil profile
+		// charges nothing.
+		//
+		// NO REFRESH HERE. Cost.Turn is a character's marker, compared with the
+		// number its sheet is filed under. A monster's sheet gives its turn
+		// back at its own turn start, so a Turn on a monster's cost is ignored
+		// rather than refilling what the monster spent.
+		if payErr := combat.Pay(combat.WithPools(mon, budget), cost.Profile); payErr != nil {
+			return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, payErr)
+		}
+
+		return nil
 	}
 
 	if cost.Turn != nil {
@@ -218,23 +224,6 @@ func payAtTheDoorFrom(ctx context.Context, cost *Cost, budget combat.PoolSource,
 		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
 	}
 
-	return nil
-}
-
-// chargeMonster charges a monster the one thing its sheet holds: its
-// reaction. A price that is anything but exactly one reaction is [ErrNoPayer];
-// a reaction already spent is [ErrCannotPay] wrapping
-// monster.ErrReactionSpent, and the sheet is left as it was. The turn refresh
-// is a character's verb and never reaches here.
-func chargeMonster(mon *monster.Monster, cost *Cost) error {
-	if !isOneReaction(cost.Profile) {
-		return fmt.Errorf(
-			"%w: %q is a monster, which can be charged one reaction and nothing else",
-			ErrNoPayer, cost.PayerID)
-	}
-	if err := mon.SpendReaction(); err != nil {
-		return fmt.Errorf("%w: %q: %w", ErrCannotPay, cost.PayerID, err)
-	}
 	return nil
 }
 
@@ -286,8 +275,8 @@ func payForMachine(
 	return nil
 }
 
-// payerFor finds the sheet a cost is charged to: a character's ledger, or a
-// monster, whose one reaction is all the door can charge it.
+// payerFor finds the sheet a cost is charged to: a character or a monster,
+// both of which answer the gate as a [combat.Ledger].
 //
 // The concrete character comes back rather than a combat.Ledger, and both
 // reasons matter: the refresh is a character's own verb, and a nil *Character

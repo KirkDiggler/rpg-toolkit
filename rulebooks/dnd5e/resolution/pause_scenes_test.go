@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -91,7 +92,7 @@ func TestAMonstersOpportunityAttackSpendsItsReactionAtTheDoor(t *testing.T) {
 	require.Equal(t, wolfID, moved.Reactions[0].ReactorID)
 
 	spent := dirtyMonster(t, out, wolfID)
-	require.True(t, spent.ReactionSpent, "the meter is on the monster's own sheet")
+	require.Zero(t, spent.SlotsLeft(coreCombat.ActionReaction), "the meter is on the monster's own sheet")
 	reloaded, err := monster.LoadFromData(context.Background(), spent, events.NewEventBus())
 	require.NoError(t, err)
 	require.False(t, reloaded.CanReact())
@@ -127,7 +128,7 @@ func TestAPostHitInsideAMovementReportsTheSettledReactionWithThePause(t *testing
 	require.True(t, settled.Reactions[0].Struck.Hit, "the hit settled before the pause")
 	require.Positive(t, settled.Reactions[0].Struck.Damage, "and dealt its damage")
 	spent := dirtyMonster(t, out, wolfID)
-	require.True(t, spent.ReactionSpent, "the reaction told at the pause is paid at the pause")
+	require.Zero(t, spent.SlotsLeft(coreCombat.ActionReaction), "the reaction told at the pause is paid at the pause")
 
 	machine, err := Resume(&ResumeInput{Pause: *out.Posed, Answer: Decline(), Roller: dice.NewRoller()})
 	require.NoError(t, err)

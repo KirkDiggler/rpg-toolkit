@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -196,7 +197,11 @@ func TestCostBudget(t *testing.T) {
 		a.Zero(budget.spends, "the budget was untouched")
 	})
 
-	t.Run("a monster payer with a budget is refused", func(t *testing.T) {
+	t.Run("a monster payer with a budget that owns the pool is charged its own slot and the budget's pool", func(t *testing.T) {
+		// The fixture's price is a bonus action and one point of "charges". The
+		// budget owns "charges", so the wolf pays only the bonus action, from
+		// its own sheet (rpg-project#1131, 2026-11-26: the door used to refuse
+		// every monster price but one reaction).
 		a := budgetFixtures(t)
 		data := wizardData(a)
 		definition := ringDescription(t)
@@ -205,11 +210,23 @@ func TestCostBudget(t *testing.T) {
 
 		out, err := resolveRing(a, data, definition, cost, budget, a.wolfParticipant())
 
-		a.Require().ErrorIs(err, ErrNoPayer)
-		a.Contains(err.Error(), "one reaction and nothing else")
+		a.Require().NoError(err)
+		a.Zero(budget.charges)
+		a.Equal(1, budget.spends, "the budget paid its pool once")
+		a.Zero(dirtyMonster(t, out, wolfID).SlotsLeft(coreCombat.ActionBonus), "the wolf paid its own bonus action")
+	})
+
+	t.Run("a monster payer with no budget cannot pay a pool it does not have", func(t *testing.T) {
+		a := budgetFixtures(t)
+		data := wizardData(a)
+		definition := ringDescription(t)
+		cost := a.effectCost(definition, wolfID)
+
+		out, err := resolveRing(a, data, definition, cost, nil, a.wolfParticipant())
+
+		a.Require().ErrorIs(err, ErrCannotPay)
+		a.Contains(err.Error(), wolfID)
 		a.Nil(out)
-		a.Equal(1, budget.charges)
-		a.Zero(budget.spends)
 	})
 }
 

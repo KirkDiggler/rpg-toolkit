@@ -140,21 +140,48 @@ Multiple applications remain ordered data rather than an effects language.
 
 ## Driven activations
 
-A monster's abilities are driven, not declared, and its economy is not on its
-sheet. So `NewActivation` refuses a monster unless `ActivationInput.Driven` is
-set, which says the driver already decided and paid. Encounter's `TurnBudget`
-spends the bonus action and encounter writes the activated beat. Resolution
-charges nothing and refuses nothing on affordability. It lands the ability's
-outcome on the monster the way the player arm lands it on a character: the same
-condition, through `publishCondition`, so `replaceSameAddress` supplies the
-one-instance-per-address rule the monster keeper lacks (rpg-toolkit#1946). The
-outcome is the player arm's `ActivationOutcome` shape. Disengage is the only
-driven ability today (rpg-toolkit#2032). Any other is refused by name, and a
-character sent through the driven door is refused because characters declare.
-A driven activation sent with an `Input.Cost` is refused at `Input.Validate`,
-before anything is charged. Open question: which condition a driven ability
-lands (Disengage to Disengaging) is rules knowledge held here, and when Hide
-arrives the rulebook should answer it instead.
+A monster's abilities are driven, not declared: whoever drives its turn decides
+them. So `NewActivation` refuses a monster unless `ActivationInput.Driven` is
+set. Resolution lands the ability's outcome on the monster the way the player
+arm lands it on a character: the same condition, through `publishCondition`, so
+`replaceSameAddress` supplies the one-instance-per-address rule the monster
+keeper lacks (rpg-toolkit#1946). The outcome is the player arm's
+`ActivationOutcome` shape. Disengage is the only driven ability today
+(rpg-toolkit#2032). Any other is refused by name, and a character sent through
+the driven door is refused because characters declare. Open question: which
+condition a driven ability lands (Disengage to Disengaging) is rules knowledge
+held here, and when Hide arrives the rulebook should answer it instead.
+
+### What changed on 2026-11-26 (rpg-project#1131, slice 1b)
+
+This section used to say that a monster's economy is not on its sheet, that
+`Driven` meant the driver had already decided and paid, and that a driven
+activation sent with an `Input.Cost` was refused at `Input.Validate`. None of
+that is true now. The operator ruled that an NPC's turn is owned by its sheet,
+as a player's is (rpg-project#1131, 2026-11-26): `monster.Data.Economy` holds an
+action, a bonus action and a reaction (nil for a full turn), the sheet gives
+them back at its own turn start, and `*monster.Monster` is a `combat.Ledger`
+(`rulebooks/dnd5e/v0.238.0`, rpg-project#1191).
+
+- The one door charges a monster as it charges a character: `payAtTheDoorFrom`
+  calls `combat.Pay(combat.WithPools(monster, budget), cost.Profile)`. A refusal
+  is `ErrCannotPay` wrapping the gate's own error, with the payer's id. A nil
+  profile charges nothing. A monster has no pools, so a price naming a pool is
+  refused whole unless the second budget owns it.
+- A monster is not refreshed at the door. `Cost.Turn` is a character's marker
+  and is ignored on a monster's cost.
+- `Driven` means "decided by whoever drives the monster's turn", no longer
+  "decided and paid for". A driven activation sent with a `Cost` is charged at
+  the door before its step runs, like every other machine; one sent with no
+  `Cost` charges nothing.
+- A monster's cast is still not priced at this door (`payForMachine` refuses it
+  with `ErrNoPayer`).
+
+State between two slices: no caller sends a monster a cost yet. The session's
+slice is next. Until it lands, encounter's `TurnBudget` still spends the
+Disengage's bonus action and counts it beside the sheet, not on it, and the
+session sends the driven activation with no `Cost`, so nothing in play changes
+(rpg-project#1194).
 
 ## Extension rule
 
