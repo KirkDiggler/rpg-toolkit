@@ -104,8 +104,12 @@ func (s *ActivationTestSuite) TestARunAndADisengageInOneTurnAreBothPayable() {
 func (s *ActivationTestSuite) TestADrivenDashWithNoPaymentIsRefusedBeforeAnythingLoads() {
 	sheet := monsters.NewGoblin(goblinID).ToData()
 	cases := map[string]*Cost{
-		"no cost":     nil,
-		"nil profile": {PayerID: goblinID},
+		"no cost":       nil,
+		"nil profile":   {PayerID: goblinID},
+		"empty profile": {PayerID: goblinID, Profile: &combat.SpendProfile{}},
+		"grant only": {PayerID: goblinID, Profile: &combat.SpendProfile{
+			Grants: map[combat.CapacityType]int{combat.CapacityMovement: 30},
+		}},
 	}
 	for name, cost := range cases {
 		s.Run(name, func() {
@@ -116,7 +120,7 @@ func (s *ActivationTestSuite) TestADrivenDashWithNoPaymentIsRefusedBeforeAnythin
 			err = in.Validate()
 
 			s.Require().ErrorIs(err, ErrBadActivation)
-			s.Contains(err.Error(), "only its payment and carries none")
+			s.Contains(err.Error(), "only its payment and")
 		})
 	}
 	s.Equal(1, sheet.SlotsLeft(coreCombat.ActionStandard), "nothing was charged")

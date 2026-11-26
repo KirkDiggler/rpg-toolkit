@@ -10,6 +10,7 @@ Slice [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207)
 
 ## Decided
 
+- A price that charges nothing is no payment: the three spend maps are read in `chargesSomething` because the rules' `movesNothing` is unexported, and Grants and Requires do not count — [amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1207#issuecomment-7200408611).
 - The Dash step lands nothing because an NPC's movement is the encounter's, ruled "I agree A" on 2026-11-27 — [ruling](https://github.com/KirkDiggler/rpg-project/issues/1131#issuecomment-7200191665).
 - The payment refusals sit in `Input.Validate` as the issue's Design 3 says, because Start never sees the cost — [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207).
 
@@ -25,4 +26,5 @@ Slice [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207)
 
 ## Mistaken
 
+- The first head let an empty or grant-only profile through `validateDrivenDash`, so a Dash could charge nothing; the lead's review found it and amendment 1 closed it — [amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1207#issuecomment-7200408611).
 - The first draft of proof (b) was a no-op edit and would have proved nothing; it was redone as a real banking change before the result was read — [rpg-project#1207](https://github.com/KirkDiggler/rpg-project/issues/1207).

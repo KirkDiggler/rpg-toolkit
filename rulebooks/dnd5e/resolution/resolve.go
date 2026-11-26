@@ -874,9 +874,36 @@ func (in *Input) validateDrivenDash() error {
 	if in.Cost == nil || in.Cost.Profile == nil {
 		return fmt.Errorf("%w: a driven Dash is only its payment and carries none", ErrBadActivation)
 	}
+	if !chargesSomething(in.Cost.Profile) {
+		return fmt.Errorf("%w: a driven Dash is only its payment and its price charges nothing", ErrBadActivation)
+	}
 	if in.Cost.PayerID != m.member {
 		return fmt.Errorf("%w: a driven Dash is paid by the one who runs: %q runs, %q was named to pay",
 			ErrBadActivation, m.member, in.Cost.PayerID)
 	}
 	return nil
+}
+
+// chargesSomething reports whether a profile spends a slot, a capacity or a
+// pool. The rules' own test, combat.SpendProfile's movesNothing, is unexported,
+// so the three spend maps are read here; Grants and Requires are not a price,
+// so a profile that only grants is no payment. Validate has run first and
+// refused a negative or non-slot amount, so a positive amount is a charge.
+func chargesSomething(p *combat.SpendProfile) bool {
+	for _, n := range p.Slots {
+		if n > 0 {
+			return true
+		}
+	}
+	for _, n := range p.Capacity {
+		if n > 0 {
+			return true
+		}
+	}
+	for _, n := range p.Pools {
+		if n > 0 {
+			return true
+		}
+	}
+	return false
 }
