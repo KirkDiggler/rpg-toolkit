@@ -224,7 +224,8 @@ roster.
   never on the heap: holding is what an absent table means, and asking would
   cost the round a standing consult and a sight sweep to produce a world
   nobody changed.
-- **One turn's worth per round it is due**, with `AttacksLeft: 0`. A creature
+- **One turn's worth per round it is due**, with `AttacksLeft: 0` and `BonusActions: 0`
+  in its view whatever its sheet says is left of a turn. A creature
   a round behind — one whose raise came inside another pass — steps at its own
   round and again at the next.
 - **An `Attack` off the turn clock is an error**, not a skipped intent. An

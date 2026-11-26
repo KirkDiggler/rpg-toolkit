@@ -950,8 +950,9 @@ type Striker interface {
 // (rpg-toolkit#2032).
 //
 // THE DECISION IS THE COMPOSITION'S, THE RULE IS THE SHEET'S. This module
-// knows where everybody stands and what is left of the turn, so it decides
-// when the bonus action is spent; it cannot import the rulebook (C1), so what
+// knows where everybody stands, so it decides when to ask; what is left of the
+// turn is the sheet's ([SheetFacts.Turn]), and the sheet spends the bonus
+// action in answering. It cannot import the rulebook (C1), so what
 // "Disengaging" means — that a walk provokes no opportunity attack — is the
 // implementation's to apply. A dnd5e host applies the existing Disengaging
 // condition to the member, the same one a player's Disengage applies; the

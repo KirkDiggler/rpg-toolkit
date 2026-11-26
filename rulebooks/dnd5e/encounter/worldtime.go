@@ -478,7 +478,8 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 // rounds survive a save: a load arms each member at its first owed round,
 // read off the clock's persisted budget ([Encounter.armOwed]).
 //
-// NO ATTACKS, AND NO REACTIONS. The budget is `AttacksLeft: 0` and an
+// NO ATTACKS, AND NO REACTIONS. The view says `AttacksLeft: 0` and `BonusActions: 0`
+// whatever the sheet's [SheetFacts.Turn] says ([turnNumbers]), and an
 // [Attack] returned here is [ErrAttackOffTurn] rather than a silently skipped
 // intent: an enemy in reach on the world clock is a fight sight that has
 // already formed, so a table that reaches this is describing a world that

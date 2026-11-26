@@ -254,8 +254,8 @@ func factsFromView(view MonsterView) Facts {
 		now:       view.At,
 		// AFFORDABILITY IS ELIGIBILITY (rpg-project#465, ruled on an
 		// api-builder finding): what the creature can still pay for this turn
-		// decides which entries are on the table at all. The budget is the
-		// turn's own, so a creature asked again after its swing is not handed
+		// decides which entries are on the table at all. The view's actions are
+		// its sheet's ([turnNumbers]), so a creature asked again after its swing is not handed
 		// `attack` a second time — and on the world clock, where the budget
 		// carries no attacks at all, a table's `attack` row is simply never a
 		// candidate.

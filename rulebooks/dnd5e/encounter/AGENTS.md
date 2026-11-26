@@ -88,10 +88,18 @@ supplied capability, never as a new import.** Every one of these is required at
 | did the discovery check beat the hidden thing's DC — rolled automatically when a placed player comes within a hex — and did a sneaker's Stealth beat a watcher's passive Perception ([sneak.go](./sneak.go)) | `CheckResolver` ([conceal.go](./conceal.go)), asked through `ResolveDiscoveryCheck` | `ErrNoCheckResolver`, when the field declares a concealment; held whenever supplied, and `SetSneaking` refuses without it |
 | who perceives this open hidden door | `Witness` ([conceal.go](./conceal.go)) | `ErrNoWitness`, same condition |
 
-One actor is asked but NOT required: `Disengager` ([turndriver.go](./turndriver.go)) makes a
+Two actors are asked but NOT required. `Disengager` ([turndriver.go](./turndriver.go)) makes a
 member whose sheet names a `SheetFacts.BonusDisengage` trait Disengage as a bonus action before a
 driven walk any step of which leaves a standing hostile's melee reach (rpg-toolkit#2032). Nil skips
-the ask, and the walk provokes as any walk does.
+the ask, and the walk provokes as any walk does. `Dasher` has a member's sheet pay for a run on a
+turn (rpg-project#1131); nil refuses the run, told, because nobody can be paid for it.
+
+**A driven creature's turn is its sheet's, and this module counts none of it.** What a creature can
+still afford on its turn — actions and bonus actions — is `SheetFacts.Turn`, asked every time the
+view is built and before a swing, a run or a Disengage is judged; nil is a full turn (one and one),
+and a round of the world has none at all. The host spends them (`Striker`, `Disengager`, `Dasher`);
+the only thing the turn counts for itself is its movement, in feet, and that is all a paused turn
+saves.
 
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,

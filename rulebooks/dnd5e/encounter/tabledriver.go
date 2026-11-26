@@ -222,7 +222,7 @@ func walkPace(view MonsterView) pace {
 // dashPace is a `dash` row's pace: the turn's movement left plus the
 // creature's speed ([MonsterView.SpeedFeet]), the RAW Dash. The encounter
 // adds the same speed to the budget when the run is charged
-// ([Encounter.chargeDash]), so the cut here and the charge there are one
+// ([Encounter.refuseUnpaidDash]), so the cut here and the charge there are one
 // number.
 func dashPace(view MonsterView) pace {
 	return pace{cells: dashCells(view), cause: tableCauseDash, dash: true}
