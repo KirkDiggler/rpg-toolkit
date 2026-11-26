@@ -5,11 +5,13 @@
 #   1. The Runner stands 11 cells away in open sight. On his first turn he RUNS
 #      at the fighter and does not swing; the story names the run as the cause of
 #      his steps. After that he is beside her, and he swings once a turn.
-#   2. The Skirmisher (the bestiary goblin: scimitar, shortbow, Nimble Escape;
-#      a goblin is a rulebook monster, not a template base, so it is placed
-#      by its own ref and named "Goblin" in the story) stands in the fighter's reach. Each turn it
-#      swings once, then steps out of her reach, disengaging first with Nimble
-#      Escape (a bonus action) so she is given no opportunity swing.
+#   2. The Skirmisher is the bestiary goblin (scimitar, shortbow, Nimble Escape),
+#      one cell from the fighter. It is placed by its own ref and the story calls
+#      it Goblin, because a template cannot be made on a goblin today. If you
+#      stand still: round one it stabs you, slips away (Nimble Escape first) and
+#      walks off; round two it shoots you from range and walks out of sight with
+#      no Nimble Escape (it left nobody's reach); after that it waits where it
+#      is. Chase it and it does the first again.
 #   3. Every turn comes back at the next round: both act again, once each.
 # What the operator sees is meant to be exactly what they saw before this was
 # paid at the one gate (the sheet), so nothing here is new to look at: it is the

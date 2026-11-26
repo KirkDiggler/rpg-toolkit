@@ -180,6 +180,19 @@ func TestARunnerSwingsOnceATurnAndASkirmisherDisengagesOnceAndTheTurnComesBack(t
 	require.Len(t, s.rounds[0].of("skirmisher", "activated"), 1)
 	// After its turn, its stored sheet shows the action and the bonus action spent.
 	require.Equal(t, runWalkLeft{action: 0, bonus: 0}, s.rounds[0].left["skirmisher"])
+	// Round two's walk left nobody's melee reach: nothing asked it to disengage,
+	// so no beat names it and its bonus action is not spent.
+	require.Empty(t, s.rounds[1].of("skirmisher", "activated"))
+	require.Equal(t, runWalkLeft{action: 0, bonus: 1}, s.rounds[1].left["skirmisher"])
+
+	// Claim 3. One strike in each turn with a target in reach or range (rounds
+	// one and two), never two; round three has none and says why.
+	require.Len(t, s.rounds[0].strikes("skirmisher"), 1, "round one: it stabs her")
+	require.Len(t, s.rounds[1].strikes("skirmisher"), 1, "round two: it shoots her from range")
+	require.Empty(t, s.rounds[2].strikes("skirmisher"), "round three: nobody to strike")
+	stayed := s.rounds[2].of("skirmisher", "stayed")
+	require.Len(t, stayed, 1)
+	require.Contains(t, stayed[0].Fields["why"], "nowhere farther", "and a stayed beat says why")
 
 	// Claim 5. The turn comes back: the sheets are spent at the end of round one,
 	// and in round two both act again, which they can only do if each one's turn
