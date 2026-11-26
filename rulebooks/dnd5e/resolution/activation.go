@@ -46,11 +46,14 @@ type ActivationInput struct {
 	//
 	// A driven activation is a monster's door and nobody else's: a character
 	// sent through it is refused ([ErrBadActivation], "characters declare"),
-	// because the player arm declares and charges a character from its sheet. An ability with no driven arm yet is refused by name rather
-	// than run some other way. Driven today: Disengage
-	// (refs.CombatAbilities.Disengage), the half of Nimble Escape that has a
-	// use case (rpg-toolkit#2032). The next driven ability adds its arm in
-	// [activationMachine.startDriven].
+	// because the player arm declares and charges a character from its sheet.
+	// An ability with no driven arm yet is refused by name rather than run some
+	// other way. Driven today: Disengage (refs.CombatAbilities.Disengage), the
+	// half of Nimble Escape that has a use case (rpg-toolkit#2032), and Dash
+	// (refs.CombatAbilities.Dash), which is only its payment: the sheet is
+	// charged one action at the door and nothing else lands, because an NPC's
+	// movement is the encounter's (rpg-project#1131, 2026-11-27, rpg-project#1207).
+	// The next driven ability adds its arm in [activationMachine.startDriven].
 	Driven bool
 
 	// Ability is which of the things they carry. Required. A ref rather than
@@ -741,8 +744,10 @@ func (m *activationMachine) step(actor *character.Character, target core.Entity)
 //
 // # The abilities it knows are a closed list
 //
-// Disengage is the only one, because Nimble Escape's Disengage is the only use
-// case (rpg-toolkit#2032). Anything else is refused by name — fail closed: a
+// Disengage and Dash are the two. Disengage landed first, because Nimble
+// Escape's Disengage was the first use case (rpg-toolkit#2032); Dash joined on
+// 2026-11-27 (rpg-project#1207), a run paid at the door that lands nothing on
+// the sheet. Anything else is refused by name — fail closed: a
 // driven Hide routed through some other arm, or silently landing nothing,
 // would report success for an interaction that did not happen. The next
 // driven ability (Hide, Aggressive, Rampage…) adds its case here.
@@ -763,8 +768,29 @@ func (m *activationMachine) startDriven(cast *Participants) (Step, error) {
 				ErrBadActivation, m.ability.String(), m.targetID)
 		}
 		return m.drivenStep(cast, mon, conditions.NewDisengagingCondition(mon.GetID())), nil
+	case refs.CombatAbilities.Dash().String():
+		if m.targetID != "" {
+			return nil, fmt.Errorf("%w: %s takes no target, but %q was named",
+				ErrBadActivation, m.ability.String(), m.targetID)
+		}
+		// A driven Dash is only its payment. A character's Dash charges the
+		// action and banks the character's speed as MovementRemaining on the
+		// character's sheet; a monster's movement is not on its sheet, the
+		// encounter walks an NPC one cell at a time and adds the run's speed to
+		// the movement it has left itself (ruled 2026-11-27, "I agree A":
+		// https://github.com/KirkDiggler/rpg-project/issues/1131#issuecomment-7200191665).
+		// So this step lands NOTHING and publishes nothing: the one action was
+		// charged at the door, and Input.Validate refuses a driven Dash sent
+		// without that payment. The day an NPC's movement is on its sheet, this
+		// arm banks it there as a player's Dash does.
+		return Gather{
+			name: fmt.Sprintf("driven %s for %s", m.ability.String(), m.member),
+			run: func(context.Context, events.EventBus) (Step, error) {
+				return Done{Outcome: ActivationOutcome{Ability: m.ability.String()}}, nil
+			},
+		}, nil
 	default:
-		return nil, fmt.Errorf("%w: %s is not yet driven for a monster; Disengage is the only driven ability",
+		return nil, fmt.Errorf("%w: %s is not yet driven for a monster; Disengage and Dash are the driven abilities",
 			ErrBadActivation, m.ability.String())
 	}
 }

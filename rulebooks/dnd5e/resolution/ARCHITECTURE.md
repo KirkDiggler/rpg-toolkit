@@ -146,9 +146,15 @@ set. Resolution lands the ability's outcome on the monster the way the player
 arm lands it on a character: the same condition, through `publishCondition`, so
 `replaceSameAddress` supplies the one-instance-per-address rule the monster
 keeper lacks (rpg-toolkit#1946). The outcome is the player arm's
-`ActivationOutcome` shape. Disengage is the only driven ability today
-(rpg-toolkit#2032). Any other is refused by name, and a character sent through
-the driven door is refused because characters declare. Open question: which
+`ActivationOutcome` shape. Two abilities are driven today. Disengage lands the
+Disengaging condition (rpg-toolkit#2032). Dash lands nothing on the sheet and
+publishes nothing: it is only its payment, one action charged at the door,
+because an NPC's movement is the encounter's and not on its sheet
+(rpg-project#1131, rpg-project#1207). A driven Dash must carry a `Cost` with a
+profile, paid by the one who runs; `Input.Validate` refuses it otherwise with
+`ErrBadActivation`. Any other ability is refused by name ("Disengage and Dash
+are the driven abilities"), and a character sent through the driven door is
+refused because characters declare. Open question: which
 condition a driven ability lands (Disengage to Disengaging) is rules knowledge
 held here, and when Hide arrives the rulebook should answer it instead.
 
@@ -182,6 +188,16 @@ slice is next. Until it lands, encounter's `TurnBudget` still spends the
 Disengage's bonus action and counts it beside the sheet, not on it, and the
 session sends the driven activation with no `Cost`, so nothing in play changes
 (rpg-project#1194).
+
+### What changed on 2026-11-27 (rpg-project#1207, slice 1d-2)
+
+Dash became the second driven ability, so an NPC's run is paid at the one door.
+The step lands nothing: the operator ruled that the sheet pays the action and
+the feet stay the encounter's (rpg-project#1131, 2026-11-27). The day an NPC's
+movement is on its sheet, the Dash arm banks it there as a player's Dash does.
+The rules price it: `monster.CostOfDash`, one action with nothing banked
+(`rulebooks/dnd5e/v0.240.0`). Nothing in play changes: no caller sends a driven
+Dash yet.
 
 ## Extension rule
 
