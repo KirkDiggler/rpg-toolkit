@@ -326,7 +326,7 @@ func TestBubbleForAnswersNotInBubble(t *testing.T) {
 func TestDisengageBeforeWalkAnswersNoDisengage(t *testing.T) {
 	var e Encounter // no disengager wired
 
-	deltas, err := e.disengageBeforeWalk("member", &memberRecord{}, nil, &TurnBudget{})
+	deltas, err := e.disengageBeforeWalk("member", &memberRecord{}, nil, ClockTurn)
 	require.Nil(t, deltas)
 	require.ErrorIs(t, err, errNoDisengage)
 }

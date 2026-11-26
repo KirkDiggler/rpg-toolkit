@@ -121,7 +121,7 @@ func TestAProjectedFallKeepsItsTarget(t *testing.T) {
 	standing.down = []MemberID{"friend"}
 	strike(t, enc, "alice", "friend")
 
-	view, err := enc.buildMonsterView(enc.members["watcher"], TurnBudget{}, 0)
+	view, err := enc.buildMonsterView(enc.members["watcher"], TurnBudget{}, 0, ClockTurn)
 	require.NoError(t, err)
 	var targets []MemberID
 	for _, d := range view.AllyDeeds {
@@ -131,7 +131,7 @@ func TestAProjectedFallKeepsItsTarget(t *testing.T) {
 	}
 	require.Equal(t, []MemberID{"friend"}, targets, "the watcher's view names who fell")
 
-	own, err := enc.buildMonsterView(enc.members["friend"], TurnBudget{}, 0)
+	own, err := enc.buildMonsterView(enc.members["friend"], TurnBudget{}, 0, ClockTurn)
 	require.NoError(t, err)
 	var mine []MemberID
 	for _, d := range own.Deeds {

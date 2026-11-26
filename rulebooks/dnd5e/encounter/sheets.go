@@ -64,9 +64,10 @@ type SheetFacts struct {
 	// with no change here.
 	//
 	// AN IDENTITY RATHER THAN A FLAG, for law C1: the encounter decides WHEN
-	// the bonus action is spent (before a driven walk any step of which leaves
-	// a standing hostile's melee reach — see [Disengager]), and the story it
-	// tells about that spend has to name the trait. This module cannot know
+	// to ask for the bonus action (before a driven walk any step of which
+	// leaves a standing hostile's melee reach, while [SheetFacts.Turn] says one
+	// is left — see [Disengager]), and the story it tells about that spend has
+	// to name the trait. This module cannot know
 	// a rulebook ref or its name, so the sheet that knows them hands both
 	// over, and they travel verbatim onto the [BeatActivated] beat.
 	//
@@ -154,6 +155,50 @@ type SheetFacts struct {
 	// hold and stays separate; a member both in custody and held is refused
 	// by custody, which is asked first.
 	CannotMove []string
+
+	// Turn is what is left of this member's OWN turn on its sheet: the actions
+	// and bonus actions it can still pay for (rpg-project#1131). A driven
+	// creature's turn is its sheet's, as a player's is, so this module keeps
+	// no count of its own and asks here every time it builds the creature's
+	// view and before it judges a swing, a run or a Disengage.
+	//
+	// NIL IS A FULL TURN: ONE ACTION AND ONE BONUS ACTION. It is the statement
+	// the rules make one layer down, where a sheet that has spent nothing
+	// saves no account. A host that keeps no account for a member says nothing,
+	// and that member has a full turn every time it is asked. Only a host that
+	// keeps a turn fills it, and then it says what is left, never what a full
+	// turn is.
+	//
+	// ON THE WORLD CLOCK IT IS NOT READ: a round of the world carries no action
+	// economy at all, so a driven creature there has no attack and no bonus
+	// action whatever this says.
+	//
+	// A negative number is refused (ErrInvalidData).
+	Turn *TurnFacts
+}
+
+// TurnFacts is what is left of a member's own turn on its sheet.
+type TurnFacts struct {
+	// ActionsLeft is how many actions the member can still pay for.
+	ActionsLeft int
+	// BonusActionsLeft is how many bonus actions it can still pay for.
+	BonusActionsLeft int
+}
+
+// turnNumbers is THE ONE PLACE the two numbers a driver's view shows are
+// assigned: how many actions and bonus actions a member has left, read from its
+// sheet. On the world clock both are zero ("a round of the world carries no
+// action economy at all"); on a turn they are the sheet's own, or one and one
+// when the sheet keeps no account ([SheetFacts.Turn] nil).
+func turnNumbers(facts SheetFacts, kind ClockKind) (actions, bonus int) {
+	if kind == ClockWorld {
+		return 0, 0
+	}
+	if facts.Turn == nil {
+		return 1, 1
+	}
+
+	return facts.Turn.ActionsLeft, facts.Turn.BonusActionsLeft
 }
 
 // Sheets reports each given member's [SheetFacts]. The composition asks; the
@@ -259,8 +304,12 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 // validateSheetFacts refuses a negative speed, a negative passive Perception, a
 // negative watch reset distance, a watch arc outside 0–360, a negative action
 // range, a half-named [SheetFacts.BonusDisengage] and a blank
-// [SheetFacts.CannotMove] name.
+// [SheetFacts.CannotMove] name, and a negative count of what is left of a turn.
 func validateSheetFacts(facts SheetFacts) error {
+	if t := facts.Turn; t != nil && (t.ActionsLeft < 0 || t.BonusActionsLeft < 0) {
+		return fmt.Errorf("turn left %d actions and %d bonus actions: a count is negative",
+			t.ActionsLeft, t.BonusActionsLeft)
+	}
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)
 	}

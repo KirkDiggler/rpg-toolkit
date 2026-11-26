@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"context"
 	"errors"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,10 @@ type disengageScene struct {
 
 	// participation defaults to everyone standing.
 	participation encounter.Participation
+
+	// turns puts the scene behind a host that keeps each member's turn on its
+	// sheet, as a session does (rpg-project#1131).
+	turns bool
 }
 
 // goblinBesideAlice is the default scene: the goblin nimble, adjacent to a
@@ -73,28 +78,32 @@ func (sc disengageScene) build(t *testing.T) (*encounter.Encounter, *scriptedDri
 	if sc.participation != nil {
 		participation = sc.participation
 	}
+	caps := encounter.Capabilities{
+		Sight:         everyoneSeesTheWholeMap{},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        sc.sheets,
+		Participation: participation,
+		Initiative:    arrivalOrder{},
+		Driver:        driver,
+		Actors: encounter.Actors{
+			Striker:    &scriptedStriker{kind: encounter.OutcomeMissed},
+			Mover:      quietMover{},
+			Announcer:  quietAnnouncer{},
+			Disengager: sc.disengager,
+		},
+	}
+	if sc.turns {
+		caps = turntest.Wrap(caps)
+	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
 			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
 		},
-		Members: sc.members,
-		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sight:         everyoneSeesTheWholeMap{},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        sc.sheets,
-			Participation: participation,
-			Initiative:    arrivalOrder{},
-			Driver:        driver,
-			Actors: encounter.Actors{
-				Striker:    &scriptedStriker{kind: encounter.OutcomeMissed},
-				Mover:      quietMover{},
-				Announcer:  quietAnnouncer{},
-				Disengager: sc.disengager,
-			},
-		},
+		Members:      sc.members,
+		Endings:      []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: caps,
 	})
 	require.NoError(t, err)
 	return enc, driver
@@ -127,6 +136,7 @@ func TestNimbleGoblinDisengagesBeforeWalkingOutOfReach(t *testing.T) {
 	d := &recordingDisengager{}
 	sc := goblinBesideAlice(encounter.Move{Path: []spatial.Position{cellAt(3, 1)}}, encounter.Pass{})
 	sc.disengager = d
+	sc.turns = true
 	enc, driver := sc.build(t)
 
 	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
@@ -188,6 +198,7 @@ func TestSpentBonusActionDisengagesNobody(t *testing.T) {
 			encounter.Pass{},
 		},
 		disengager: d,
+		turns:      true,
 	}
 	enc, driver := sc.build(t)
 

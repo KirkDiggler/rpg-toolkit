@@ -88,7 +88,7 @@ func (s *behaviorPauseSuite) TestSelectedWorkSurvivesTwoPausesWithoutRerolling()
 	}
 	claim := workDataFrom(e.pause.turn.behavior)
 	s.Equal(spatial.Position{X: 3}, e.pause.from)
-	s.Equal(15, e.pause.turn.budget.MovementFeet)
+	s.Equal(15, e.pause.turn.movementFeet)
 	s.Equal(1, die.calls)
 
 	for _, expected := range []struct {
@@ -116,7 +116,7 @@ func (s *behaviorPauseSuite) TestSelectedWorkSurvivesTwoPausesWithoutRerolling()
 		s.Equal(expected.state, e.members["guard"].behaviors.composer.ToData().Instances[0].Blob.State)
 		s.Equal(1, die.calls, "resume executes held work, it never chooses again")
 		if expected.paused {
-			s.Equal(5, e.pause.turn.budget.MovementFeet)
+			s.Equal(5, e.pause.turn.movementFeet)
 			s.Equal(claim, workDataFrom(e.pause.turn.behavior))
 		}
 	}

@@ -36,7 +36,7 @@ func aTurnPauseBlob() *PauseData {
 		Remaining: []PositionData{cell},
 		Turn: &TurnPauseData{
 			Round:  1,
-			Budget: TurnBudgetData{AttacksLeft: 1, MovementFeet: 25},
+			Budget: TurnBudgetData{MovementFeet: 25},
 			Intent: 0,
 			Bound:  8,
 		},

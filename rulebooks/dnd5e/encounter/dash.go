@@ -26,7 +26,7 @@ import (
 //     dash into it, or nobody ([threatJudge]).
 //
 // The run itself — the speed it adds and the swing it costs — is charged
-// where every intent is judged ([Encounter.chargeDash]).
+// where every intent is judged ([Encounter.refuseUnpaidDash]).
 
 // moveBuys fills [Facts.EnemyWalk], [Facts.EnemyDash] and [Facts.EnemyFar]:
 // what this turn's movement buys against the foe `enemy` names — the nearest

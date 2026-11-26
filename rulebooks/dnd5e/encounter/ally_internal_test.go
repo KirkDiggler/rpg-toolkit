@@ -182,7 +182,7 @@ func seenOf(t *testing.T, view MonsterView, id MemberID) SeenMember {
 // crossbow range. With the party neutral, nobody is.
 func TestTheViewNamesAnAllyAcrossADispositionNotKin(t *testing.T) {
 	enc := alliesEnc(t, StanceAllied)
-	view, err := enc.buildMonsterView(enc.members["veteran"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 0)
+	view, err := enc.buildMonsterView(enc.members["veteran"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 0, ClockTurn)
 	require.NoError(t, err)
 
 	hero := seenOf(t, view, "hero")
@@ -199,7 +199,7 @@ func TestTheViewNamesAnAllyAcrossADispositionNotKin(t *testing.T) {
 	require.Equal(t, []core.EntityID{"hero"}, facts.SeenAllies)
 
 	enc = alliesEnc(t, StanceNeutral)
-	view, err = enc.buildMonsterView(enc.members["veteran"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 0)
+	view, err = enc.buildMonsterView(enc.members["veteran"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 0, ClockTurn)
 	require.NoError(t, err)
 	require.False(t, seenOf(t, view, "hero").Allied, "a neutral party is nobody's ally")
 	require.Empty(t, factsFromView(view).SeenAllies)

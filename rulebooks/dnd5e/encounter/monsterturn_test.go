@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -526,7 +527,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.Driver
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -539,7 +540,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.Driver
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 	return enc
@@ -2086,7 +2087,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:      everyoneSeesTheWholeMap{},
 			Equipment:  encounter.UnobservedEquipment{},
 			Conditions: encounter.UnobservedEquipment{},
@@ -2101,7 +2102,7 @@ func (s *MonsterTurnTestSuite) TestADownedTeammateDoesNotHandTheDrivenMonsterASe
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 
@@ -2179,7 +2180,7 @@ func routedScene(
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:      everyoneSeesTheWholeMap{},
 			Equipment:  encounter.UnobservedEquipment{},
 			Conditions: encounter.UnobservedEquipment{},
@@ -2194,7 +2195,7 @@ func routedScene(
 				Mover:     mover,
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	require.NoError(t, err)
 	return enc

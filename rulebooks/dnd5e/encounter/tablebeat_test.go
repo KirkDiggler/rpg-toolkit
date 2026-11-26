@@ -11,6 +11,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,7 @@ import (
 // symbolsCaps is the silence scene's capabilities, built once so the scene
 // can be loaded back from its blob with the same host.
 func symbolsCaps(members []encounter.MemberInput) encounter.Capabilities {
-	return encounter.Capabilities{
+	return turntest.Wrap(encounter.Capabilities{
 		Sight:         everyoneSeesTheWholeMap{},
 		Equipment:     encounter.UnobservedEquipment{},
 		Conditions:    encounter.UnobservedEquipment{},
@@ -36,7 +37,7 @@ func symbolsCaps(members []encounter.MemberInput) encounter.Capabilities {
 			Mover:     &recordingMover{},
 			Announcer: quietAnnouncer{},
 		},
-	}
+	})
 }
 
 // symbolsScene is alice beside a coward goblin on silenceTable, with alice's

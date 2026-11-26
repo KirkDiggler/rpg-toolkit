@@ -449,11 +449,16 @@ type SeenMember struct {
 	AwayPath []spatial.Position
 }
 
-// TurnBudget is what remains of a member's turn.
+// TurnBudget is what remains of a member's turn, as a [Driver] sees it.
+//
+// ONLY MOVEMENT IS THIS MODULE'S. The two counts of the economy are the
+// creature's sheet's ([SheetFacts.Turn], rpg-project#1131): they are read each
+// time a view is built and are never counted down here.
 type TurnBudget struct {
-	// AttacksLeft is how many more attacks this member may declare this
-	// turn — 1 at the start of a v1 turn, 0 once an [Attack] intent has
-	// executed.
+	// AttacksLeft is how many actions this member can still pay for this turn,
+	// read from its sheet as this view was built ([SheetFacts.Turn]; one when
+	// the sheet keeps no account). Zero on the world clock, where a round
+	// carries no action economy at all. An [Attack] intent needs one.
 	AttacksLeft int
 
 	// MovementFeet is how much further this member may move this turn, in
@@ -463,16 +468,15 @@ type TurnBudget struct {
 	// intents execute. Once handed to the turn it is the turn's own value.
 	MovementFeet int
 
-	// BonusActions is how many bonus actions this member may still spend this
-	// turn — 1 at the start of a turn in a fight, 0 on the world clock, where
-	// a round of the world carries no action economy at all.
+	// BonusActions is how many bonus actions this member can still pay for this
+	// turn, read from its sheet as this view was built ([SheetFacts.Turn]; one
+	// when the sheet keeps no account). Zero on the world clock.
 	//
-	// THE FIRST FIELD OF A MONSTER BONUS-ACTION ECONOMY (rpg-toolkit#2032),
-	// and today it has exactly one spender: the composition's own Disengage
-	// before a walk out of a hostile's reach, for a member whose sheet says
-	// [SheetFacts.BonusDisengage]. A driver does not spend it and there is no
-	// intent that does; it is on the view so a driver can see what is left.
-	// Players' bonus actions are their sheet's own economy and are not this.
+	// The one thing that asks for one is the composition's own Disengage before
+	// a walk out of a hostile's reach, for a member whose sheet says
+	// [SheetFacts.BonusDisengage]; the host's [Disengager] spends it, on the
+	// sheet. A driver does not spend it and there is no intent that does; it is
+	// on the view so a driver can see what is left.
 	BonusActions int
 }
 
@@ -543,7 +547,7 @@ func (Pass) isTurnIntent() {}
 // [Encounter.driveMonsterTurns] — unless: Target names a member currently in
 // [MonsterView.Seen] AND [SeenMember.Standing]; Action names one of this
 // member's own [MonsterView.Actions]; [SeenMember.InReach] says Target is in
-// reach for Action; and [TurnBudget.AttacksLeft] is greater than zero.
+// reach for Action; and [TurnBudget.AttacksLeft] (the sheet's actions left) is greater than zero.
 //
 // A REFUSED ATTACK IS TOLD, whoever drove it (rpg-toolkit#2000): the turn
 // ends with a [BeatStayed] naming the reason — nobody named, no attack left,
@@ -602,9 +606,11 @@ type Move struct {
 
 	// Dash says this walk is a RUN (rpg-project#671, R17): the table's
 	// `dash`, which spends the turn's swing for its movement twice over.
-	// The encounter charges it before the first step ([Encounter.chargeDash]):
-	// the creature's speed is added to the movement left, and on a turn the
-	// attack is gone; on the world clock there is no swing to forfeit. A run
+	// The encounter charges it before the first step
+	// ([Encounter.refuseUnpaidDash]): on a turn the creature's sheet pays the
+	// action, through the host's [Dasher], and the creature's speed is added to
+	// the movement left; on the world clock there is no swing to forfeit and
+	// nobody is asked. A run
 	// after the swing is never offered ([behavior.Facts.CanDash]). So Path
 	// may be up to the movement left plus the speed, in cells. Every step's beat names the cause
 	// `encounter:table:dash`.
@@ -944,8 +950,9 @@ type Striker interface {
 // (rpg-toolkit#2032).
 //
 // THE DECISION IS THE COMPOSITION'S, THE RULE IS THE SHEET'S. This module
-// knows where everybody stands and what is left of the turn, so it decides
-// when the bonus action is spent; it cannot import the rulebook (C1), so what
+// knows where everybody stands, so it decides when to ask; what is left of the
+// turn is the sheet's ([SheetFacts.Turn]), and the sheet spends the bonus
+// action in answering. It cannot import the rulebook (C1), so what
 // "Disengaging" means — that a walk provokes no opportunity attack — is the
 // implementation's to apply. A dnd5e host applies the existing Disengaging
 // condition to the member, the same one a player's Disengage applies; the
@@ -966,6 +973,34 @@ type Disengager interface {
 	// or missing sheet) and aborts the caller's whole verb, as a [Striker]'s
 	// does; the walk it was asked for does not happen.
 	Disengage(ctx context.Context, enc *Encounter, member MemberID) error
+}
+
+// Dasher has one member's sheet pay for a run — the ask the composition makes
+// when a driven creature's [Move] says [Move.Dash] on a turn and its sheet
+// still has an action to pay with ([SheetFacts.Turn]).
+//
+// THE DECISION IS THE COMPOSITION'S, THE PRICE IS THE SHEET'S. This module
+// knows the creature wants to run and judges it against what the sheet says is
+// left; it cannot know what a run costs in the rules (C1), so the action is
+// spent by the implementation, on the sheet, exactly as a [Disengager] spends
+// the bonus action. The FEET stay this module's: the speed is added to the
+// movement left here, once the ask has succeeded.
+//
+// ASK, THEN SPEND, THEN TELL. A Dasher that fails aborts the caller's whole
+// verb with nothing added and nothing told.
+//
+// THE IMPLEMENTATION RECORDS NOTHING. The walk's steps name the run as their
+// cause (`encounter:table:dash`); an implementation that also recorded would
+// tell it twice.
+//
+// OPTIONAL, like [Disengager]. A nil Dasher refuses the run on a turn: a
+// stayed beat names `encounter:table:dash` and says nobody can be paid for it,
+// the creature does not run and its turn ends. A host that never wired the
+// run has not spent an action, and this module will not invent that it did.
+type Dasher interface {
+	// Dash has member's sheet pay for a run. An error is a MALFUNCTION and
+	// aborts the caller's whole verb, as a [Disengager]'s does.
+	Dash(ctx context.Context, enc *Encounter, member MemberID) error
 }
 
 // Mover announces one member's step before this composition takes it.

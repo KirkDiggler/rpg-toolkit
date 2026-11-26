@@ -95,7 +95,7 @@ func TestAViewFloodsItsOwnCellOnceForEveryCreatureItSees(t *testing.T) {
 	})
 
 	before, settledBefore := enc.floodsComputed, enc.cellsSettled
-	view, err := enc.buildMonsterView(enc.members["goblin"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 1)
+	view, err := enc.buildMonsterView(enc.members["goblin"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 1, ClockTurn)
 	require.NoError(t, err)
 
 	require.Len(t, view.Seen, 4, "precondition: the goblin sees all four")

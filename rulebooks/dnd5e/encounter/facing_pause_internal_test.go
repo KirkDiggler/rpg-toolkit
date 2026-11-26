@@ -25,8 +25,8 @@ func TestAPausedWalkTowardASoundKeepsItsCell(t *testing.T) {
 		remaining: []spatial.Position{{X: 1, Y: 0}},
 		turn: &turnPause{
 			round: 1, intent: 0, bound: 4, terminal: true,
-			budget: TurnBudget{AttacksLeft: 1, MovementFeet: 25},
-			face:   walkFace{heard: &clang},
+			movementFeet: 25,
+			face:         walkFace{heard: &clang},
 		},
 	}
 

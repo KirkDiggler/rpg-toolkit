@@ -512,11 +512,12 @@ func (e *Encounter) autoPassTurn(bubble *clock.Turn, member MemberID) (uint64, b
 // Act → execute → repeat until [Pass] or the budget is spent, then end the
 // turn. Returns the sequence of the terminating "turn-ended" beat.
 //
-// THE BUDGET IS ONE ATTACK PLUS THE MEMBER'S OWN SPEED, IN FEET (Kirk,
-// rpg-project#254 review). A driver is asked again after every executed
-// intent — an Attack that lands still leaves movement to spend, a Move that
-// only closes half the distance still leaves the attack unspent — and the
-// inner loop is bounded (attacksLeft + movement-in-cells + one terminating
+// THE TURN'S OWN COUNT IS THE MEMBER'S SPEED, IN FEET (Kirk, rpg-project#254
+// review); WHAT IT CAN STILL PAY FOR IS ITS SHEET'S (rpg-project#1131). A
+// driver is asked again after every executed intent — an Attack that lands
+// still leaves movement to spend, a Move that only closes half the distance
+// still leaves the attack unspent, because the next view is built from the
+// sheet — and the inner loop is bounded (movement-in-cells + one terminating
 // call) so a driver that never returns Pass cannot spin this forever.
 //
 // A DRIVER'S OWN Go ERROR ABORTS THE WHOLE CALL, exactly as it always has —
@@ -535,13 +536,15 @@ func (e *Encounter) driveOneMonsterTurn(
 	}
 
 	// The speed is the sheet's at the start of this turn (rpg-project#538);
-	// once handed to the turn the budget is the turn's own and is spent down,
-	// not re-asked.
+	// once handed to the turn the movement is the turn's own and is spent down,
+	// not re-asked. It is the ONLY thing the turn counts: what the creature can
+	// still afford of its actions is its sheet's, asked each time a view is
+	// built (rpg-project#1131).
 	sheet, err := e.sheetOf(m.ID)
 	if err != nil {
 		return 0, false, nil, fmt.Errorf("turn budget: %w", err)
 	}
-	budget := TurnBudget{AttacksLeft: 1, MovementFeet: sheet.SpeedFeet, BonusActions: 1}
+	budget := TurnBudget{MovementFeet: sheet.SpeedFeet}
 
 	// See the function doc: bounded so a misbehaving driver cannot spin the
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
@@ -621,11 +624,10 @@ func (e *Encounter) runIntents(
 	}
 
 	for j := startJ; j < bound; j++ {
-		view, verr := e.buildMonsterView(m, *budget, round)
+		view, verr := e.buildMonsterView(m, *budget, round, kind)
 		if verr != nil {
 			return nil, fmt.Errorf("view: %w", verr)
 		}
-		view.Clock = kind
 
 		now := uint64(e.clock.ToData().HighWater)
 		opportunity := behaviorOpportunity{on: beatTurn, event: tickEv{Round: now}, now: now}
@@ -1131,7 +1133,7 @@ func (e *Encounter) executeTurnIntent(
 		if coords.Clock == ClockWorld {
 			return false, nil, fmt.Errorf("%q swung on the world clock: %w", activeID, ErrAttackOffTurn)
 		}
-		if why := attackRefusal(view, it, *budget); why != "" {
+		if why := attackRefusal(view, it); why != "" {
 			// ErrBadIntent: not a driver malfunction (see the type's own
 			// doc) — this member's turn simply ends, exactly like Pass.
 			//
@@ -1168,14 +1170,15 @@ func (e *Encounter) executeTurnIntent(
 
 		if serr := e.striker.Strike(context.Background(), e, activeID, it.Target, it.Action); serr != nil {
 			if errors.Is(serr, ErrStrikePaused) {
-				budget.AttacksLeft = 0
+				// NOTHING IS ZEROED: the sheet paid for the swing, and the
+				// resumed turn's next view reads it there.
 				e.pause = &pause{
 					kind:   PauseTurn,
 					member: activeID,
 					act:    e.CurrentAct(),
 					outer:  e.outerActs(),
 					turn: &turnPause{
-						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+						round: coords.Round, movementFeet: budget.MovementFeet, intent: coords.Intent, bound: coords.Bound,
 						afterStrike: true,
 					},
 				}
@@ -1183,7 +1186,6 @@ func (e *Encounter) executeTurnIntent(
 			}
 			return false, nil, fmt.Errorf("strike: %w", serr)
 		}
-		budget.AttacksLeft = 0
 		return false, nil, nil
 
 	case Move:
@@ -1218,7 +1220,7 @@ func (e *Encounter) executeTurnIntent(
 		// lets it Disengage as a bonus action spends it here, before a first
 		// step that would leave a hostile's reach, and the walk below is then
 		// the same walk it always was.
-		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, it.Path, budget)
+		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, it.Path, coords.Clock)
 		if derr != nil && !errors.Is(derr, errNoDisengage) {
 			return false, nil, derr
 		}
@@ -1288,7 +1290,7 @@ func (e *Encounter) executeTurnIntent(
 				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
-					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+					round: coords.Round, movementFeet: budget.MovementFeet, intent: coords.Intent, bound: coords.Bound,
 					face: walkFace{member: it.Target, pause: cloneWaypointPause(it.Pause)},
 				},
 			}
@@ -1407,7 +1409,7 @@ func (e *Encounter) executeTurnIntent(
 		// The Move arm's rule, for the Move arm's reason: a nimble creature
 		// sent running still spends its bonus action to get out cleanly. The
 		// route is known now, so its steps are too.
-		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, route.Path, budget)
+		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, route.Path, coords.Clock)
 		if derr != nil && !errors.Is(derr, errNoDisengage) {
 			return false, nil, derr
 		}
@@ -1466,7 +1468,7 @@ func (e *Encounter) executeTurnIntent(
 				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
-					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
+					round: coords.Round, movementFeet: budget.MovementFeet, intent: coords.Intent, bound: coords.Bound,
 					terminal: true, face: face,
 				},
 			}
@@ -1510,52 +1512,74 @@ func intentBound(budget TurnBudget) int {
 	return 2 + 2*CellsFromFeet(budget.MovementFeet)
 }
 
-// chargeDash pays for a run (rpg-project#671, R17), before its walk: the
-// creature's speed is ADDED to the movement it has left, as a player's Dash
-// adds it (RAW; a creature that walked three cells of six and then runs has
-// nine left, not six). On a turn the attack is gone too — a dash IS the swing,
-// spent on ground — and on the world clock, where there is no swing to
-// forfeit, the run is the added speed alone. speedFeet is the view's
-// [MonsterView.SpeedFeet], the number the driver cut the run to.
-//
-// paid is false, and nothing is charged, for a run on a turn whose attack is
-// already spent: the run IS the action, and there is none left to spend.
-func chargeDash(budget *TurnBudget, speedFeet int, kind ClockKind) (paid bool) {
-	if kind != ClockWorld {
-		if budget.AttacksLeft <= 0 {
-			return false
-		}
-		budget.AttacksLeft = 0
-	}
-	budget.MovementFeet += speedFeet
-
-	return true
-}
-
 // dashSpent is the sentence a run with the action already spent is refused
 // with ([Encounter.refuseUnpaidDash]).
 const dashSpent = "its action is spent"
 
-// refuseUnpaidDash charges a run ([chargeDash]) or, when the turn cannot pay
-// for it, refuses it: [ErrBadIntent], the turn ends, and the story says why
-// with a stayed beat naming `encounter:table:dash` and [dashSpent].
+// dashUnpayable is the sentence a run on a turn is refused with when no host
+// is wired to pay for it ([Actors.Dasher] is nil).
+const dashUnpayable = "nobody can be paid for its run"
+
+// refuseUnpaidDash pays for a run (rpg-project#671, R17), before its walk, or,
+// when the turn cannot pay for it, refuses it: [ErrBadIntent], the turn ends,
+// and the story says why with a stayed beat naming `encounter:table:dash` and
+// the reason. speedFeet is the view's [MonsterView.SpeedFeet], the number the
+// driver cut the run to.
 //
-// THE HOST IS THE JUDGE OF COST, as [attackRefusal] is of a swing. The
-// [TableDriver] never reaches this — a run after the swing is not on its
-// table ([behavior.Facts.CanDash], set by [factsFromView]), so its roll lands
-// on another row — and the backstop is for any other driver, which could
+// THE CREATURE'S SHEET IS THE JUDGE OF COST, as it is of a swing
+// ([attackRefusal]; rpg-project#1131). The speed is ADDED to the movement left,
+// as a player's Dash adds it (RAW; a creature that walked three cells of six
+// and then runs has nine left, not six) — the feet are this module's. What a
+// run costs on a turn is an action, and that is the sheet's to spend:
+//
+//   - On the world clock nobody is asked and nothing is paid: there is no
+//     swing to forfeit, and the run is the added speed alone.
+//   - On a turn it is ASK, THEN SPEND, THEN TELL, as a Disengage is. The sheet
+//     is read now; with no action left the run is refused ([dashSpent]) and
+//     the [Dasher] is not asked; with no [Dasher] wired it is refused
+//     ([dashUnpayable]) and no speed is added; otherwise the Dasher is asked,
+//     and only a success adds the speed. A Dasher that fails aborts the verb
+//     (the error is returned) with nothing added and nothing told.
+//
+// The [TableDriver] never reaches a refusal for want of an action — a run after
+// the swing is not on its table ([behavior.Facts.CanDash], set by
+// [factsFromView]) — and the backstop is for any other driver, which could
 // otherwise run on an action it no longer has.
 func (e *Encounter) refuseUnpaidDash(
 	member MemberID, budget *TurnBudget, speedFeet int, kind ClockKind,
 ) (refused bool, err error) {
-	if chargeDash(budget, speedFeet, kind) {
+	if kind == ClockWorld {
+		budget.MovementFeet += speedFeet
+
 		return false, nil
 	}
-	if berr := e.appendStayedBeat(member, tableCauseDash, dashSpent, uint64(e.clock.ToData().HighWater)); berr != nil {
-		return false, berr
+
+	sheet, err := e.sheetOf(member)
+	if err != nil {
+		return false, fmt.Errorf("run %q: %w", member, err)
+	}
+	why := ""
+	if actions, _ := turnNumbers(sheet, kind); actions <= 0 {
+		why = dashSpent
+	} else if e.dasher == nil {
+		why = dashUnpayable
+	}
+	if why != "" {
+		if berr := e.appendStayedBeat(member, tableCauseDash, why, uint64(e.clock.ToData().HighWater)); berr != nil {
+			return false, berr
+		}
+
+		return true, nil
 	}
 
-	return true, nil
+	// context.Background() for the Striker call's reason: no verb on this
+	// composition takes a caller context today.
+	if derr := e.dasher.Dash(context.Background(), e, member); derr != nil {
+		return false, fmt.Errorf("run %q: %w", member, derr)
+	}
+	budget.MovementFeet += speedFeet
+
+	return false, nil
 }
 
 // meleeReachCells is the v1 reading of "a hostile's melee reach" for the
@@ -1572,11 +1596,13 @@ const meleeReachCells = 1
 
 // disengageBeforeWalk is the composition's half of a bonus-action Disengage
 // (rpg-toolkit#2032): when the walker's sheet names a
-// [SheetFacts.BonusDisengage] trait, the turn still holds a bonus action, a
-// [Disengager] is wired, and ANY step of the walk leaves the melee reach of a
-// standing hostile the walker is in reach of at that step, it asks the
-// Disengager, spends the bonus action, and tells the story one [BeatActivated]
-// beat naming the trait. Otherwise it does nothing at all.
+// [SheetFacts.BonusDisengage] trait, its sheet says a bonus action is left
+// ([SheetFacts.Turn]; rpg-project#1131), a [Disengager] is wired, and ANY step
+// of the walk leaves the melee reach of a standing hostile the walker is in
+// reach of at that step, it asks the Disengager, whose sheet spends the bonus
+// action, and tells the story one [BeatActivated] beat naming the trait.
+// Otherwise it does nothing at all. This module counts nothing down: the next
+// view, and the next ask, read the sheet again.
 //
 // THE WALK THAT WILL HAPPEN, NOT THE PATH THAT WAS ASKED. The walk ends where
 // its walker can stand ([Encounter.standableEnd], rpg-toolkit#2031), so the
@@ -1592,24 +1618,25 @@ const meleeReachCells = 1
 // lasts the turn — so one ask covers the whole walk. Every other body is held
 // where it stands for the decision: nobody else moves inside this walk.
 //
-// THE WORLD CLOCK NEVER REACHES THE ASK. A round of the world hands a budget
-// with no bonus action ([TurnBudget.BonusActions] is 0 there), and nobody on
-// the world clock can stand in a hostile's reach: that is a fight, and it
-// would have formed.
+// THE WORLD CLOCK NEVER REACHES THE ASK. A round of the world carries no action
+// economy at all, so it has no bonus action to pay with ([turnNumbers]), and
+// nobody on the world clock can stand in a hostile's reach: that is a fight,
+// and it would have formed.
 //
 // ASK, THEN SPEND, THEN TELL. A Disengager that fails aborts the verb with
 // nothing spent and nothing told, so the story never claims a disengage the
 // sheet did not take.
+//
 // errNoDisengage is disengageBeforeWalk's news that this walk needs no
-// bonus-action Disengage: no disengager is wired, the budget has no bonus
-// action, there is no path, or the sheet has none to spend (#2220: an error
-// may carry the news, not the blame).
+// bonus-action Disengage: no disengager is wired, the clock is the world's,
+// there is no path, or the sheet has none to spend (#2220: an error may carry
+// the news, not the blame).
 var errNoDisengage = errors.New("no disengage before this walk")
 
 func (e *Encounter) disengageBeforeWalk(
-	member MemberID, m *memberRecord, path []spatial.Position, budget *TurnBudget,
+	member MemberID, m *memberRecord, path []spatial.Position, kind ClockKind,
 ) (map[MemberID]*IntelDelta, error) {
-	if e.disengager == nil || budget.BonusActions <= 0 || len(path) == 0 {
+	if e.disengager == nil || kind == ClockWorld || len(path) == 0 {
 		return nil, errNoDisengage
 	}
 	sheet, err := e.sheetOf(member)
@@ -1617,6 +1644,9 @@ func (e *Encounter) disengageBeforeWalk(
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
 	if sheet.BonusDisengage.Ref == "" {
+		return nil, errNoDisengage
+	}
+	if _, bonus := turnNumbers(sheet, kind); bonus <= 0 {
 		return nil, errNoDisengage
 	}
 	// The cells it will walk, judged as the walk judges them: its own walk,
@@ -1641,7 +1671,6 @@ func (e *Encounter) disengageBeforeWalk(
 	if err := e.disengager.Disengage(context.Background(), e, member); err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
-	budget.BonusActions--
 
 	out, err := e.RecordActivation(&RecordActivationInput{Actor: member, Ability: sheet.BonusDisengage})
 	if err != nil {
@@ -2242,9 +2271,11 @@ const (
 	attackRefusedOutReach = "target out of reach"
 )
 
-// attackRefusal is why intent cannot be carried out against this view and
-// budget, or "" when it can: Target is a currently Seen, Standing member
-// within intent's own Action's reach, and the turn has an attack left.
+// attackRefusal is why intent cannot be carried out against this view, or ""
+// when it can: Target is a currently Seen, Standing member within intent's own
+// Action's reach, and the view says the creature has an attack left — which is
+// its sheet's word as the view was built ([MonsterView.Budget],
+// rpg-project#1131), not a count kept here.
 //
 // THE FIRST REASON THAT HOLDS IS THE ONE TOLD. Nobody named comes before an
 // empty budget because a selector that named nobody is the author's news
@@ -2257,11 +2288,11 @@ const (
 // this member's own actions is simply absent from the map — Go's zero value
 // for a missing key is false, which is exactly "not in reach" for an action
 // this member does not have.
-func attackRefusal(view MonsterView, intent Attack, budget TurnBudget) string {
+func attackRefusal(view MonsterView, intent Attack) string {
 	if intent.Target == "" {
 		return attackRefusedNobody
 	}
-	if budget.AttacksLeft <= 0 {
+	if view.Budget.AttacksLeft <= 0 {
 		return attackRefusedSpent
 	}
 	for _, sm := range view.Seen {
@@ -2280,10 +2311,13 @@ func attackRefusal(view MonsterView, intent Attack, budget TurnBudget) string {
 }
 
 // buildMonsterView projects member's own static facts, its currently active
-// sight intel, and the turn's remaining budget into the shape a [Driver]
+// sight intel, and the turn's remaining budget — the movement this turn counts
+// and the actions its sheet says are left ([turnNumbers]) — into the shape a [Driver]
 // is allowed to see — the same anti-wall-hack contract [Decider]'s Snapshot
 // keeps (C2), extended to a turn's own questions.
-func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round int) (MonsterView, error) {
+func (e *Encounter) buildMonsterView(
+	m *memberRecord, budget TurnBudget, round int, kind ClockKind,
+) (MonsterView, error) {
 	ownCell, err := e.cellOf(m)
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("position: %w", err)
@@ -2312,6 +2346,11 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	if err != nil {
 		return MonsterView{}, fmt.Errorf("view: %w", err)
 	}
+
+	// WHAT IT CAN STILL AFFORD IS THE SHEET'S, asked here and nowhere else
+	// (rpg-project#1131): the view's two counts are the one function's answer,
+	// and nothing in this module assigns, zeroes or decrements either.
+	actions, bonus := turnNumbers(sheet, kind)
 
 	// bestRangeCells is the farthest this member's own actions can reach,
 	// in cells — the arithmetic max of authored RangeFeet values, not a
@@ -2542,7 +2581,8 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Seen:       seen,
 		Remembered: remembered,
 		Lost:       lost,
-		Budget:     budget,
+		Budget:     TurnBudget{AttacksLeft: actions, MovementFeet: budget.MovementFeet, BonusActions: bonus},
+		Clock:      kind,
 		SpeedFeet:  sheet.SpeedFeet,
 		CannotMove: sheet.CannotMove,
 		Round:      round,

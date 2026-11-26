@@ -118,6 +118,13 @@ type Actors struct {
 	// [Disengager].
 	Disengager Disengager
 
+	// Dasher has a member's sheet pay for a run on a turn (rpg-project#1131).
+	// OPTIONAL, and not checked by [Capabilities.Validate]: nil refuses every
+	// run on a turn, told by a stayed beat ("nobody can be paid for its run"),
+	// because a run nobody pays for is not a run the creature took. A round of
+	// the world asks nobody. See [Dasher].
+	Dasher Dasher
+
 	// Mover announces a member's step before the encounter takes it, so
 	// whatever reacts to movement can (rpg-project#316). REQUIRED, for the
 	// same reason Striker is and at the same door: a fight can form with an

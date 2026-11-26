@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -661,7 +662,7 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 				Behaviors: ordinaryBehavior(theDefaultThugTable())},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -675,7 +676,7 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 
@@ -749,7 +750,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -763,7 +764,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 
