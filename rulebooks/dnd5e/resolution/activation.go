@@ -26,22 +26,27 @@ import (
 type ActivationInput struct {
 	// MemberID is who is activating. Required. Without [ActivationInput.Driven]
 	// it must be a CHARACTER in the cast: a monster's abilities are driven by
-	// its behaviour, not declared by a player, and its economy belongs to
-	// whoever runs its turn rather than to its sheet — the same line
-	// [ErrNoPayer] draws. With Driven it must be a MONSTER.
+	// its behaviour, not declared by a player. With Driven it must be a
+	// MONSTER. (Until 2026-11-26 this line also said a monster's economy was
+	// not on its sheet; it is now, rpg-project#1131.)
 	MemberID string
 
-	// Driven says the activation was DECIDED AND PAID FOR by whoever drives a
-	// monster's turn — encounter's TurnBudget spent the bonus action before
-	// asking — so resolution charges nothing and refuses nothing on
-	// affordability. It only lands the ability's outcome on the monster,
-	// through the monster side of the cast, exactly as the player arm lands
-	// the same ability on a character.
+	// Driven says the activation was DECIDED by whoever drives a monster's
+	// turn. It lands the ability's outcome on the monster, through the monster
+	// side of the cast, exactly as the player arm lands the same ability on a
+	// character.
+	//
+	// Changed 2026-11-26 (rpg-project#1131): Driven no longer means "and paid
+	// for". A driven activation may carry an [Input.Cost], which the door
+	// charges to the monster's own sheet before the step runs, like every other
+	// machine; one sent with no Cost charges nothing. Until the session's slice
+	// lands, encounter's TurnBudget still spends the bonus action and sends no
+	// Cost, so the bonus action is counted beside the sheet, not on it (the
+	// state between two slices).
 	//
 	// A driven activation is a monster's door and nobody else's: a character
 	// sent through it is refused ([ErrBadActivation], "characters declare"),
-	// because a character's economy is on its sheet and the player arm charges
-	// it there. An ability with no driven arm yet is refused by name rather
+	// because the player arm declares and charges a character from its sheet. An ability with no driven arm yet is refused by name rather
 	// than run some other way. Driven today: Disengage
 	// (refs.CombatAbilities.Disengage), the half of Nimble Escape that has a
 	// use case (rpg-toolkit#2032). The next driven ability adds its arm in
@@ -482,8 +487,9 @@ func (c *activationEffectCollector) Close(ctx context.Context) error {
 // # A monster comes through the driven arm
 //
 // With [ActivationInput.Driven] set the activator is a monster whose driver
-// already spent the economy; see [activationMachine.startDriven]. Without it
-// a monster is refused at Start, as it always was.
+// decided the ability; see [activationMachine.startDriven]. Its price, when
+// the input carries a Cost, is charged at the door like any other. Without
+// Driven a monster is refused at Start, as it always was.
 //
 // Refuses a nil input, a member with no ID, a missing or invalid ability ref,
 // and a nil roller, all before the world is loaded. The driven arm holds the
@@ -544,8 +550,8 @@ type activationMachine struct {
 	observers []int
 	roller    dice.Roller
 
-	// driven is [ActivationInput.Driven]: the monster's driver spent the
-	// economy, and Start takes the driven arm instead of the player's.
+	// driven is [ActivationInput.Driven]: the monster's driver decided the
+	// ability, and Start takes the driven arm instead of the player's.
 	driven bool
 
 	// cast is set for a gateless cast and nil for every activation. It is the
@@ -727,12 +733,11 @@ func (m *activationMachine) step(actor *character.Character, target core.Entity)
 //
 // The player arm asks the character's sheet to ActivateAbility, and the
 // ability spends the character's economy and publishes its condition. A
-// monster has neither the sheet method nor the economy — its driver
-// (encounter's TurnBudget) already spent the bonus action before asking — so
-// this arm does the one remaining thing: it publishes the SAME condition the
-// player's ability publishes, on this interaction's bus, through the monster
-// side of the cast. Nothing is charged, and nothing is refused for
-// affordability.
+// monster has no sheet method for it, and its price is charged at the door,
+// before this arm runs (2026-11-26, rpg-project#1131), so this arm does the one
+// thing left: it publishes the SAME condition the player's ability publishes,
+// on this interaction's bus, through the monster side of the cast. It charges
+// nothing itself and never sees the price.
 //
 // # The abilities it knows are a closed list
 //

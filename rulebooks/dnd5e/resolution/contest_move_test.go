@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
@@ -393,7 +394,7 @@ func (s *ContestMoveTestSuite) TestAForcedMoveSpendsAMonstersReactionAtTheDoor()
 	s.Empty(target.Applied[1].NotTaken, "a monster has a reaction now, and it just spent it")
 
 	blob := s.monsterSheet(out, wolfID)
-	s.True(blob.ReactionSpent, "the meter is on the monster's own sheet, ready to be written back")
+	s.Zero(blob.SlotsLeft(coreCombat.ActionReaction), "the meter is on the monster's own sheet, ready to be written back")
 
 	reloaded, err := monster.LoadFromData(s.ctx, blob, events.NewEventBus())
 	s.Require().NoError(err)

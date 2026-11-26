@@ -121,28 +121,37 @@ func monsterCast(t *testing.T) (*Participants, *monster.Monster) {
 	}, wolf
 }
 
-// TestTheDoorRefusesAMonsterPriceThatIsNotOneReaction: a monster can be
-// charged its one reaction and nothing else. Any other price is ErrNoPayer,
-// and the reaction is left where it was.
-func TestTheDoorRefusesAMonsterPriceThatIsNotOneReaction(t *testing.T) {
-	for name, profile := range map[string]*combat.SpendProfile{
-		"an action":                   {Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}},
-		"a reaction and a pool point": reactionCost(wolfID, resources.WardingFlare).Profile,
-		"two reactions":               {Slots: map[coreCombat.ActionType]int{coreCombat.ActionReaction: 2}},
-		"nothing at all":              nil,
+// TestTheDoorChargesAMonsterThroughTheGate: a monster is charged as a
+// character is, from its own sheet, all of a price or none. An action is paid;
+// a reaction and a pool point is refused whole, because a monster has no pool,
+// and the reaction is still there; two reactions is refused, because the
+// sheet holds one; a free price is free.
+func TestTheDoorChargesAMonsterThroughTheGate(t *testing.T) {
+	for name, tc := range map[string]struct {
+		profile *combat.SpendProfile
+		paid    bool
+	}{
+		"an action":                   {&combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}, true},
+		"a reaction and a pool point": {reactionCost(wolfID, resources.WardingFlare).Profile, false},
+		"two reactions":               {&combat.SpendProfile{Slots: map[coreCombat.ActionType]int{coreCombat.ActionReaction: 2}}, false},
+		"nothing at all":              {nil, true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cast, wolf := monsterCast(t)
-			err := payAtTheDoor(context.Background(), &Cost{PayerID: wolfID, Profile: profile}, cast)
-			require.ErrorIs(t, err, ErrNoPayer)
-			require.True(t, wolf.CanReact(), "a refused price spends nothing")
+			err := payAtTheDoor(context.Background(), &Cost{PayerID: wolfID, Profile: tc.profile}, cast)
+			if tc.paid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, ErrCannotPay)
+			}
+			require.True(t, wolf.CanReact(), "no price here touches the reaction")
 		})
 	}
 }
 
 // TestASecondBillAgainstASpentMonsterIsRefused: the door charges a monster
-// once. The second bill wraps the monster's own refusal under ErrCannotPay, so
-// a caller can match either, and the sheet is exactly what the first bill left.
+// once. The second bill is the gate's refusal under ErrCannotPay, and the
+// sheet is exactly what the first bill left.
 func TestASecondBillAgainstASpentMonsterIsRefused(t *testing.T) {
 	cast, wolf := monsterCast(t)
 	require.NoError(t, payAtTheDoor(context.Background(), reactionCost(wolfID, ""), cast))
@@ -152,7 +161,6 @@ func TestASecondBillAgainstASpentMonsterIsRefused(t *testing.T) {
 
 	err = payAtTheDoor(context.Background(), reactionCost(wolfID, ""), cast)
 	require.ErrorIs(t, err, ErrCannotPay)
-	require.ErrorIs(t, err, monster.ErrReactionSpent)
 	after, err := json.Marshal(wolf.ToData())
 	require.NoError(t, err)
 	require.JSONEq(t, string(before), string(after), "the refused bill leaves the sheet unchanged")

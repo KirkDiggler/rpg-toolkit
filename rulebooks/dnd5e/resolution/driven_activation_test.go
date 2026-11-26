@@ -145,22 +145,6 @@ func (s *ActivationTestSuite) TestADrivenMonsterAbilityWithNoArmIsRefusedByName(
 	s.Nil(out)
 }
 
-// "Charges nothing" is a law at the door, not a habit of the caller: a driven
-// activation sent with a cost is refused before the world is loaded, and
-// nobody is charged — the driver already spent it.
-func (s *ActivationTestSuite) TestADrivenActivationWithACostIsRefused() {
-	machine, err := NewActivation(drivenDisengage())
-	s.Require().NoError(err)
-
-	goblin := monsters.NewGoblin(goblinID).ToData()
-	out, err := s.resolveOnBus(events.NewEventBus(), machine, s.drivenWorld(), s.drivenCast(goblin),
-		&Cost{PayerID: goblinID})
-
-	s.Require().ErrorIs(err, ErrBadActivation)
-	s.Contains(err.Error(), "a driven activation carries no cost; its driver spent it")
-	s.Nil(out)
-}
-
 // A character declares. Driven is a monster's door, and a character sent
 // through it would skip the economy its own sheet charges.
 func (s *ActivationTestSuite) TestADrivenCharacterActivationIsRefused() {

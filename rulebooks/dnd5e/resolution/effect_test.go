@@ -286,8 +286,9 @@ func (s *ActivationTestSuite) TestAnEffectIsRefusedBeforePaymentWhenItCannotLand
 	})
 }
 
-// A MONSTER CANNOT PAY IT: today's rule, pinned. A monster is charged one
-// reaction and nothing else, and an effect's cost is not that.
+// A MONSTER CANNOT PAY IT: a monster has no count to pay Second Wind's use
+// from, so the gate refuses the whole price as ErrCannotPay. This is what step
+// 2 of rpg-project#1131 changes: a monster's counts are not on its sheet yet.
 func (s *ActivationTestSuite) TestAMonsterAsPayerOfAnEffectsCostIsRefused() {
 	data := s.fighterAt(1, 4, 12)
 	definition := s.secondWindDescription(data)
@@ -299,8 +300,8 @@ func (s *ActivationTestSuite) TestAMonsterAsPayerOfAnEffectsCostIsRefused() {
 	out, err := s.resolveOnBus(events.NewEventBus(), machine, s.effectWorld(),
 		[]Participant{{Character: data}, s.wolfParticipant()}, s.effectCost(definition, wolfID))
 
-	s.Require().ErrorIs(err, ErrNoPayer)
-	s.Contains(err.Error(), "one reaction and nothing else")
+	s.Require().ErrorIs(err, ErrCannotPay)
+	s.Contains(err.Error(), wolfID)
 	s.Nil(out)
 }
 

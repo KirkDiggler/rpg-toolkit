@@ -630,12 +630,11 @@ func (s *CostTestSuite) TestARefusedPaymentWritesNothingBack() {
 // Who can be charged.
 // ---------------------------------------------------------------------------
 
-// A monster in the cast is refused BY NAME rather than nil-dereferenced or
-// silently let through. monster.Monster keeps no economy — it is handed one for
-// a turn and it is thrown away after — so there is nothing on that sheet to
-// debit, and the message says that rather than pretending the wolf was never
-// passed in.
-func (s *CostTestSuite) TestACostNamingAMonsterIsRefusedByName() {
+// A cost naming a monster is charged to the monster's own sheet, as a
+// character's is to its sheet (rpg-project#1131, 2026-11-26). The strike's
+// price needs a banked attack, which the wolf does not hold, so the gate
+// refuses it BY NAME as ErrCannotPay, and the hero's sheet is untouched.
+func (s *CostTestSuite) TestACostNamingAMonsterIsChargedToTheMonstersSheetAndRefusedByName() {
 	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, &Cost{
@@ -644,9 +643,9 @@ func (s *CostTestSuite) TestACostNamingAMonsterIsRefusedByName() {
 		Turn:    s.thisTurn(),
 	}, &countingRoller{})
 
-	s.Require().ErrorIs(err, ErrNoPayer)
+	s.Require().ErrorIs(err, ErrCannotPay)
+	s.Require().NotErrorIs(err, ErrNoPayer, "the wolf was passed in, so it is a payer")
 	s.Require().Contains(err.Error(), wolfID)
-	s.Require().Contains(err.Error(), "monster", "the refusal says which of the two ways it failed")
 	s.Require().Nil(out)
 	s.Require().True(machine.started, "pure preflight runs before payment")
 }

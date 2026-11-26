@@ -106,9 +106,11 @@ var (
 	// single sentinel would send the first one looking at the wrong sheet.
 	ErrBadCost = errors.New("resolution: invalid cost")
 
-	// ErrNoPayer indicates a cost naming somebody this cast cannot charge —
-	// an ID that was not passed in, or a monster, whose economy belongs to
-	// whoever runs its turn rather than to its sheet.
+	// ErrNoPayer indicates a cost naming somebody this cast cannot charge: an
+	// ID that was not passed in, or a monster's cast, which is not priced at
+	// the door yet. A monster named in an ordinary cost is a payer, and one that
+	// cannot afford the price is [ErrCannotPay] (changed 2026-11-26,
+	// rpg-project#1131).
 	ErrNoPayer = errors.New("resolution: payer has no ledger in this cast")
 
 	// ErrCannotPay indicates an actor who cannot afford what they declared: no
