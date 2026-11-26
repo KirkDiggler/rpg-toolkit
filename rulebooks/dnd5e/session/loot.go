@@ -168,7 +168,7 @@ func (m *Manager) deliverLoot(ctx context.Context, scope *writeScope, in *LootIn
 		}
 		return fmt.Errorf("looter %q: %w", in.Member, ErrNoCharacter)
 	}
-	if err := deliverTaken(scope.data.Dungeon, in.Target, sheet, taken); err != nil {
+	if err := deliverTaken(scope.session, scope.data.Dungeon, in.Target, sheet, taken); err != nil {
 		return err
 	}
 	return m.sheetsFor(scope).save(ctx, sheet)

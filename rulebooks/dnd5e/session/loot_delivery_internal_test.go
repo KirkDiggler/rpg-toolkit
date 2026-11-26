@@ -68,7 +68,7 @@ func TestDeliverTakenRefusesWhatTheRulesRefuse(t *testing.T) {
 	sheet := &character.Data{ID: "alice"}
 	bad := encounter.ItemGrant{ID: "lieutenants-cloak", Name: "Lieutenant's cloak",
 		Item: json.RawMessage(`{"name":"Lieutenant's cloak","slot":"cape","lets":[{"use":"second wind","with":{"level":1}}]}`)}
-	err := deliverTaken("castle", "guard", sheet, []encounter.TakenItem{{Member: "alice", Grant: bad}})
+	err := deliverTaken("sess", "castle", "guard", sheet, []encounter.TakenItem{{Member: "alice", Grant: bad}})
 	require.ErrorIs(t, err, ErrUnknownContent)
 	require.Contains(t, err.Error(), "lieutenants-cloak")
 	require.Empty(t, sheet.Items)
@@ -105,4 +105,44 @@ func TestALooterWithNoSheetSavesNoSheet(t *testing.T) {
 	err = m.deliverLoot(context.Background(), nil, in, sheet, []encounter.TakenItem{{Member: "guard-2",
 		Grant: encounter.ItemGrant{ID: "cloak", Item: json.RawMessage(`{}`)}}})
 	require.ErrorIs(t, err, ErrNoCharacter)
+}
+
+// Test 5. The id of a taken item that is not unique is made from the run and
+// the body, so every one taken is its own item.
+func TestTakenItemID(t *testing.T) {
+	id := takenItemID("sess", "guard", "garrison-ring")
+	require.Equal(t, id, takenItemID("sess", "guard", "garrison-ring"), "the same when asked twice")
+	require.NotEqual(t, id, takenItemID("sess-2", "guard", "garrison-ring"), "another session")
+	require.NotEqual(t, id, takenItemID("sess", "guard-2", "garrison-ring"), "another body")
+	require.NotEqual(t, id, takenItemID("sess", "guard", "captains-ring"), "another item")
+	require.Regexp(t, regexp.MustCompile(`^garrison-ring-[0-9a-f]{8}$`), id)
+	require.Regexp(t, regexp.MustCompile(`^[A-Za-z0-9_-]+$`), takenItemID("run:1/a b", "g u", "x_y"),
+		"only letters, digits, '-' and '_' whatever the run and body are called")
+	require.NotEqual(t, siteItemID("castle", "garrison-ring"), takenItemID("castle", "guard", "garrison-ring"),
+		"the two ids differ for one site, item, session and body")
+}
+
+// Test 6. deliverTaken picks the id by the author's word.
+func TestDeliverTakenPicksTheIDByTheWord(t *testing.T) {
+	block := func(unique string) encounter.TakenItem {
+		return encounter.TakenItem{Member: "alice", Grant: encounter.ItemGrant{ID: "garrison-ring", Name: "Garrison ring",
+			Item: json.RawMessage(`{"name":"Garrison ring","slot":"ring","lets":[{"use":"second wind","with":{"level":1}}]` + unique + `}`)}}
+	}
+	for _, tc := range []struct {
+		name, word string
+		unique     bool
+		want       string
+	}{
+		{"unique true", `,"unique":true`, true, siteItemID("castle", "garrison-ring")},
+		{"unique false", `,"unique":false`, false, takenItemID("sess", "guard", "garrison-ring")},
+		{"no word", ``, false, takenItemID("sess", "guard", "garrison-ring")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sheet := &character.Data{ID: "alice"}
+			require.NoError(t, deliverTaken("sess", "castle", "guard", sheet, []encounter.TakenItem{block(tc.word)}))
+			require.Len(t, sheet.Items, 1)
+			require.Equal(t, tc.want, sheet.Items[0].ID)
+			require.Equal(t, tc.unique, sheet.Items[0].Description.Unique)
+		})
+	}
 }

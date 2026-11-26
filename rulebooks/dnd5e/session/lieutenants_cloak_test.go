@@ -202,7 +202,9 @@ func TestTheLieutenantsCloakIsLootedWornAndUsed(t *testing.T) {
 	saved := s.stored("alice")
 	require.Len(t, saved.Items, 1, "the cloak is on the saved sheet")
 	item := saved.Items[0]
-	require.Equal(t, wornDescription("lieutenants-cloak", cloakName, "cloak"), item.Description,
+	wantDescription := wornDescription("lieutenants-cloak", cloakName, "cloak")
+	wantDescription.Unique = true // the site's cloak says `unique: true` (rpg-project#1182)
+	require.Equal(t, wantDescription, item.Description,
 		"the rules' reading of the author's block")
 	require.Equal(t, 1, item.Left["charges"], "at 1 of 1")
 	require.Empty(t, saved.EquipmentSlots[character.SlotCloak], "in the inventory, not worn")
