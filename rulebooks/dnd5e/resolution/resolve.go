@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -190,6 +191,10 @@ func (in *Input) Validate() error {
 	// A budget pays part of a cost; with no cost it would be silently ignored.
 	if in.Budget != nil && in.Cost == nil {
 		return fmt.Errorf("%w: a budget was named with no cost to pay", ErrBadCost)
+	}
+
+	if err := in.validateDrivenDash(); err != nil {
+		return err
 	}
 
 	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. The encounter owns the one
@@ -851,4 +856,27 @@ type attachAllInput struct {
 	// second path — a second path is how the two halves of one loader come to
 	// disagree about what a failure means.
 	DropUnreadable bool
+}
+
+// validateDrivenDash refuses a driven Dash that carries no payment. A driven
+// Dash lands nothing on the sheet (see [activationMachine.startDriven]), so the
+// charge at the door is the whole of it, and one sent without it would report
+// success for an interaction that did nothing. It runs in Validate, before the
+// world is loaded and before anything is charged, for the reason the old
+// "a driven activation carries no cost" refusal stood here: Start never sees
+// the cost. A driven Disengage is unchanged and may carry a cost or none.
+func (in *Input) validateDrivenDash() error {
+	m, ok := in.Machine.(*activationMachine)
+	if !ok || !m.driven || m.cast != nil || m.ability == nil ||
+		m.ability.String() != refs.CombatAbilities.Dash().String() {
+		return nil
+	}
+	if in.Cost == nil || in.Cost.Profile == nil {
+		return fmt.Errorf("%w: a driven Dash is only its payment and carries none", ErrBadActivation)
+	}
+	if in.Cost.PayerID != m.member {
+		return fmt.Errorf("%w: a driven Dash is paid by the one who runs: %q runs, %q was named to pay",
+			ErrBadActivation, m.member, in.Cost.PayerID)
+	}
+	return nil
 }
