@@ -123,3 +123,60 @@ func TestNilIsRefusedByName(t *testing.T) {
 	_, err = monster.CostOfDisengage(&monster.CostOfDisengageInput{})
 	require.Equal(t, rpgerr.CodeNil, rpgerr.GetCode(err))
 }
+
+func dashOf(t *testing.T, sheet *monster.Data) *combat.SpendProfile {
+	t.Helper()
+	out, err := monster.CostOfDash(&monster.CostOfDashInput{Sheet: sheet})
+	require.NoError(t, err)
+	require.NotNil(t, out.Cost)
+	return out.Cost
+}
+
+// Dash Test 1.
+func TestADashIsExactlyOneActionAndGrantsNothing(t *testing.T) {
+	sheets := map[string]*monster.Data{
+		"goblin": monsters.NewGoblin("goblin-1").ToData(),
+		"wolf":   monsters.NewWolf("wolf-1").ToData(),
+	}
+	for name, sheet := range sheets {
+		cost := dashOf(t, sheet)
+		require.Equal(t, map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}, cost.Slots, name)
+		require.Equal(t, oneOf(coreCombat.ActionStandard), cost, name)
+		require.Empty(t, cost.Capacity, name)
+		require.Empty(t, cost.Pools, name)
+		require.Empty(t, cost.Grants, name)
+		require.Empty(t, cost.Requires, name)
+	}
+}
+
+// Dash Test 2.
+func TestEachDashPriceIsItsOwnProfile(t *testing.T) {
+	sheet := monsters.NewGoblin("goblin-1").ToData()
+	first := dashOf(t, sheet)
+	first.Slots[coreCombat.ActionStandard] = 9
+	first.Slots[coreCombat.ActionBonus] = 9
+
+	require.Equal(t, oneOf(coreCombat.ActionStandard), dashOf(t, sheet))
+}
+
+// Dash Test 3.
+func TestTheGateTakesADashAndLeavesTheBonusActionAndReaction(t *testing.T) {
+	goblin := monsters.NewGoblin("goblin-1")
+	sheet := goblin.ToData()
+
+	require.NoError(t, combat.Pay(goblin, dashOf(t, sheet)))
+	require.Equal(t, 0, goblin.SlotsLeft(coreCombat.ActionStandard))
+	require.Equal(t, 1, goblin.SlotsLeft(coreCombat.ActionBonus))
+	require.Equal(t, 1, goblin.SlotsLeft(coreCombat.ActionReaction))
+
+	require.NoError(t, combat.Pay(goblin, disengageOf(t, sheet)), "its Disengage is a bonus action, still there")
+	require.Error(t, combat.Pay(goblin, costOf(t, sheet, 0)), "its scimitar is an action, gone")
+}
+
+// Dash Test 4.
+func TestADashRefusesNilByName(t *testing.T) {
+	_, err := monster.CostOfDash(nil)
+	require.Equal(t, rpgerr.CodeNil, rpgerr.GetCode(err))
+	_, err = monster.CostOfDash(&monster.CostOfDashInput{})
+	require.Equal(t, rpgerr.CodeNil, rpgerr.GetCode(err))
+}

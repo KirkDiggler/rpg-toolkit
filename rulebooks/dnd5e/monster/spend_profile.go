@@ -117,6 +117,45 @@ func CostOfDisengage(in *CostOfDisengageInput) (*CostOfDisengageOutput, error) {
 	return &CostOfDisengageOutput{Cost: oneSlot(coreCombat.ActionStandard)}, nil
 }
 
+// CostOfDashInput names the monster's sheet.
+type CostOfDashInput struct {
+	// Sheet is the monster's stored sheet. It is required, though it is not
+	// read today.
+	Sheet *Data
+}
+
+// CostOfDashOutput is the price, for the gate to charge.
+type CostOfDashOutput struct {
+	// Cost is the price of the Dash. It is always a fresh profile.
+	Cost *combat.SpendProfile
+}
+
+// CostOfDash compiles what a monster's Dash costs: one action, for every
+// sheet, and nothing banked.
+//
+// It grants nothing. A player's Dash banks movement on the player's sheet
+// (see combatabilities.Dash, which adds the character's speed to its movement
+// remaining). An NPC's movement is not on its sheet: the encounter walks it
+// one cell at a time and adds a run's speed to its own count, ruled on
+// 2026-11-27 (https://github.com/KirkDiggler/rpg-project/issues/1131#issuecomment-7200191665).
+// So this profile has no Grants. The day an NPC's movement is on its sheet,
+// this profile banks it.
+//
+// The sheet is not read today: no trait makes an NPC's Dash a bonus action.
+// It is taken anyway, for the reason [CostOfAction] gives.
+//
+// Refuses a nil input or a nil Sheet with [rpgerr.CodeNil].
+func CostOfDash(in *CostOfDashInput) (*CostOfDashOutput, error) {
+	if in == nil {
+		return nil, rpgerr.New(rpgerr.CodeNil, "no input to price a monster's Dash for")
+	}
+	if in.Sheet == nil {
+		return nil, rpgerr.New(rpgerr.CodeNil, "no monster sheet to price a Dash for")
+	}
+
+	return &CostOfDashOutput{Cost: oneSlot(coreCombat.ActionStandard)}, nil
+}
+
 // oneSlot is a profile of exactly one of the given slot and nothing else.
 func oneSlot(slot coreCombat.ActionType) *combat.SpendProfile {
 	return &combat.SpendProfile{Slots: map[coreCombat.ActionType]int{slot: 1}}
