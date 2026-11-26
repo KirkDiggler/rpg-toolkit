@@ -47,12 +47,18 @@ func TestCustomItemsAreSaid(t *testing.T) {
 	require.Contains(t, prop.Sentence, "is the item “Lieutenant's cloak”")
 	require.Contains(t, prop.Connects, readback.Connection{Kind: readback.ConnItem, ID: "lieutenants-cloak", Role: readback.RoleIsItem})
 
-	// The creature's own statement now says looting its body gives the items
-	// (rpg-project#1167), so only the other two keep the no-loot rule.
-	for _, st := range []readback.Statement{item, prop} {
-		for _, word := range []string{"loot", "take", "taken", "gives"} {
+	// The creature's own statement says looting its body gives the items
+	// (rpg-project#1167). An item's statement says what looting does with it
+	// (rpg-project#850, #1181), so it may say "loot" but not "take" or "gives";
+	// a prop is not taken by anything yet, so its statement says none of the four.
+	banned := map[string][]string{
+		"item": {"take", "taken", "gives"},
+		"prop": {"loot", "take", "taken", "gives"},
+	}
+	for kind, st := range map[string]readback.Statement{"item": item, "prop": prop} {
+		for _, word := range banned[kind] {
 			require.False(t, strings.Contains(strings.ToLower(st.Sentence), word),
-				"nothing in a run uses items yet, so %q does not say %q", st.Sentence, word)
+				"the %s statement %q does not say %q: nothing takes a prop yet, and an item's statement says only what looting does with it", kind, st.Sentence, word)
 		}
 	}
 	for _, un := range rb.NotYetSaid {
