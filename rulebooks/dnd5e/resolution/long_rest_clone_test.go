@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -63,6 +64,15 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 		KnownSpells:   []string{"dnd5e:spell:healing-word"},
 		Features:      []json.RawMessage{json.RawMessage(`{"feature":true}`)},
 		Conditions:    []json.RawMessage{json.RawMessage(`{"condition":true}`)},
+		Items: []magicitems.Data{{
+			ID: "cloak-1",
+			Description: magicitems.Description{
+				Name:  "Cloak",
+				Slots: []string{"cloak"},
+				Pools: map[string]magicitems.Pool{"charges": {Maximum: 3}},
+			},
+			Left: map[string]int{"charges": 2},
+		}},
 		ActionEconomy: &character.ActionEconomyData{
 			TurnNumber: 3,
 			Granted:    map[character.GrantedActionKey]int{character.GrantedAttacks: 2},
@@ -115,6 +125,15 @@ func TestCloneCharacterDataOwnsEveryMutableField(t *testing.T) {
 	require.Equal(t, 1, source.DeathSaveState.Failures,
 		"mutating the clone's death-save state must not reach the source")
 
+	// An item's charges are a map; sharing it is the fault that matters.
+	clone.Items[0].Left["charges"] = 0
+	require.Equal(t, 2, source.Items[0].Left["charges"],
+		"spending the clone's item charges must not reach the source")
+	source.Items[0].Left["charges"] = 1
+	require.Equal(t, 0, clone.Items[0].Left["charges"],
+		"spending the source's item charges must not reach the clone")
+	source.Items[0].Left["charges"] = 2
+
 	require.NotSame(t, source.ActionEconomy, clone.ActionEconomy)
 	require.NotEqual(t,
 		reflect.ValueOf(source.ActionEconomy.Granted).Pointer(),
@@ -150,4 +169,11 @@ func mutableCharacterDataIdentity(t *testing.T, value reflect.Value) uintptr {
 			"got dynamic kind %s; populate it with a map, slice, or pointer", value.Kind())
 		return 0
 	}
+}
+
+// TestCloneCharacterDataKeepsNilItemsNil pins that a character with no items
+// copies to a character with no items, not to an empty slice.
+func TestCloneCharacterDataKeepsNilItemsNil(t *testing.T) {
+	clone := cloneCharacterData(&character.Data{ID: "no-items"})
+	require.Nil(t, clone.Items)
 }
