@@ -88,12 +88,11 @@ func (s strikerSeam) Strike(
 	// A monster's swing is priced by the rules from its own sheet and paid at
 	// the door below, as a player's is (rpg-project#1131, 2026-11-26). The
 	// sheet gives its turn back at its own turn start, so no Turn rides on the
-	// cost. THE STATE BETWEEN TWO SLICES: the encounter still asks for a swing
-	// only when its own count says the creature has one left (its slice is
-	// next, rpg-project#1131), so a monster that cannot pay here means the two
-	// counts disagree. That is a malfunction, not a refusal to tell: the error
-	// returns like any other, aborts the caller's verb, tells nothing and
-	// saves nothing.
+	// cost. The encounter asks for a swing only when the facts
+	// [sheetSeam.readFacts] just gave it say an action is left on this very
+	// sheet (rpg-project#1131, 2026-11-27), so a monster that cannot pay here
+	// is a malfunction, not a refusal to tell: the error returns like any
+	// other, aborts the caller's verb, tells nothing and saves nothing.
 	cast, err := s.m.castFor(ctx, s.scope, roster, nil)
 	if err != nil {
 		return fmt.Errorf("strike: %w", err)

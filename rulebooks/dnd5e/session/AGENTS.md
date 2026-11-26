@@ -197,18 +197,25 @@ poses the windows the output leaves, runs the verb's continuation, then
 commits — so the story tells the cause before the membership change, and a
 pause is posed only after everything that settled before it was told.
 
-**An NPC's swing and its Disengage are paid from its sheet at the door
-(rpg-project#1131, 2026-11-26).** `strikerSeam.Strike` hands the door the price
-`monster.CostOfAction` reads for the listed action (its own stated cost, else
-one action), and `strikerSeam.Disengage` hands it `monster.CostOfDisengage`
-(a bonus action with Nimble Escape); the door charges the monster's own stored
-economy, and the sheet gives the turn back at its own turn start, so no `Turn`
-rides on either cost. The driver no longer pays a Disengage outside the door,
-and a swing is no longer free when the stat block states no price. Until the
-encounter's own count follows (its slice is next), both counts exist and
-agree; a monster that cannot pay here means they disagree, which the seam
-returns as an ordinary error (it aborts the verb, tells nothing, saves
-nothing). What a player sees does not change.
+**An NPC's turn is owned by its sheet: its swing, its Disengage and its run
+are paid at the door, and the sheet says what is left (rpg-project#1131,
+2026-11-26 and 2026-11-27, rpg-project#1209).** `strikerSeam.Strike` hands the
+door the price `monster.CostOfAction` reads for the listed action (its own
+stated cost, else one action), `strikerSeam.Disengage` hands it
+`monster.CostOfDisengage` (a bonus action with Nimble Escape), and
+`strikerSeam.Dash` ([`dash.go`](./dash.go)) hands it `monster.CostOfDash` (one
+action); the door charges the monster's own stored economy, and the sheet gives
+the turn back at its own turn start, so no `Turn` rides on any cost. The
+encounter keeps no count of its own: `sheetSeam.readFacts` fills
+`SheetFacts.Turn` from the stored sheet (`ActionsLeft`, `BonusActionsLeft`),
+and the encounter asks for a swing, a Disengage or a run only when those say
+the sheet can pay. A player's `Turn` stays nil: its turn is paid through its
+own verbs. The feet of a run stay the encounter's (it adds the run's speed to
+the movement left and tells the run in its walk's steps); `Dash` records
+nothing. A monster that cannot pay at the door is a malfunction, returned as an
+ordinary error (it aborts the verb, tells nothing, saves nothing). The
+session's own `TurnBudget` twin ([`turndriver.go`](./turndriver.go)) still
+mirrors the view and is a later step.
 
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
