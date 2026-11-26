@@ -23,6 +23,7 @@ customItems:
   lieutenants-cloak:
     name: Lieutenant's cloak
     slot: cloak
+    unique: true
     charges: { max: 1, refills: { on: [short rest, long rest] } }
     lets:
       - use: second wind
