@@ -162,13 +162,17 @@ type pause struct {
 // strike paused rather than its walk: there is nothing left to walk, only the
 // rest of the turn. Neither is re-derivable from the cells that remain.
 type turnPause struct {
-	behavior    *BehaviorWork
-	round       int
-	budget      TurnBudget
-	intent      int
-	bound       int
-	terminal    bool
-	afterStrike bool
+	behavior *BehaviorWork
+	round    int
+	// movementFeet is the movement the turn has left, ALREADY CHARGED for the
+	// cells walked before the pause. It is the only thing a turn counts for
+	// itself: what the creature can still afford of its actions is its sheet's,
+	// asked when the resumed turn's next view is built (rpg-project#1131).
+	movementFeet int
+	intent       int
+	bound        int
+	terminal     bool
+	afterStrike  bool
 
 	// face is what the paused walk closes on — [Move.Target], a [Routed]
 	// walk's anchor toward, or the cell of a sound it walks toward — kept so
@@ -272,10 +276,12 @@ type TurnPauseData struct {
 	// monster view on resume.
 	Round int `json:"round"`
 
-	// Budget is the turn's remaining economy, ALREADY CHARGED for the cells
+	// Budget is the turn's remaining MOVEMENT, ALREADY CHARGED for the cells
 	// walked before the pause. The live loop decrements movement once after
 	// its cell loop; a pause happens inside that loop, so it does the
 	// arithmetic itself rather than resuming onto a budget it already spent.
+	// Nothing else of the turn is saved: a resumed turn's view reads what the
+	// creature can still afford from its sheet, like any other.
 	Budget TurnBudgetData `json:"budget"`
 
 	// Intent is the inner loop's counter at the pause, and Bound its limit.
@@ -318,15 +324,12 @@ type WaypointPauseData struct {
 	Wait   int          `json:"wait,omitempty"`
 }
 
-// TurnBudgetData is the persistent representation of a [TurnBudget].
+// TurnBudgetData is the persistent representation of what a paused turn counts
+// for itself: its movement left, in feet. The attacks and bonus actions it used
+// to carry are the creature's sheet's now (rpg-project#1131); a blob written
+// with them reads as the movement alone.
 type TurnBudgetData struct {
-	AttacksLeft  int `json:"attacks_left,omitempty"`
 	MovementFeet int `json:"movement_feet,omitempty"`
-
-	// BonusActions is [TurnBudget.BonusActions]. Absent in a blob written
-	// before it existed, which reads as none left — the conservative answer:
-	// a resumed turn cannot spend a bonus action nobody recorded it holding.
-	BonusActions int `json:"bonus_actions,omitempty"`
 }
 
 // pauseDataFrom renders the pause for the blob, stamped with [PauseVersion].
@@ -356,13 +359,9 @@ func pauseDataFrom(p *pause) *PauseData {
 	}
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
-			Round:    p.turn.round,
-			Behavior: workDataFrom(p.turn.behavior),
-			Budget: TurnBudgetData{
-				AttacksLeft:  p.turn.budget.AttacksLeft,
-				MovementFeet: p.turn.budget.MovementFeet,
-				BonusActions: p.turn.budget.BonusActions,
-			},
+			Round:       p.turn.round,
+			Behavior:    workDataFrom(p.turn.behavior),
+			Budget:      TurnBudgetData{MovementFeet: p.turn.movementFeet},
 			Intent:      p.turn.intent,
 			Bound:       p.turn.bound,
 			Terminal:    p.turn.terminal,
@@ -450,18 +449,14 @@ func pauseFrom(d *PauseData) (*pause, error) {
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
-			round:    d.Turn.Round,
-			behavior: workFromData(d.Turn.Behavior),
-			budget: TurnBudget{
-				AttacksLeft:  d.Turn.Budget.AttacksLeft,
-				MovementFeet: d.Turn.Budget.MovementFeet,
-				BonusActions: d.Turn.Budget.BonusActions,
-			},
-			intent:      d.Turn.Intent,
-			bound:       d.Turn.Bound,
-			terminal:    d.Turn.Terminal,
-			afterStrike: d.Turn.AfterStrike,
-			face:        walkFace{member: d.Turn.Face},
+			round:        d.Turn.Round,
+			behavior:     workFromData(d.Turn.Behavior),
+			movementFeet: d.Turn.Budget.MovementFeet,
+			intent:       d.Turn.Intent,
+			bound:        d.Turn.Bound,
+			terminal:     d.Turn.Terminal,
+			afterStrike:  d.Turn.AfterStrike,
+			face:         walkFace{member: d.Turn.Face},
 		}
 		if heard := d.Turn.FaceHeard; heard != nil {
 			p.turn.face.heard = &spatial.Position{X: heard.X, Y: heard.Y}
@@ -567,7 +562,7 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 
 	afterStrike := d.Turn != nil && d.Turn.AfterStrike
 	if afterStrike {
-		if len(d.Remaining) != 0 || d.Turn.Budget.AttacksLeft != 0 || d.Moved != 0 {
+		if len(d.Remaining) != 0 || d.Moved != 0 {
 			return fmt.Errorf("load encounter paused strike %q: invalid continuation: %w", d.Member, ErrInvalidData)
 		}
 	} else {
@@ -587,7 +582,7 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 				"load encounter paused turn %q: intent %d is outside the turn's bound %d: %w",
 				d.Member, t.Intent, t.Bound, ErrInvalidData)
 		}
-		if t.Budget.AttacksLeft < 0 || t.Budget.MovementFeet < 0 || t.Budget.BonusActions < 0 {
+		if t.Budget.MovementFeet < 0 {
 			return fmt.Errorf("load encounter paused turn %q: negative budget: %w", d.Member, ErrInvalidData)
 		}
 		if t.Round < 0 {
@@ -955,8 +950,9 @@ func (e *Encounter) finishTurnFromPause(
 	// the driver for an intent the turn never had, which is exactly the
 	// second Act a commanded creature must never get.
 	if !done && !p.turn.terminal {
+		budget := TurnBudget{MovementFeet: p.turn.movementFeet}
 		intentSeq, intentWrapped, moreDeltas, ierr := e.runTurnIntents(
-			bubble, core.EntityID(p.member), m, p.turn.round, &p.turn.budget, p.turn.intent+1, p.turn.bound)
+			bubble, core.EntityID(p.member), m, p.turn.round, &budget, p.turn.intent+1, p.turn.bound)
 		*deltas = mergeIntelDeltas(*deltas, moreDeltas)
 		if ierr != nil {
 			return false, fmt.Errorf("resume turn %q: %w", p.member, ierr)
@@ -1052,7 +1048,7 @@ func (e *Encounter) finishPausedIntent(
 		res.from, res.to, res.pending = rest.from, rest.to, rest.pending
 	}
 
-	p.turn.budget.MovementFeet -= res.moved * FeetPerCell
+	p.turn.movementFeet -= res.moved * FeetPerCell
 
 	// THE WALK'S END FACES ITS TARGET, the pause having kept who that was —
 	// the arm's own rule, across the window: only a walk that finished, and
@@ -1084,13 +1080,13 @@ func (e *Encounter) finishPausedIntent(
 			act:       p.act,
 			outer:     p.outer,
 			turn: &turnPause{
-				round:    p.turn.round,
-				budget:   p.turn.budget,
-				intent:   p.turn.intent,
-				bound:    p.turn.bound,
-				terminal: p.turn.terminal,
-				face:     p.turn.face,
-				behavior: workFromData(workDataFrom(p.turn.behavior)),
+				round:        p.turn.round,
+				movementFeet: p.turn.movementFeet,
+				intent:       p.turn.intent,
+				bound:        p.turn.bound,
+				terminal:     p.turn.terminal,
+				face:         p.turn.face,
+				behavior:     workFromData(workDataFrom(p.turn.behavior)),
 			},
 		}
 		wseq, berr := e.appendWindowOpenedBeat(

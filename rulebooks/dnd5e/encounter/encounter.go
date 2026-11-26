@@ -359,6 +359,10 @@ type Encounter struct {
 	// OPTIONAL — nil skips the ask; see [Disengager].
 	disengager Disengager
 
+	// dasher has a member's sheet pay for a run on a turn. OPTIONAL — nil
+	// refuses the run, told; see [Dasher].
+	dasher Dasher
+
 	// mover announces a [Move] intent's steps before this composition takes
 	// them. Required at both constructors for the same reason striker is;
 	// see [Mover], whose doc explains why announce-before-step is a contract.
@@ -1074,6 +1078,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		roller:              in.Roller,
 		striker:             in.Striker,
 		disengager:          in.Disengager,
+		dasher:              in.Dasher,
 		mover:               in.Mover,
 		announcer:           in.Announcer,
 		endings:             nil,

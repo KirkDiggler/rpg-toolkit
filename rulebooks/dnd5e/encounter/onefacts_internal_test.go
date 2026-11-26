@@ -56,7 +56,7 @@ func TestASocialVerdictAndADrivenTurnAgreeOnEnemyInReach(t *testing.T) {
 		t.Helper()
 		social, err := enc.factsFor("goblin")
 		require.NoError(t, err)
-		view, err := enc.buildMonsterView(enc.members["goblin"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 1)
+		view, err := enc.buildMonsterView(enc.members["goblin"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 1, ClockTurn)
 		require.NoError(t, err)
 		return social, factsFromView(view)
 	}
@@ -106,7 +106,7 @@ func TestASocialVerdictAndADrivenTurnAgreeOnEnemyLost(t *testing.T) {
 	social, err := enc.factsFor("goblin")
 	require.NoError(t, err)
 	goblin := enc.members["goblin"]
-	view, err := enc.buildMonsterView(goblin, TurnBudget{MovementFeet: 30}, 1)
+	view, err := enc.buildMonsterView(goblin, TurnBudget{MovementFeet: 30}, 1, ClockTurn)
 	require.NoError(t, err)
 	driven := factsFromView(view)
 

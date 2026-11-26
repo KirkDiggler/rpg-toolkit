@@ -51,13 +51,13 @@ func TestAViewSearchesRoutesOnlyForATableThatReadsThem(t *testing.T) {
 	budget := TurnBudget{AttacksLeft: 1, MovementFeet: 30}
 
 	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(Table{AnswerTime: {{Weight: 1, Hold: true}}}), nil, nil))
-	view, err := enc.buildMonsterView(veteran, budget, 0)
+	view, err := enc.buildMonsterView(veteran, budget, 0, ClockTurn)
 	require.NoError(t, err)
 	require.Empty(t, seenOf(t, view, "hero").Path, "a table that only holds reads no route")
 	require.Empty(t, seenOf(t, view, "hero").AwayPath)
 
 	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(follower()), nil, nil))
-	view, err = enc.buildMonsterView(veteran, budget, 0)
+	view, err = enc.buildMonsterView(veteran, budget, 0, ClockTurn)
 	require.NoError(t, err)
 	require.NotEmpty(t, seenOf(t, view, "hero").Path, "a table that walks toward an ally reads its route")
 
@@ -68,17 +68,17 @@ func TestAViewSearchesRoutesOnlyForATableThatReadsThem(t *testing.T) {
 	following := ordinaryBehavior(follower()).Instances[0]
 	following.Instance.ID = "following"
 	require.NoError(t, enc.useBehaviors(veteran, &BehaviorInput{Instances: []BoundBehavior{quiet, following}}, nil, nil))
-	view, err = enc.buildMonsterView(veteran, budget, 0)
+	view, err = enc.buildMonsterView(veteran, budget, 0, ClockTurn)
 	require.NoError(t, err)
 	require.NotEmpty(t, seenOf(t, view, "hero").Path, "a lower-priority attachment's route is still supplied")
 
 	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(Table{AnswerTime: {{Weight: 1, Toward: &Selector{At: &spatial.Position{X: 5, Y: 1}}}}}), nil, nil))
-	view, err = enc.buildMonsterView(veteran, budget, 0)
+	view, err = enc.buildMonsterView(veteran, budget, 0, ClockTurn)
 	require.NoError(t, err)
 	require.Empty(t, seenOf(t, view, "hero").Path, "an authored exact-cell leg routes only when executed")
 
 	require.NoError(t, enc.useBehaviors(veteran, nil, nil, nil))
-	view, err = enc.buildMonsterView(veteran, budget, 0)
+	view, err = enc.buildMonsterView(veteran, budget, 0, ClockTurn)
 	require.NoError(t, err)
 	require.NotEmpty(t, seenOf(t, view, "hero").Path, "no table: a driver this package cannot see may read it")
 }
