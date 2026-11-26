@@ -34,6 +34,7 @@ type CompileOutput struct {
 const (
 	wordName    = "name"
 	wordSlot    = "slot"
+	wordUnique  = "unique"
 	wordCharges = "charges"
 	wordLets    = "lets"
 	wordMax     = "max"
@@ -83,7 +84,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.allowed(top, "the item", wordName, wordSlot, wordCharges, wordLets); err != nil {
+	if err := c.allowed(top, "the item", wordName, wordSlot, wordUnique, wordCharges, wordLets); err != nil {
 		return nil, err
 	}
 
@@ -92,6 +93,9 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 		return nil, err
 	}
 	if d.Slots, err = c.slot(top); err != nil {
+		return nil, err
+	}
+	if d.Unique, err = c.unique(top); err != nil {
 		return nil, err
 	}
 	if raw, ok := top[wordCharges]; ok {
@@ -162,6 +166,21 @@ func (c *compiler) name(top map[string]json.RawMessage) (string, error) {
 		return "", c.refuse("the item has no `name`")
 	}
 	return c.text(raw, wordName)
+}
+
+// unique reads the optional word: JSON true or false, nothing else.
+func (c *compiler) unique(top map[string]json.RawMessage) (bool, error) {
+	raw, ok := top[wordUnique]
+	if !ok {
+		return false, nil
+	}
+	switch string(bytes.TrimSpace(raw)) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	}
+	return false, c.refuse("`%s` is true or false", wordUnique)
 }
 
 func (c *compiler) slot(top map[string]json.RawMessage) ([]string, error) {
