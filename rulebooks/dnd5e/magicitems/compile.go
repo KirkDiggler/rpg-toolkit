@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 )
 
@@ -45,29 +44,7 @@ const (
 	wordCost    = "cost"
 
 	chargesPool = "charges"
-	maxCharges  = 1000
 )
-
-// slotWords are the slots an author names, and the sheet slots each is.
-var slotWords = map[string][]string{
-	"cloak":  {"cloak"},
-	"amulet": {"amulet"},
-	"ring":   {"ring_left", "ring_right"},
-	"belt":   {"belt"},
-	"helm":   {"helm"},
-	"boots":  {"boots"},
-}
-
-// slotOrder is the order the words are offered in a refusal.
-var slotOrder = []string{"cloak", "amulet", "ring", "belt", "helm", "boots"}
-
-// restWords are the rests an author names for a refill.
-var restWords = map[string]coreResources.ResetType{
-	"short rest": coreResources.ResetShortRest,
-	"long rest":  coreResources.ResetLongRest,
-}
-
-var restOrder = []string{"short rest", "long rest"}
 
 // Compile turns an item written in an author's words into the description
 // the engine runs. It is strict: an unknown or missing word or value is
@@ -84,7 +61,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.allowed(top, "the item", wordName, wordSlot, wordUnique, wordCharges, wordLets); err != nil {
+	if err := c.allowed(top, "the item", wordsAt(PlaceItem)...); err != nil {
 		return nil, err
 	}
 
@@ -186,15 +163,15 @@ func (c *compiler) unique(top map[string]json.RawMessage) (bool, error) {
 func (c *compiler) slot(top map[string]json.RawMessage) ([]string, error) {
 	raw, ok := top[wordSlot]
 	if !ok {
-		return nil, c.refuse("the item has no `slot`; it is one of %s", strings.Join(slotOrder, ", "))
+		return nil, c.refuse("the item has no `slot`; it is one of %s", strings.Join(valueWords(PlaceItem, wordSlot), ", "))
 	}
 	var word string
 	_ = json.Unmarshal(raw, &word)
-	slots, ok := slotWords[word]
+	chosen, ok := valueOf(PlaceItem, wordSlot, word)
 	if !ok {
-		return nil, c.refuse("`slot` is %s; it is one of %s", string(bytes.TrimSpace(raw)), strings.Join(slotOrder, ", "))
+		return nil, c.refuse("`slot` is %s; it is one of %s", string(bytes.TrimSpace(raw)), strings.Join(valueWords(PlaceItem, wordSlot), ", "))
 	}
-	return slices.Clone(slots), nil
+	return slices.Clone(chosen.slots), nil
 }
 
 func (c *compiler) charges(raw json.RawMessage) (Pool, error) {
@@ -202,19 +179,20 @@ func (c *compiler) charges(raw json.RawMessage) (Pool, error) {
 	if err != nil {
 		return Pool{}, err
 	}
-	if err := c.allowed(obj, "`charges`", wordMax, wordRefills); err != nil {
+	maxBounds := find(PlaceCharges, wordMax).bounds
+	if err := c.allowed(obj, "`charges`", wordsAt(PlaceCharges)...); err != nil {
 		return Pool{}, err
 	}
 	maxRaw, ok := obj[wordMax]
 	if !ok {
-		return Pool{}, c.refuse("`charges` has no `max`; it is a whole number from 1 to %d", maxCharges)
+		return Pool{}, c.refuse("`charges` has no `max`; it is a whole number from %d to %d", maxBounds.Min, maxBounds.Max)
 	}
 	limit, err := c.whole(maxRaw, "charges.max")
 	if err != nil {
 		return Pool{}, err
 	}
-	if limit < 1 || limit > maxCharges {
-		return Pool{}, c.refuse("`charges.max` is %d; it is a whole number from 1 to %d", limit, maxCharges)
+	if limit < maxBounds.Min || limit > maxBounds.Max {
+		return Pool{}, c.refuse("`charges.max` is %d; it is a whole number from %d to %d", limit, maxBounds.Min, maxBounds.Max)
 	}
 	pool := Pool{Maximum: limit}
 	refillsRaw, ok := obj[wordRefills]
@@ -225,24 +203,24 @@ func (c *compiler) charges(raw json.RawMessage) (Pool, error) {
 	if err != nil {
 		return Pool{}, err
 	}
-	if err := c.allowed(refills, "`refills`", wordOn); err != nil {
+	if err := c.allowed(refills, "`refills`", wordsAt(PlaceRefills)...); err != nil {
 		return Pool{}, err
 	}
 	var on []string
 	if err := json.Unmarshal(refills[wordOn], &on); err != nil || len(on) == 0 {
-		return Pool{}, c.refuse("`refills.on` must be a non-empty list of rests: %s", strings.Join(restOrder, ", "))
+		return Pool{}, c.refuse("`refills.on` must be a non-empty list of rests: %s", strings.Join(valueWords(PlaceRefills, wordOn), ", "))
 	}
 	seen := map[string]bool{}
 	for _, word := range on {
-		rest, ok := restWords[word]
+		rest, ok := valueOf(PlaceRefills, wordOn, word)
 		if !ok {
-			return Pool{}, c.refuse("`refills.on` has %q; it is one of %s", word, strings.Join(restOrder, ", "))
+			return Pool{}, c.refuse("`refills.on` has %q; it is one of %s", word, strings.Join(valueWords(PlaceRefills, wordOn), ", "))
 		}
 		if seen[word] {
 			return Pool{}, c.refuse("`refills.on` names %q more than once", word)
 		}
 		seen[word] = true
-		pool.RestoreOn = append(pool.RestoreOn, rest)
+		pool.RestoreOn = append(pool.RestoreOn, rest.reset)
 	}
 	return pool, nil
 }
@@ -279,7 +257,7 @@ func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, G
 	if err != nil {
 		return "", Grant{}, err
 	}
-	if err := c.allowed(obj, where, wordUse, wordWith, wordCost); err != nil {
+	if err := c.allowed(obj, where, wordsAt(PlaceLetsEntry)...); err != nil {
 		return "", Grant{}, err
 	}
 	useRaw, ok := obj[wordUse]
@@ -307,7 +285,7 @@ func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, G
 		if err != nil {
 			return "", Grant{}, err
 		}
-		if err := c.allowed(cost, where+" `cost`", wordCharges); err != nil {
+		if err := c.allowed(cost, where+" `cost`", wordsAt(PlaceCost)...); err != nil {
 			return "", Grant{}, err
 		}
 		chargesRaw, ok := cost[wordCharges]

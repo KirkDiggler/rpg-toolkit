@@ -105,6 +105,10 @@ func ValidateParameters(in *ValidateParametersInput) error {
 	return err
 }
 
+// secondWindMinLevel is the least level Second Wind takes. decodeParameters
+// enforces it and [AbilityWords] reports it, so the two cannot drift.
+const secondWindMinLevel = 1
+
 func decodeParameters(ref core.Ref, raw json.RawMessage) (SecondWindParameters, error) {
 	var params SecondWindParameters
 	if ref != *refs.Features.SecondWind() {
@@ -116,8 +120,8 @@ func decodeParameters(ref core.Ref, raw json.RawMessage) (SecondWindParameters, 
 	if err := jsonv2.Unmarshal(raw, &params, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return params, fmt.Errorf("second wind parameters: %w", err)
 	}
-	if params.Level < 1 {
-		return params, fmt.Errorf("second wind level %d must be at least 1", params.Level)
+	if params.Level < secondWindMinLevel {
+		return params, fmt.Errorf("second wind level %d must be at least %d", params.Level, secondWindMinLevel)
 	}
 	return params, nil
 }
