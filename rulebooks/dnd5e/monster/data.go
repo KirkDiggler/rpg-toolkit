@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
@@ -62,16 +64,16 @@ type Data struct {
 	// AI behavior
 	Targeting TargetingStrategy `json:"targeting,omitempty"`
 
-	// ReactionSpent is the one reaction meter a monster has: true from the
-	// moment something bills it until the monster's next turn start or a long
-	// rest.
+	// Economy is what is left of this monster's turn: its action, its bonus
+	// action, its reaction, and any capacity an action banked. NIL IS A FULL
+	// TURN (one action, one bonus action, one reaction): a monster that has
+	// spent nothing saves nothing here.
 	//
-	// Absent on every blob written before 2026-09-11 and read as false, which
-	// is the truth for those: nothing could spend a monster's reaction then.
-	// It lives here rather than on the opportunity attack's blob because the
-	// meter is the creature's, not one reacting condition's — Dissonant
-	// Whispers spends it from outside any condition the monster carries.
-	ReactionSpent bool `json:"reaction_spent,omitempty"`
+	// It replaced ReactionSpent (2026-11-26, rpg-project#1131): the reaction is
+	// one of the three slots, and two records of it would be two truths. A blob
+	// saved before that, carrying "reaction_spent": true, loads as a full turn;
+	// saved sessions do not outlive a server build today.
+	Economy *combat.ActionEconomy `json:"economy,omitempty"`
 }
 
 // SpeedData represents monster movement speeds in feet
@@ -103,4 +105,16 @@ type InventoryItemData struct {
 type ProficiencyData struct {
 	Skill string `json:"skill"`
 	Bonus int    `json:"bonus"`
+}
+
+// SlotsLeft reports how many of a turn's slots this saved sheet has left,
+// answering from Economy, or from a full turn when Economy is nil. It reads a
+// stored sheet without loading it. A slot that is not one of the three answers
+// zero.
+func (d *Data) SlotsLeft(slot coreCombat.ActionType) int {
+	if d.Economy == nil {
+		return combat.NewActionEconomy().SlotsLeft(slot)
+	}
+
+	return d.Economy.SlotsLeft(slot)
 }

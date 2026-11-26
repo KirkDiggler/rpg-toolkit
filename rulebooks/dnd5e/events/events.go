@@ -698,9 +698,11 @@ type AttackEvent struct {
 // the request truthfully passed it by and a reacting condition metered itself.
 // Kirk reversed that when Dissonant Whispers needed to spend a monster's
 // reaction from outside any condition it carries. A character's keeper debits
-// the slot; a monster's flips the single reaction meter on its sheet. Every
-// other slot still passes a monster by — it has no action and no bonus action
-// to run out of.
+// the slot; a monster's spends the reaction slot of the account its sheet
+// holds. Every other slot still passes a monster by, and not for want of an
+// account: since 2026-11-26 (rpg-project#1131) a monster has an action and a
+// bonus action to run out of, but those are paid at the gate (combat.Pay),
+// and the one publisher of this request today names only a reaction.
 //
 // NEITHER DEBIT GOES BELOW EMPTY. The floor is what replaced the once-per-turn
 // flag that used to stop a duplicate bill: a publisher does not have to

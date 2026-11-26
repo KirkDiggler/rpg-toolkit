@@ -10,9 +10,11 @@ import (
 
 // ActionEconomy is a [Ledger].
 //
-// This is the economy a monster's turn is driven from: the caller builds one,
-// hands it to the monster's action loop, and drops it when the turn ends. It
-// keeps its capacity in named fields rather than a map, which is exactly the
+// This is the economy a monster's turn is driven from, and since 2026-11-26
+// (rpg-project#1131) the account a monster's sheet holds as its own: nil on the
+// sheet is a full one of these, and the sheet is itself a [Ledger] over it.
+// Before that the caller built one, handed it to the monster's action loop, and
+// dropped it when the turn ended. It keeps its capacity in named fields rather than a map, which is exactly the
 // shape the persisted twin moved away from — so the keyed methods below are a
 // VIEW over those fields rather than a second copy of them. A keyed write that
 // the named accessors could not see would be a spend the surrounding code

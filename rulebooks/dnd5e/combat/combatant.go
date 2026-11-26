@@ -118,9 +118,10 @@ type Member interface {
 	// condition's own once-per-turn flag was meter enough. Dissonant Whispers
 	// broke that: it spends a monster's reaction from outside any condition
 	// the monster carries, and a flag on one reactor cannot see it. So a
-	// monster now keeps one reaction of its own, cleared at the start of its
-	// own turn, and this question is the single gate every reacting rule asks
-	// of either kind.
+	// monster keeps a reaction of its own, and since 2026-11-26
+	// (rpg-project#1131) it is one slot of the turn's account its sheet holds,
+	// given back at the start of its own turn. This question is the single
+	// gate every reacting rule asks of either kind.
 	//
 	// A CHARACTER WITH NO FIGHT AROUND IT ALSO ANSWERS FALSE, which is the same
 	// answer it gives today: a sheet outside combat carries no action economy

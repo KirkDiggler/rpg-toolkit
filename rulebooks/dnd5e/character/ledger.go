@@ -12,11 +12,12 @@ import (
 // A sheet is a [combat.Ledger].
 //
 // The gate spends from characters and monsters through one surface and is not
-// allowed to learn which it has — a monster's economy satisfies the same
-// interface from the combat package's own side. What differs is entirely below
-// this line: a monster's economy is built for a turn and discarded, while every
-// write here has to reach storage, which means every write here has to MARK
-// (#1087). A spend that does not dirty the sheet serializes perfectly and is
+// allowed to learn which it has — a monster's sheet satisfies the same
+// interface from the monster package (rpg-project#1131, 2026-11-26; before
+// that a monster's economy was built for a turn and discarded). What differs
+// is below this line: a character's account is absent outside a fight, while
+// every write here has to reach storage, which means every write here has to
+// MARK (#1087). A spend that does not dirty the sheet serializes perfectly and is
 // then dropped by the write-back.
 var _ combat.Ledger = (*Character)(nil)
 
