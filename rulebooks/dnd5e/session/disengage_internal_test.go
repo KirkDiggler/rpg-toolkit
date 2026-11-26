@@ -100,14 +100,20 @@ func (s *DisengageSeamSuite) TestDisengageSeatsTheConditionOnTheMonstersSheet() 
 	s.Len(after, len(before), "the seam records nothing; the composition tells the story")
 }
 
-// TestASecondDisengageDoesNotStack: one condition per identity, and the rule
-// is resolution's, not this seam's. The driven activation lands through
-// replaceSameAddress (rpg-toolkit#1946), so a second Disengage replaces the
-// first — exactly as a player's second Disengage does — and the sheet still
-// holds one.
+// TestASecondDisengageDoesNotStack: one Disengaging condition per goblin. Since
+// rpg-project#1131 (2026-11-26) the bonus action is paid from the goblin's own
+// sheet at the door, so a second Disengage in the same turn is REFUSED there
+// and the sheet still holds the one condition.
+//
+// The older claim, that a Disengage on a LATER turn replaces the first rather
+// than stacking, is not played here: this fixture holds no clock, so it cannot
+// deliver the goblin's turn start between two Disengages. It is resolution's
+// own test, TestASecondDrivenDisengageReplacesTheFirst
+// (resolution/driven_activation_test.go), and the played two-round fight in
+// npc_pays_test.go shows the turn start giving the bonus action back.
 func (s *DisengageSeamSuite) TestASecondDisengageDoesNotStack() {
 	s.Require().NoError(s.disengage("goblin"))
-	s.Require().NoError(s.disengage("goblin"))
+	s.Require().ErrorIs(s.disengage("goblin"), ErrCannotAfford)
 
 	s.Equal(1, s.disengagingBlobs())
 }

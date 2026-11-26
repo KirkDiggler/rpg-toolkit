@@ -294,3 +294,72 @@ func TestAnNPCsTurnComesBackAndTheFightPlaysAsItDid(t *testing.T) {
 	require.Equal(t, hex(6), where.Position)
 	requireSlots(t, goblinEconomy(t, sessions), 1, 0, 1)
 }
+
+// swingerEachTurn swings at the fighter with its first listed action on a
+// turn's first ask, and passes on the ask after.
+type swingerEachTurn struct{ step int }
+
+func (w *swingerEachTurn) Act(view MonsterView) (TurnIntent, error) {
+	defer func() { w.step++ }()
+	if w.step%2 == 0 {
+		return Attack{Target: "fighter", Action: view.Actions[0].Ref}, nil
+	}
+	return Pass{}, nil
+}
+
+// Test 5, the swing arm: a goblin standing beside the fighter swings in round
+// one, its sheet shows the action spent, and in round two it swings AGAIN,
+// which can only be so if its turn start gave the action back.
+func TestAnNPCSwingsAgainInRoundTwo(t *testing.T) {
+	ctx := context.Background()
+	sessions := &strikeSessions{byID: map[string]*SessionData{}}
+	characters := &strikeCharacters{byID: map[string]*character.Data{"fighter": strikeFixtureFighter("fighter")}}
+	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
+	rolls := []int{20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20}
+	for range 40 {
+		rolls = append(rolls, 1)
+	}
+	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
+		Dice: &scriptedDice{rolls: rolls}, TurnDriver: &swingerEachTurn{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
+	})
+	require.NoError(t, err)
+	out := launchScene(t, mgr, scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("tomb", 0, 0, 12, 6)}},
+		Party:    []sceneSeat{seatAt("fighter", 1, 0)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("gob-1", refs.Monsters.Goblin().String(), 2, 0)},
+		Endings:  []encounter.EndingInput{{Key: "withdraw", Trigger: encounter.TriggerExternal{}}},
+	})
+	require.NotEmpty(t, out.Formed)
+	characters.byID["fighter"].ActionEconomy = &character.ActionEconomyData{
+		TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: 1, MovementRemaining: 30,
+	}
+
+	swings := func() int {
+		enc, err := mgr.LoadWorldForTest(ctx, "sess")
+		require.NoError(t, err)
+		story, err := enc.Story(&encounter.StoryInput{Audience: "fighter"})
+		require.NoError(t, err)
+		n := 0
+		for _, entry := range story {
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(entry.Payload, &fields))
+			if fields["beat"] == "struck" || fields["beat"] == "missed" {
+				if fields["actor"] == "gob-1" {
+					n++
+				}
+			}
+		}
+		return n
+	}
+
+	_, err = mgr.EndTurn(ctx, &EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: declarationOf(t, mgr, "fighter", VerbEndTurn).ID})
+	require.NoError(t, err)
+	require.Equal(t, 1, swings(), "round one: the goblin swung")
+	requireSlots(t, goblinEconomy(t, sessions), 0, 1, 1)
+
+	_, err = mgr.EndTurn(ctx, &EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: declarationOf(t, mgr, "fighter", VerbEndTurn).ID})
+	require.NoError(t, err)
+	require.Equal(t, 2, swings(), "round two: the goblin swung again, so its turn start gave the action back")
+	requireSlots(t, goblinEconomy(t, sessions), 0, 1, 1)
+}
