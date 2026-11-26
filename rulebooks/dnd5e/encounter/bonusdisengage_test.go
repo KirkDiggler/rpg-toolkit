@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"context"
 	"errors"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,7 +94,7 @@ func (sc disengageScene) build(t *testing.T) (*encounter.Encounter, *scriptedDri
 		},
 	}
 	if sc.turns {
-		caps = turned(caps)
+		caps = turntest.Wrap(caps)
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{

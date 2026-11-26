@@ -12,6 +12,7 @@ package dungeonspec_test
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,7 +74,7 @@ func openThePursuitHall(t *testing.T, heroAt spatial.Position) (*encounter.Encou
 		Members:   members,
 		Endings:   append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
 		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:         pursuitSight{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -88,7 +89,7 @@ func openThePursuitHall(t *testing.T, heroAt spatial.Position) (*encounter.Encou
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	require.NoError(t, err)
 	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: pursuitHero})

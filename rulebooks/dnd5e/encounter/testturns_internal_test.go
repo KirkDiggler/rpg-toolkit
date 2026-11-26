@@ -16,8 +16,11 @@ import (
 // scene's own Sheets, Striker and Announcer, says in every sheet what is left
 // of each member's turn (one action and one bonus action a turn), spends the
 // action on a Strike that returned nil or [ErrStrikePaused] and on a Dash, and
-// gives a member a full turn again when its turn starts. The external twin is
-// testturns_test.go.
+// gives a member a full turn again when its turn starts. The other copy is
+// internal/turntest, which the external tests and the castletest and
+// dungeonspec packages share; it is a separate copy only because a package
+// cannot import one that imports it. The two must answer the same: a change
+// to one is a change to the other.
 type internalTurnHost struct {
 	sheets    Sheets
 	striker   Striker

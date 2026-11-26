@@ -2,7 +2,7 @@
 
 Slice [rpg-project#1208](https://github.com/KirkDiggler/rpg-project/issues/1208) of story [rpg-project#1131](https://github.com/KirkDiggler/rpg-project/issues/1131). Base: `rpg-toolkit` `main` at [`0db836af`](https://github.com/KirkDiggler/rpg-toolkit/commit/0db836af).
 
-One line per entry. Every line ends with a link. NOT FINISHED: a blocking gap stopped the slice before the PR (see Found).
+One line per entry. Every line ends with a link. The blocking gap was answered by Amendment 1 (way b) and the slice taken up again.
 
 ## Shipped
 
@@ -21,7 +21,7 @@ One line per entry. Every line ends with a link. NOT FINISHED: a blocking gap st
 
 - F1 to F4 and F6 hold as written; F5 is a map with drift: 8 files define a `Sheets` method on a named receiver (not 21), 13 `Strike` methods (not 19), 5 `Announce` (not 8) — [first comment](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200439173).
 - The suite passes at `0db836af` in 1:16 wall; at the production change the `encounter` package passes and two tests in other packages of this module fail — [list](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200596637).
-- BLOCKING GAP: `castletest` `TestMadKingTheReservesComeIntoTheGatehouse` and `dungeonspec` `TestThePursuitHallGuardRunsThenSwings` play a run on a turn and need the turn host, which is in package `encounter_test` and cannot be imported; no file in either package is in the issue's list — [gap](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200597012).
+- GAP, answered by [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200768904): `castletest` `TestMadKingTheReservesComeIntoTheGatehouse` and `dungeonspec` `TestThePursuitHallGuardRunsThenSwings` play a run on a turn and need the turn host, which is in package `encounter_test` and cannot be imported; no file in either package is in the issue's list — [gap](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200597012).
 - Existing tests edited, by kind. A (wrapped in the turn host, assertions unchanged): `TestAParkedEndingFiresBeforeTheConsultDrivesAMonster/control` (internal host), `TestNimbleGoblinDisengagesBeforeWalkingOutOfReach`, `TestSpentBonusActionDisengagesNobody`, `TestARunWithTheSwingSpentIsNotOnTheTable`, `TestADownedTeammateDoesNotHandTheDrivenMonsterASecondTurn`, `TestAttackExecutesAndConsumesTheBudget`, `TestAReloadDescribesNoTableTheRecordHolds`, `TestARefusedAttackSaysWhyWhoeverDrove`, `TestTowardATargetAlreadyInReachStaysAndSaysSo`, `TestAnOpportunityAttackMidWalkRepointsAttacker`, `TestASpentCreatureIsNotAskedToSwingAgain`, `TestTheDefaultTableClosesAndThenSwings` (12) — [list](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200596637).
 - D (a run on a turn, now with the turn host): `TestACarefulDasherRunsOnlyWhenNobodyElseCouldReachWhereItLands`, `TestADashRunsTwiceTheCellsAndDoesNotSwing`, `TestAHandRolledRunAfterTheSwingIsRefused`, `TestARunAddsTheSpeedToWhatIsLeft`, `TestAMovedBeatNamesItsKind/a_Dash` (5) — [list](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200596637).
 - B (shape changed, same assertion): the `buildMonsterView` and `disengageBeforeWalk` call sites in 8 internal test files, `turnPause.movementFeet` in 2, `TurnBudgetData` in 1; `TestRebindBindsEveryCapability` and `TestRefusingCapabilitiesLeaveNoInterfaceSlotNil` (a new optional `Actors` field) fit B only as "updated to the new shape" — [list](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200531506).
@@ -30,7 +30,8 @@ One line per entry. Every line ends with a link. NOT FINISHED: a blocking gap st
 - Proof (b), a nil `Turn` meaning nothing left: 24 top-level tests fail in the module, one new (Test 1, expected 1 got 0) and 23 existing, among them `TestADrivenAttackTurnsBeforeTheSwing`, `TestActSuite`, `TestCannotMoveSuite` — [#1208](https://github.com/KirkDiggler/rpg-project/issues/1208).
 - Proof (c), the speed added before the Dasher is asked, SURVIVES: a Dasher that fails aborts the verb, the turn's budget dies with it, and nothing observable differs; Test 6 stays green. The closest mutant that is observable, swallowing the Dasher's error, fails Test 6 with "Expected error ... in chain but got nil" — [#1208](https://github.com/KirkDiggler/rpg-project/issues/1208).
 - Proof (d), the world clock's view filled from the sheet: Test 7 fails, expected 0 attacks and 0 bonus actions, actual 1 and 1 — [#1208](https://github.com/KirkDiggler/rpg-project/issues/1208).
-- Gates at the head: `go build ./...`, `go vet ./...`, `golangci-lint run ./...` print pass; `go test ./... -count=1 -timeout 30m` passes in the `encounter` package and fails only the two gap tests, 59.0s wall against 1:16.4 before — [#1208](https://github.com/KirkDiggler/rpg-project/issues/1208).
+- Amendment 1: the turn host moved to `internal/turntest`; `castletest` (wrapped once in `castleHost.capabilities`, about 35 tests across six files run on it) and `dungeonspec` (`TestThePursuitHallGuardRunsThenSwings`) became Kind D with no assertion changed and all pass; `replaytest` needed nothing — [Amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1208#issuecomment-7200768904).
+- Gates at the head: `go build ./...`, `go vet ./...`, `golangci-lint run ./...` print pass; `go test ./... -count=1 -timeout 30m` passes in every package, 1:00.6 wall against 1:16.4 before — [#1208](https://github.com/KirkDiggler/rpg-project/issues/1208).
 
 ## Mistaken
 

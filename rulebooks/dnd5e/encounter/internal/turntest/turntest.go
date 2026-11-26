@@ -1,7 +1,14 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package encounter_test
+// Package turntest is a fake of what the session does for real once the
+// encounter reads a creature's turn from its sheet (rpg-project#1131): a host
+// that keeps each member's turn, says what is left of it in every sheet it
+// answers, and spends it. FOR THIS MODULE'S TESTS ONLY (it sits under
+// internal/, and no production code imports it). The tests of package
+// encounter itself cannot import it (it imports encounter) and keep their own
+// copy, testturns_internal_test.go; the two must answer the same.
+package turntest
 
 import (
 	"context"
@@ -11,7 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// turnHost is the fake of what a session does for real once the encounter
+// Host is the fake of what a session does for real once the encounter
 // reads a creature's turn from its sheet (rpg-project#1131): it keeps each
 // member's turn, says what is left of it in every sheet it answers, and is
 // the host that spends it.
@@ -22,19 +29,19 @@ import (
 // call through to the host it wraps. It is itself a [encounter.Dasher].
 //
 // A member has one action and one bonus action a turn unless a test says
-// otherwise ([turnHost.AllowPerTurn]). A Strike that returned nil or
+// otherwise ([Host.AllowPerTurn]). A Strike that returned nil or
 // [encounter.ErrStrikePaused] spends an action, a Dash spends an action, a
 // Disengage that returned nil spends a bonus action, and an Announce that says
 // a member's turn started gives that member a full turn again. A test can
-// also set what is left by hand ([turnHost.Leave]).
-type turnHost struct {
+// also set what is left by hand ([Host.Leave]).
+type Host struct {
 	sheets     encounter.Sheets
-	striker    encounter.Striker
+	Striker    encounter.Striker
 	disengager encounter.Disengager
 	announcer  encounter.Announcer
 
 	// failDash, when set, is what every Dash answers with.
-	failDash error
+	FailDash error
 
 	perTurn map[encounter.MemberID]encounter.TurnFacts
 	left    map[encounter.MemberID]encounter.TurnFacts
@@ -46,17 +53,17 @@ type turnHost struct {
 	Announced  []encounter.Boundary
 }
 
-// newTurnHost wraps a scene's own host. disengager and announcer may be nil:
+// New wraps a scene's own host. disengager and announcer may be nil:
 // a nil disengager is not asked and the host does not claim to be one.
-func newTurnHost(
+func New(
 	sheets encounter.Sheets, striker encounter.Striker, announcer encounter.Announcer,
-) *turnHost {
+) *Host {
 	if announcer == nil {
-		announcer = quietAnnouncer{}
+		announcer = noAnnouncer{}
 	}
 
-	return &turnHost{
-		sheets: sheets, striker: striker, announcer: announcer,
+	return &Host{
+		sheets: sheets, Striker: striker, announcer: announcer,
 		perTurn: map[encounter.MemberID]encounter.TurnFacts{},
 		left:    map[encounter.MemberID]encounter.TurnFacts{},
 	}
@@ -64,19 +71,19 @@ func newTurnHost(
 
 // AllowPerTurn says how many actions and bonus actions member has on a full
 // turn, and gives it that now.
-func (h *turnHost) AllowPerTurn(member encounter.MemberID, actions, bonus int) {
+func (h *Host) AllowPerTurn(member encounter.MemberID, actions, bonus int) {
 	full := encounter.TurnFacts{ActionsLeft: actions, BonusActionsLeft: bonus}
 	h.perTurn[member] = full
 	h.left[member] = full
 }
 
 // Leave sets by hand what member has left of this turn.
-func (h *turnHost) Leave(member encounter.MemberID, actions, bonus int) {
+func (h *Host) Leave(member encounter.MemberID, actions, bonus int) {
 	h.left[member] = encounter.TurnFacts{ActionsLeft: actions, BonusActionsLeft: bonus}
 }
 
 // Left is what member has left of this turn.
-func (h *turnHost) Left(member encounter.MemberID) encounter.TurnFacts {
+func (h *Host) Left(member encounter.MemberID) encounter.TurnFacts {
 	if t, ok := h.left[member]; ok {
 		return t
 	}
@@ -87,13 +94,13 @@ func (h *turnHost) Left(member encounter.MemberID) encounter.TurnFacts {
 	return encounter.TurnFacts{ActionsLeft: 1, BonusActionsLeft: 1}
 }
 
-func (h *turnHost) spendAction(member encounter.MemberID) {
+func (h *Host) spendAction(member encounter.MemberID) {
 	t := h.Left(member)
 	t.ActionsLeft = max(0, t.ActionsLeft-1)
 	h.left[member] = t
 }
 
-func (h *turnHost) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
+func (h *Host) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
 	inner, err := h.sheets.Sheets(members)
 	if err != nil {
 		return nil, err
@@ -108,11 +115,11 @@ func (h *turnHost) Sheets(members []encounter.MemberID) (map[encounter.MemberID]
 	return out, nil
 }
 
-func (h *turnHost) Strike(
+func (h *Host) Strike(
 	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
 	h.Strikes = append(h.Strikes, attacker)
-	err := h.striker.Strike(ctx, enc, attacker, target, action)
+	err := h.Striker.Strike(ctx, enc, attacker, target, action)
 	if err == nil || errors.Is(err, encounter.ErrStrikePaused) {
 		h.spendAction(attacker)
 	}
@@ -121,8 +128,8 @@ func (h *turnHost) Strike(
 }
 
 // Disengage is the host's [encounter.Disengager]. Wire it only in a scene that
-// names a Disengager (wrap one with [turnHost.WithDisengager]).
-func (h *turnHost) Disengage(ctx context.Context, enc *encounter.Encounter, member encounter.MemberID) error {
+// names a Disengager (wrap one with [Host.WithDisengager]).
+func (h *Host) Disengage(ctx context.Context, enc *encounter.Encounter, member encounter.MemberID) error {
 	h.Disengages = append(h.Disengages, member)
 	if h.disengager != nil {
 		if err := h.disengager.Disengage(ctx, enc, member); err != nil {
@@ -137,24 +144,24 @@ func (h *turnHost) Disengage(ctx context.Context, enc *encounter.Encounter, memb
 }
 
 // WithDisengager has Disengage pass through to d as well.
-func (h *turnHost) WithDisengager(d encounter.Disengager) *turnHost {
+func (h *Host) WithDisengager(d encounter.Disengager) *Host {
 	h.disengager = d
 
 	return h
 }
 
 // Dash is the host's [encounter.Dasher]: a run spends an action.
-func (h *turnHost) Dash(_ context.Context, _ *encounter.Encounter, member encounter.MemberID) error {
+func (h *Host) Dash(_ context.Context, _ *encounter.Encounter, member encounter.MemberID) error {
 	h.Dashes = append(h.Dashes, member)
-	if h.failDash != nil {
-		return h.failDash
+	if h.FailDash != nil {
+		return h.FailDash
 	}
 	h.spendAction(member)
 
 	return nil
 }
 
-func (h *turnHost) Announce(ctx context.Context, enc *encounter.Encounter, crossed []encounter.Boundary) error {
+func (h *Host) Announce(ctx context.Context, enc *encounter.Encounter, crossed []encounter.Boundary) error {
 	h.Announced = append(h.Announced, crossed...)
 	for _, b := range crossed {
 		if b.Kind == encounter.TurnStarted {
@@ -168,9 +175,9 @@ func (h *turnHost) Announce(ctx context.Context, enc *encounter.Encounter, cross
 	return h.announcer.Announce(ctx, enc, crossed)
 }
 
-// actors is the host wired as every actor it can be. Disengager is the host
+// Actors is the host wired as every actor it can be. Disengager is the host
 // only when asked for, because a scene with none must not be asked.
-func (h *turnHost) actors(mover encounter.Mover, withDisengage bool) encounter.Actors {
+func (h *Host) Actors(mover encounter.Mover, withDisengage bool) encounter.Actors {
 	a := encounter.Actors{Striker: h, Mover: mover, Announcer: h, Dasher: h}
 	if withDisengage {
 		a.Disengager = h
@@ -179,11 +186,11 @@ func (h *turnHost) actors(mover encounter.Mover, withDisengage bool) encounter.A
 	return a
 }
 
-// withTurnHost puts a scene's own Sheets, Striker and Announcer (and its
+// With puts a scene's own Sheets, Striker and Announcer (and its
 // Disengager, when it wires one) behind a turn host, and wires the host as the
 // scene's Dasher. The scene is otherwise exactly what it was.
-func withTurnHost(c encounter.Capabilities) (encounter.Capabilities, *turnHost) {
-	h := newTurnHost(c.Sheets, c.Striker, c.Announcer)
+func With(c encounter.Capabilities) (encounter.Capabilities, *Host) {
+	h := New(c.Sheets, c.Striker, c.Announcer)
 	h.disengager = c.Disengager
 	c.Sheets, c.Striker, c.Announcer, c.Dasher = h, h, h, h
 	if h.disengager != nil {
@@ -193,9 +200,16 @@ func withTurnHost(c encounter.Capabilities) (encounter.Capabilities, *turnHost) 
 	return c, h
 }
 
-// turned is [withTurnHost] for a scene that has no use for the host itself.
-func turned(c encounter.Capabilities) encounter.Capabilities {
-	wrapped, _ := withTurnHost(c)
+// Wrap is [With] for a scene that has no use for the host itself.
+func Wrap(c encounter.Capabilities) encounter.Capabilities {
+	wrapped, _ := With(c)
 
 	return wrapped
+}
+
+// noAnnouncer hears every boundary and does nothing with it.
+type noAnnouncer struct{}
+
+func (noAnnouncer) Announce(context.Context, *encounter.Encounter, []encounter.Boundary) error {
+	return nil
 }

@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -311,7 +312,7 @@ func (host castleHost) capabilities(strikes *[]cellsStrike, standing *castleStan
 		resolver = host.resolver
 	}
 
-	return encounter.Capabilities{
+	return turntest.Wrap(encounter.Capabilities{
 		Sight:         castleSight{feet: host.sightFt, own: host.sightOf},
 		Equipment:     encounter.UnobservedEquipment{},
 		Conditions:    encounter.UnobservedEquipment{},
@@ -327,7 +328,7 @@ func (host castleHost) capabilities(strikes *[]cellsStrike, standing *castleStan
 			Mover:     quietMover{},
 			Announcer: quietAnnouncer{},
 		},
-	}
+	})
 }
 
 // castleReload is the package's switch for [kingScene.reload]: on unless a

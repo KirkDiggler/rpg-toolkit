@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -223,10 +224,10 @@ func (s *TurnFactsSuite) TestTheSheetIsTheJudgeOfASwing() {
 // creature that swings twice, and a third is refused.
 func (s *TurnFactsSuite) TestThisModulesOwnOneIsGone() {
 	striker := &swingRecorder{}
-	host := newTurnHost(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, striker, nil)
+	host := turntest.New(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, striker, nil)
 	host.AllowPerTurn(goblin, 2, 1)
 	driver := &scriptedDriver{intents: swings(3)}
-	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 	s.endTurn(enc, alice)
 
@@ -243,9 +244,9 @@ func (s *TurnFactsSuite) TestThisModulesOwnOneIsGone() {
 // round one swing again.
 func (s *TurnFactsSuite) TestOnceATurnAndAgainNextTurn() {
 	striker := &swingRecorder{}
-	host := newTurnHost(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, striker, nil)
+	host := turntest.New(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, striker, nil)
 	driver := &scriptedDriver{intents: swings(3)}
-	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 	s.endTurn(enc, alice)
 	s.Len(striker.swings, 1, "one swing in the first turn")
@@ -294,14 +295,14 @@ func (s *TurnFactsSuite) TestTheSheetIsTheJudgeOfADisengage() {
 
 	s.Run("one a turn, and again next turn", func() {
 		d := &recordingDisengager{}
-		host := newTurnHost(sheets, &swingRecorder{}, nil).WithDisengager(d)
+		host := turntest.New(sheets, &swingRecorder{}, nil).WithDisengager(d)
 		next := []encounter.TurnIntent{
 			encounter.Move{Path: []spatial.Position{onRow(4)}},
 			encounter.Move{Path: []spatial.Position{onRow(3)}},
 			encounter.Pass{},
 		}
 		driver := &scriptedDriver{intents: append(leavesAliceThenBob(), next...)}
-		enc := s.build(turnScene{sheets: host, driver: driver, actors: host.actors(quietMover{}, true), others: bobAt})
+		enc := s.build(turnScene{sheets: host, driver: driver, actors: host.Actors(quietMover{}, true), others: bobAt})
 
 		s.endTurn(enc, alice)
 		s.Equal([]encounter.MemberID{goblin}, host.Disengages, "the second leaving in one turn was not paid for")
@@ -346,9 +347,9 @@ func (s *TurnFactsSuite) TestARunOnATurnIsPaidThroughTheHost() {
 
 	s.Run("paid, then the swing is spent", func() {
 		striker := &swingRecorder{}
-		host := newTurnHost(sheets, striker, nil)
+		host := turntest.New(sheets, striker, nil)
 		driver := &scriptedDriver{intents: append([]encounter.TurnIntent{runAtAlice()}, swings(1)...)}
-		enc := s.build(turnScene{goblinAt: 14, sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+		enc := s.build(turnScene{goblinAt: 14, sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 		s.endTurn(enc, alice)
 
@@ -364,11 +365,11 @@ func (s *TurnFactsSuite) TestARunOnATurnIsPaidThroughTheHost() {
 
 	s.Run("a run after a swing is refused and the Dasher is not asked", func() {
 		striker := &swingRecorder{}
-		host := newTurnHost(sheets, striker, nil)
+		host := turntest.New(sheets, striker, nil)
 		driver := &scriptedDriver{intents: []encounter.TurnIntent{
 			swings(1)[0], encounter.Move{Dash: true, Path: []spatial.Position{onRow(3)}},
 		}}
-		enc := s.build(turnScene{sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+		enc := s.build(turnScene{sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 		s.endTurn(enc, alice)
 
@@ -397,14 +398,14 @@ func (s *TurnFactsSuite) TestARunOnATurnIsPaidThroughTheHost() {
 	})
 
 	s.Run("a Dasher that fails aborts the verb", func() {
-		host := newTurnHost(sheets, &swingRecorder{}, nil)
-		host.failDash = errors.New("the sheet could not pay")
+		host := turntest.New(sheets, &swingRecorder{}, nil)
+		host.FailDash = errors.New("the sheet could not pay")
 		driver := &scriptedDriver{intents: []encounter.TurnIntent{runAtAlice()}}
-		enc := s.build(turnScene{goblinAt: 14, sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+		enc := s.build(turnScene{goblinAt: 14, sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 		_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 
-		s.Require().ErrorIs(err, host.failDash)
+		s.Require().ErrorIs(err, host.FailDash)
 		s.Equal(onRow(14), whereIs(s.T(), enc, goblin), "nothing added: it did not walk")
 		s.Empty(s.beats(enc, encounter.BeatMoved, goblin))
 		s.Empty(s.beats(enc, encounter.BeatStayed, goblin), "nothing told")
@@ -417,7 +418,7 @@ func (s *TurnFactsSuite) TestARunOnATurnIsPaidThroughTheHost() {
 // on the world clock. The view shows no attack and no bonus action, a run adds
 // its speed and asks no Dasher, and nobody is asked to disengage.
 func (s *TurnFactsSuite) TestARoundOfTheWorldIsAsItWas() {
-	host := newTurnHost(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, &swingRecorder{}, nil)
+	host := turntest.New(sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}, &swingRecorder{}, nil)
 	path := make([]spatial.Position, 0, 7)
 	for x := 19; x >= 13; x-- {
 		path = append(path, spatial.Position{X: float64(x), Y: 6})
@@ -448,7 +449,7 @@ func (s *TurnFactsSuite) TestARoundOfTheWorldIsAsItWas() {
 			Initiative:    orderAsGiven{},
 			Driver:        driver,
 			Roller:        rollsLowest{},
-			Actors:        host.actors(quietMover{}, true),
+			Actors:        host.Actors(quietMover{}, true),
 		},
 	})
 	s.Require().NoError(err)
@@ -475,9 +476,9 @@ func (s *TurnFactsSuite) TestARoundOfTheWorldIsAsItWas() {
 func (s *TurnFactsSuite) TestAStrikeThatPausesSavesNoCount() {
 	sheets := sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}
 	first := &pausingStriker{pause: true}
-	host := newTurnHost(sheets, first, nil)
+	host := turntest.New(sheets, first, nil)
 	driver := &scriptedDriver{intents: swings(1)}
-	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.actors(quietMover{}, false)})
+	enc := s.build(turnScene{sheets: host, driver: driver, actors: host.Actors(quietMover{}, false)})
 
 	s.endTurn(enc, alice)
 	s.Require().True(enc.Paused())
@@ -491,7 +492,7 @@ func (s *TurnFactsSuite) TestAStrikeThatPausesSavesNoCount() {
 	s.NotContains(string(raw), "bonus_actions")
 
 	resumed := &pausingStriker{}
-	host.striker = resumed
+	host.Striker = resumed
 	after := &scriptedDriver{intents: swings(2)}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -503,7 +504,7 @@ func (s *TurnFactsSuite) TestAStrikeThatPausesSavesNoCount() {
 			Participation: everyoneStanding{},
 			Initiative:    arrivalOrder{},
 			Driver:        after,
-			Actors:        host.actors(quietMover{}, false),
+			Actors:        host.Actors(quietMover{}, false),
 		},
 	})
 	s.Require().NoError(err)
@@ -522,12 +523,12 @@ func (s *TurnFactsSuite) TestAStrikeThatPausesSavesNoCount() {
 // numbers.
 func (s *TurnFactsSuite) TestAWalkThatPausesSavesItsMovementOnly() {
 	sheets := sheetFacts{alice: {SpeedFeet: 30}, goblin: goblinSheet()}
-	host := newTurnHost(sheets, &swingRecorder{}, nil)
+	host := turntest.New(sheets, &swingRecorder{}, nil)
 	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 	driver := &scriptedDriver{intents: []encounter.TurnIntent{
 		encounter.Move{Path: []spatial.Position{onRow(7), onRow(6), onRow(5)}},
 	}}
-	enc := s.build(turnScene{goblinAt: 8, sheets: host, driver: driver, actors: host.actors(mover, false)})
+	enc := s.build(turnScene{goblinAt: 8, sheets: host, driver: driver, actors: host.Actors(mover, false)})
 
 	s.endTurn(enc, alice)
 	s.Require().True(enc.Paused())
@@ -550,7 +551,7 @@ func (s *TurnFactsSuite) TestAWalkThatPausesSavesItsMovementOnly() {
 			Participation: everyoneStanding{},
 			Initiative:    arrivalOrder{},
 			Driver:        after,
-			Actors:        host.actors(&pausingMover{}, false),
+			Actors:        host.Actors(&pausingMover{}, false),
 		},
 	})
 	s.Require().NoError(err)

@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/turntest"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -56,7 +57,7 @@ func (s *DashSuite) hallDriven(
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: turned(encounter.Capabilities{
+		Capabilities: turntest.Wrap(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
