@@ -51,7 +51,7 @@ func drivenFight(t *testing.T) (*Encounter, *oneDown, *recordingStriker) {
 			{ID: "zed", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 3}},
 		},
 		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
-		Capabilities: Capabilities{
+		Capabilities: withInternalTurnHost(Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     UnobservedEquipment{},
 			Conditions:    UnobservedEquipment{},
@@ -60,7 +60,7 @@ func drivenFight(t *testing.T) (*Encounter, *oneDown, *recordingStriker) {
 			Initiative:    orderAsGiven{},
 			Driver:        strikeTheLast{},
 			Actors:        Actors{Striker: striker, Mover: quietMover{}, Announcer: quietAnnouncer{}},
-		},
+		}),
 	})
 	require.NoError(t, err)
 	require.Len(t, enc.bubbles, 1, "first light started the fight with alice to move")

@@ -22,7 +22,7 @@ import (
 // symbolsCaps is the silence scene's capabilities, built once so the scene
 // can be loaded back from its blob with the same host.
 func symbolsCaps(members []encounter.MemberInput) encounter.Capabilities {
-	return encounter.Capabilities{
+	return turned(encounter.Capabilities{
 		Sight:         everyoneSeesTheWholeMap{},
 		Equipment:     encounter.UnobservedEquipment{},
 		Conditions:    encounter.UnobservedEquipment{},
@@ -36,7 +36,7 @@ func symbolsCaps(members []encounter.MemberInput) encounter.Capabilities {
 			Mover:     &recordingMover{},
 			Announcer: quietAnnouncer{},
 		},
-	}
+	})
 }
 
 // symbolsScene is alice beside a coward goblin on silenceTable, with alice's

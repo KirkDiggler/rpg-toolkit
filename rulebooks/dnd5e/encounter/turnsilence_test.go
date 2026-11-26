@@ -95,7 +95,7 @@ func silenceSceneWith(
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turned(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -109,7 +109,7 @@ func silenceSceneWith(
 				Mover:     mover,
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	require.NoError(t, err)
 

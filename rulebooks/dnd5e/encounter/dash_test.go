@@ -56,7 +56,7 @@ func (s *DashSuite) hallDriven(
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turned(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -70,7 +70,7 @@ func (s *DashSuite) hallDriven(
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 

@@ -526,7 +526,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.Driver
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turned(encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -539,7 +539,7 @@ func (s *MonsterTurnTestSuite) adjacentSkeletonEncounter(driver encounter.Driver
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	s.Require().NoError(err)
 	return enc
@@ -2179,7 +2179,7 @@ func routedScene(
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
+		Capabilities: turned(encounter.Capabilities{
 			Sight:      everyoneSeesTheWholeMap{},
 			Equipment:  encounter.UnobservedEquipment{},
 			Conditions: encounter.UnobservedEquipment{},
@@ -2194,7 +2194,7 @@ func routedScene(
 				Mover:     mover,
 				Announcer: quietAnnouncer{},
 			},
-		},
+		}),
 	})
 	require.NoError(t, err)
 	return enc

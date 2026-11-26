@@ -178,3 +178,24 @@ func (h *turnHost) actors(mover encounter.Mover, withDisengage bool) encounter.A
 
 	return a
 }
+
+// withTurnHost puts a scene's own Sheets, Striker and Announcer (and its
+// Disengager, when it wires one) behind a turn host, and wires the host as the
+// scene's Dasher. The scene is otherwise exactly what it was.
+func withTurnHost(c encounter.Capabilities) (encounter.Capabilities, *turnHost) {
+	h := newTurnHost(c.Sheets, c.Striker, c.Announcer)
+	h.disengager = c.Disengager
+	c.Sheets, c.Striker, c.Announcer, c.Dasher = h, h, h, h
+	if h.disengager != nil {
+		c.Disengager = h
+	}
+
+	return c, h
+}
+
+// turned is [withTurnHost] for a scene that has no use for the host itself.
+func turned(c encounter.Capabilities) encounter.Capabilities {
+	wrapped, _ := withTurnHost(c)
+
+	return wrapped
+}
