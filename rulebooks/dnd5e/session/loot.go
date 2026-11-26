@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -109,10 +110,20 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 		return nil, fmt.Errorf("loot: %w", err)
 	}
 
+	// WHAT THE LOOTER OWNS is read from their sheet BEFORE the loot, so the
+	// encounter can be told which equipped items they leave on the body
+	// (rpg-project#850, #1177): a character owns at most one of a custom item.
+	// The sheet is loaded once; it is the one delivered to and saved.
+	sheet, err := m.loadLooter(ctx, in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("loot: %w", err)
+	}
+
 	taken, err := scope.enc.Loot(&encounter.LootInput{
 		Member: encounter.MemberID(in.Member),
 		Target: encounter.MemberID(in.Target),
 		Range:  in.Range,
+		Leave:  leaveFor(scope.data.Dungeon, sheet),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("loot: %w", translate(err))
@@ -123,7 +134,7 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 	// the answer's save report is the same either way (design P3). Delivery
 	// fails closed: an item that cannot be delivered refuses the whole loot,
 	// and since nothing is committed the body keeps what it wore.
-	if err := m.deliverLoot(ctx, scope, in, taken.Items); err != nil {
+	if err := m.deliverLoot(ctx, scope, in, sheet, taken.Items); err != nil {
 		return nil, fmt.Errorf("loot: %w", err)
 	}
 
@@ -135,18 +146,29 @@ func (m *Manager) Loot(ctx context.Context, in *LootInput) (*LootOutput, error) 
 	return &LootOutput{Saved: report, Delivery: delivery}, nil
 }
 
-// deliverLoot loads the looter's sheet, lands what was taken on it and saves
-// it. A looter with no sheet of its own (not a player) takes nothing from the
-// encounter and gets no save.
-func (m *Manager) deliverLoot(ctx context.Context, scope *writeScope, in *LootInput, taken []encounter.TakenItem) error {
-	sheet, err := m.sheetsFor(nil).load(ctx, "looter", in.Member)
-	if err != nil {
-		if errors.Is(err, ErrNoCharacter) && len(taken) == 0 {
+// loadLooter loads the looter's sheet. A looter with no sheet of its own (not
+// a player) has none, and answers a nil sheet with no error: the caller never
+// sees ErrNoCharacter here.
+func (m *Manager) loadLooter(ctx context.Context, member string) (sheet *character.Data, err error) {
+	sheet, err = m.sheetsFor(nil).load(ctx, "looter", member)
+	if errors.Is(err, ErrNoCharacter) {
+		return nil, nil //nolint:nilnil // no sheet is an ordinary answer for a looter that is not a player
+	}
+	return sheet, err
+}
+
+// deliverLoot lands what was taken on the looter's sheet and saves it. A
+// looter with no sheet (nil) takes nothing from the encounter and gets no
+// save; a sheet that is missing while something WAS taken is
+// ErrNoCharacter.
+func (m *Manager) deliverLoot(ctx context.Context, scope *writeScope, in *LootInput, sheet *character.Data, taken []encounter.TakenItem) error {
+	if sheet == nil {
+		if len(taken) == 0 {
 			return nil
 		}
-		return err
+		return fmt.Errorf("looter %q: %w", in.Member, ErrNoCharacter)
 	}
-	if err := deliverTaken(in.Session, in.Target, sheet, taken); err != nil {
+	if err := deliverTaken(scope.data.Dungeon, in.Target, sheet, taken); err != nil {
 		return err
 	}
 	return m.sheetsFor(scope).save(ctx, sheet)

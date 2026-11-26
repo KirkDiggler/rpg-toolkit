@@ -74,19 +74,33 @@ type cloakScene struct {
 	dice   *secondWindDice
 	seats  *fakeSeats
 	member string
+	id     string // the session's id
 }
 
 // newCloakScene launches the site text with the party, hurts alice, and has
 // her down the guard. The fight is over when it returns.
 func newCloakScene(t *testing.T, siteText string, party ...string) *cloakScene {
 	t.Helper()
+	return newCloakSceneOn(t, siteText, "sess", nil, party...)
+}
+
+// newCloakSceneOn is newCloakScene for a session of the given id, on a
+// character store that may already hold the party: one saved character played
+// in two runs. A nil store is a fresh one holding the party. A party member
+// the store does not hold is added to it.
+func newCloakSceneOn(t *testing.T, siteText, sessionID string, chars *fakeCharacters, party ...string) *cloakScene {
+	t.Helper()
 	ctx := context.Background()
-	sheets := []*character.Data{secondWindFighter(t, "alice", 10, 40)}
-	for _, id := range party[1:] {
-		sheets = append(sheets, armedFighter(id))
+	if chars == nil {
+		chars = newFakeCharacters(secondWindFighter(t, "alice", 10, 40))
 	}
-	s := &cloakScene{t: t, chars: newFakeCharacters(sheets...), sess: newFakeSessions(), acts: &actCapture{},
-		dice: &secondWindDice{}, seats: newFakeSeats(), member: "alice"}
+	for _, id := range party[1:] {
+		if _, held := chars.byID[id]; !held {
+			chars.byID[id] = withFreeReactions(armedFighter(id))
+		}
+	}
+	s := &cloakScene{t: t, chars: chars, sess: newFakeSessions(), acts: &actCapture{},
+		dice: &secondWindDice{}, seats: newFakeSeats(), member: "alice", id: sessionID}
 	s.repo = &failingSaves{fakeCharacters: s.chars}
 	var err error
 	s.mgr, err = session.NewManager(&session.Config{
@@ -96,9 +110,9 @@ func newCloakScene(t *testing.T, siteText string, party ...string) *cloakScene {
 	})
 	require.NoError(t, err)
 	compiled := compileCloakSite(t, siteText)
-	_, err = s.mgr.Launch(ctx, &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: party})
+	_, err = s.mgr.Launch(ctx, &session.LaunchInput{Session: sessionID, Dungeon: &compiled, Party: party})
 	require.NoError(t, err)
-	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: sessionID, Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, "alice", turn.Active)
 
@@ -107,21 +121,25 @@ func newCloakScene(t *testing.T, siteText string, party ...string) *cloakScene {
 	data.HitPoints = 10
 	require.NoError(t, s.chars.SaveCharacter(ctx, data))
 	for _, id := range party {
-		require.NoError(t, s.seats.SaveSeat(ctx, &session.SeatData{Character: id, Session: "sess"}))
+		require.NoError(t, s.seats.SaveSeat(ctx, &session.SeatData{Character: id, Session: sessionID}))
 	}
 
 	// The Lieutenant is one blow from done and she strikes it with a critical hit.
-	for i := range s.sess.byID["sess"].NPCs {
-		if s.sess.byID["sess"].NPCs[i].ID == "guard" {
-			s.sess.byID["sess"].NPCs[i].HitPoints = 1
+	// A site's second Lieutenant, "guard-2", is already down.
+	for i := range s.sess.byID[sessionID].NPCs {
+		switch s.sess.byID[sessionID].NPCs[i].ID {
+		case "guard":
+			s.sess.byID[sessionID].NPCs[i].HitPoints = 1
+		case "guard-2":
+			s.sess.byID[sessionID].NPCs[i].HitPoints = 0
 		}
 	}
 	s.dice.mu.Lock()
 	s.dice.strike = true
 	s.dice.mu.Unlock()
 	_, err = s.mgr.Attack(ctx, &session.AttackInput{
-		Session: "sess", Attacker: "alice", Target: "guard",
-		DeclarationID: currentAttackID(t, s.mgr, "sess", "alice"),
+		Session: sessionID, Attacker: "alice", Target: "guard",
+		DeclarationID: currentAttackID(t, s.mgr, sessionID, "alice"),
 	})
 	require.NoError(t, err)
 	s.dice.mu.Lock()
@@ -133,13 +151,13 @@ func newCloakScene(t *testing.T, siteText string, party ...string) *cloakScene {
 func (s *cloakScene) stored(id string) *character.Data { return storedSheet(s.t, s.chars, id) }
 
 func (s *cloakScene) loot(member string) (*session.LootOutput, error) {
-	return s.mgr.Loot(context.Background(), &session.LootInput{Session: "sess", Member: member, Target: "guard"})
+	return s.mgr.Loot(context.Background(), &session.LootInput{Session: s.id, Member: member, Target: "guard"})
 }
 
 // secondWindRows is every Second Wind row the member is offered, in order.
 func (s *cloakScene) secondWindRows(member string) []session.Declaration {
 	s.t.Helper()
-	panel, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: member})
+	panel, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: s.id, Member: member})
 	require.NoError(s.t, err)
 	var out []session.Declaration
 	for _, d := range panel.Declarations {
