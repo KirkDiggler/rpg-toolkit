@@ -11,11 +11,13 @@ import (
 
 // Ledger is the account an action is paid out of.
 //
-// Both halves of a fight's cast hold one, and neither holds it the same way: a
-// character's is persisted on the sheet and reaches storage only if the sheet
-// reports itself dirty, while a monster's is a plain [ActionEconomy] its caller
-// hands to the turn and throws away after. The gate is not allowed to tell them
-// apart. Monsters take no gated action in v1 — but a signature that could not
+// Both halves of a fight's cast hold one on the sheet, and neither holds it
+// the same way: a character's is persisted and reaches storage only if the
+// sheet reports itself dirty, while a monster's is an [ActionEconomy] held as
+// its sheet's Economy, where nil is a full turn and the first write creates the
+// account (rpg-project#1131, 2026-11-26; before that a monster's was handed to
+// the turn and thrown away after). The gate is not allowed to tell them apart.
+// Nothing charges a monster a gated action yet — but a signature that could not
 // accept one would have to be replaced rather than extended on the day they do.
 //
 // Every method is over state the holder already has. Nothing here takes a

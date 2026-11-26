@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -139,7 +140,7 @@ func TestACarriedConditionIsHandedItsOwnSheet(t *testing.T) {
 	require.True(t, m.IsDirty(),
 		"the sheet spent its reaction and said so — a silent update is a dropped save")
 	require.False(t, m.CanReact(), "and the wolf has nothing left to swing with")
-	require.True(t, m.ToData().ReactionSpent, "written on the sheet, not on the condition")
+	require.Equal(t, 0, m.ToData().SlotsLeft(coreCombat.ActionReaction), "written on the sheet, not on the condition")
 }
 
 // The substitution this package now depends on: a loaded entry names itself
@@ -211,7 +212,7 @@ func TestAnAttachedMonsterHoldsTheFreeReactionItsRecordStores(t *testing.T) {
 	require.Equal(t, data.Conditions, m.ToData().Conditions, "and written back exactly as stored")
 	require.NotContains(t, string(m.ToData().Conditions[0]), "used_this_turn",
 		"it carries no meter of its own any more")
-	require.False(t, m.ToData().ReactionSpent, "the meter it does have starts full")
+	require.Equal(t, 1, m.ToData().SlotsLeft(coreCombat.ActionReaction), "the meter it does have starts full")
 	require.False(t, m.IsDirty(), "attaching a stored reactor is not a change worth saving")
 }
 

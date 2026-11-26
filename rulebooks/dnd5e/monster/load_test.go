@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -229,13 +230,13 @@ func (s *PureLoadTestSuite) TestKnownRoundTripGaps() {
 // runtime-only bool resets on each RPC and meters nothing at all.
 func (s *PureLoadTestSuite) TestASpentReactionSurvivesTheRoundTrip() {
 	data := s.sheet()
-	data.ReactionSpent = true
+	data.Economy = &combat.ActionEconomy{ActionsRemaining: 1, BonusActionsRemaining: 1, ReactionsRemaining: 0}
 
 	m, err := Load(s.ctx, data)
 	s.Require().NoError(err)
 
 	s.False(m.CanReact(), "a monster reloaded mid-turn has already spent it")
-	s.True(m.ToData().ReactionSpent, "and writes it back out")
+	s.Equal(0, m.ToData().SlotsLeft(coreCombat.ActionReaction), "and writes it back out")
 }
 
 // The absent field reads as a full meter, which is what every blob written
@@ -245,7 +246,7 @@ func (s *PureLoadTestSuite) TestAnOlderBlobWithNoMeterHasItsReaction() {
 	s.Require().NoError(err)
 
 	s.True(m.CanReact())
-	s.False(m.ToData().ReactionSpent)
+	s.Equal(1, m.ToData().SlotsLeft(coreCombat.ActionReaction))
 }
 
 // What a monster is worth is authored, so it has to survive storage: a sheet

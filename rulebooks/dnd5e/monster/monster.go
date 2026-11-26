@@ -59,9 +59,10 @@ type Monster struct {
 	// AI behavior
 	targeting TargetingStrategy
 
-	// reactionSpent is this monster's one reaction meter. See
-	// [Data.ReactionSpent]; the keeper owns every write to it.
-	reactionSpent bool
+	// economy is what is left of this monster's turn. See [Data.Economy]; nil
+	// is a full turn. Every write to it goes through the ledger methods in
+	// ledger.go, the reaction's doors below, or the keeper's turn start.
+	economy *combat.ActionEconomy
 
 	// Event bus wiring
 	bus             events.EventBus
@@ -341,11 +342,12 @@ func (m *Monster) HasShieldEquipped() bool {
 // carries. A flag living on one reactor cannot meter a spell that never asks
 // that reactor anything, so the meter moved to the creature.
 //
-// It is the smallest economy a monster can have and deliberately not a
-// ledger: one bool, one question, cleared at this monster's own turn start.
-// Implements [combat.Member].
+// On 2026-11-26 (rpg-project#1131) the one bool became one of three slots of
+// the sheet's [Data.Economy], because an NPC's turn is owned by its sheet as a
+// player's is. This is now "a reaction is left" in that account, and the sheet
+// is a [combat.Ledger] (see ledger.go). Implements [combat.Member].
 func (m *Monster) CanReact() bool {
-	return !m.reactionSpent
+	return m.SlotsLeft(coreCombat.ActionReaction) > 0
 }
 
 // ErrReactionSpent is returned by [Monster.SpendReaction] when the monster's
@@ -358,33 +360,36 @@ var ErrReactionSpent = errors.New("monster: reaction already spent")
 // Its caller is resolution's one door (payAtTheDoor), which bills a reaction
 // once the machine has actually run it.
 func (m *Monster) SpendReaction() error {
-	if m.reactionSpent {
+	if !m.CanReact() {
 		return ErrReactionSpent
 	}
 
-	m.reactionSpent = true
-	m.dirty = true
+	m.SpendSlots(coreCombat.ActionReaction, 1)
 
 	return nil
 }
 
-// onSpendRequested pays the one thing this sheet can be billed for.
+// onSpendRequested pays a reaction when one is requested of this monster.
 //
-// A monster has no action and no bonus action to run out of, so every other
-// slot passes it by untouched: answering a request it cannot pay by emptying
-// the meter it can would spend a reaction nobody asked for.
+// Only a reaction is requested this way today: its one publisher is Fighting
+// Style: Protection. An action or a bonus action is paid at the gate
+// ([combat.Pay]) rather than by a request, so a request that names one is left
+// alone, not guessed at — answering it by emptying the reaction would spend a
+// reaction nobody asked for. (Until 2026-11-26 the reason was that a monster
+// had no action and no bonus action to run out of; rpg-project#1131 gave it
+// both, and the reason became where they are paid.)
 func (m *Monster) onSpendRequested(_ context.Context, event dnd5eEvents.SpendRequestedEvent) error {
-	if event.MemberID != m.id || event.ActionType != coreCombat.ActionReaction || m.reactionSpent {
+	if event.MemberID != m.id || event.ActionType != coreCombat.ActionReaction || !m.CanReact() {
 		return nil
 	}
 
-	m.reactionSpent = true
-	m.dirty = true
+	m.SpendSlots(coreCombat.ActionReaction, 1)
 
 	return nil
 }
 
-// onTurnStart gives the reaction back at the start of this monster's own turn.
+// onTurnStart gives the whole turn back at the start of this monster's own
+// turn: its action, its bonus action and its reaction.
 //
 // TURN START, NOT TURN END. A reaction is spent on somebody else's turn, so a
 // meter cleared at the end of its holder's turn would be full again for the
@@ -395,12 +400,12 @@ func (m *Monster) onSpendRequested(_ context.Context, event dnd5eEvents.SpendReq
 // reseeded by a verb the session calls, and a monster has no such verb — and
 // it is the least wiring there is: the composition's boundary already
 // publishes a turn start for every crossing, monsters included. The handler
-// only clears a bool, so the attach-time context this hears under (see
+// only drops the account, so the attach-time context this hears under (see
 // resolution/truth.go) cannot bite it.
 //
-// Only when the meter actually moved, because a boundary runs for every
-// participant of every round: marking unconditionally would flag every monster
-// in the fight dirty on every turn of it.
+// Only when the account actually moved (it is not nil), because a boundary
+// runs for every participant of every round: marking unconditionally would
+// flag every monster in the fight dirty on every turn of it.
 //
 // THE ONLY RESET. The flag this meter replaced also cleared on a long rest,
 // and that arm is deliberately not carried over: the only publishers of
@@ -409,11 +414,11 @@ func (m *Monster) onSpendRequested(_ context.Context, event dnd5eEvents.SpendReq
 // would match. A row for it would be wiring with no caller. If a rest that can
 // name a monster is ever written, this is where its arm goes.
 func (m *Monster) onTurnStart(_ context.Context, event dnd5eEvents.TurnStartEvent) error {
-	if event.SubjectID != m.id || !m.reactionSpent {
+	if event.SubjectID != m.id || m.economy == nil {
 		return nil
 	}
 
-	m.reactionSpent = false
+	m.economy = nil
 	m.dirty = true
 
 	return nil
@@ -897,7 +902,7 @@ func (m *Monster) ToData() *Data {
 		Speed:            m.speed,
 		Senses:           m.senses,
 		Targeting:        m.targeting,
-		ReactionSpent:    m.reactionSpent,
+		Economy:          copyEconomy(m.economy),
 		Actions:          make([]combatActions.Definition, len(m.actions)),
 		Proficiencies:    make([]ProficiencyData, 0, len(m.proficiencies)),
 	}

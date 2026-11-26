@@ -8,27 +8,31 @@ import "github.com/KirkDiggler/rpg-toolkit/rpgerr"
 // ActionEconomy tracks the available actions, bonus actions, and reactions for a combatant
 // Purpose: Manages the action economy system for D&D 5e combat, ensuring combatants can only
 // take actions they have available in their turn.
+//
+// It is saved: a monster's sheet holds one as its turn's account (see
+// monster.Data.Economy), so its fields carry JSON tags. The three slots are
+// always written; every capacity is omitted when zero.
 type ActionEconomy struct {
 	// Primary resources (consumed by abilities/features)
-	ActionsRemaining      int // Usually 1, Action Surge gives +1
-	BonusActionsRemaining int // Usually 1
-	ReactionsRemaining    int // Usually 1
+	ActionsRemaining      int `json:"actions_remaining"`       // Usually 1, Action Surge gives +1
+	BonusActionsRemaining int `json:"bonus_actions_remaining"` // Usually 1
+	ReactionsRemaining    int `json:"reactions_remaining"`     // Usually 1
 
 	// Capacity (set when specific abilities are used)
-	AttacksRemaining  int // Set when Attack ability is taken (stays 0 until then)
-	MovementRemaining int // Set at turn start from character speed
+	AttacksRemaining  int `json:"attacks_remaining,omitempty"`  // Set when Attack ability is taken (stays 0 until then)
+	MovementRemaining int `json:"movement_remaining,omitempty"` // Set at turn start from character speed
 
 	// Additional capacity granted for later resolution
-	OffHandAttacksRemaining          int // Set by TwoWeaponGranter after main-hand attack
-	MartialArtsBonusAttacksRemaining int // Set after a qualifying Martial Arts Attack action
-	FlurryStrikesRemaining           int // Set by FlurryOfBlows feature (usually 2)
-	DeathSavesRemaining              int // Set once for a Dying character's turn
+	OffHandAttacksRemaining          int `json:"off_hand_attacks_remaining,omitempty"`           // Set by TwoWeaponGranter after main-hand attack
+	MartialArtsBonusAttacksRemaining int `json:"martial_arts_bonus_attacks_remaining,omitempty"` // Set after a qualifying Martial Arts Attack action
+	FlurryStrikesRemaining           int `json:"flurry_strikes_remaining,omitempty"`             // Set by FlurryOfBlows feature (usually 2)
+	DeathSavesRemaining              int `json:"death_saves_remaining,omitempty"`                // Set once for a Dying character's turn
 
 	// ObjectInteractionsRemaining is the turn's one free object interaction.
 	// Seeded with the turn, like the three slots: a turn holds one whether or
 	// not anything spends it. Nothing a monster does spends it today; it is
 	// kept so this ledger stores every capacity the vocabulary names.
-	ObjectInteractionsRemaining int
+	ObjectInteractionsRemaining int `json:"object_interactions_remaining,omitempty"`
 }
 
 // NewActionEconomy creates a new ActionEconomy with default values (1/1/1)
