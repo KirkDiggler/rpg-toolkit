@@ -47,16 +47,61 @@ func TestCustomItemsAreSaid(t *testing.T) {
 	require.Contains(t, prop.Sentence, "is the item “Lieutenant's cloak”")
 	require.Contains(t, prop.Connects, readback.Connection{Kind: readback.ConnItem, ID: "lieutenants-cloak", Role: readback.RoleIsItem})
 
-	// The creature's own statement now says looting its body gives the items
-	// (rpg-project#1167), so only the other two keep the no-loot rule.
-	for _, st := range []readback.Statement{item, prop} {
-		for _, word := range []string{"loot", "take", "taken", "gives"} {
+	// The creature's own statement says looting its body gives the items
+	// (rpg-project#1167). An item's statement says what looting does with it
+	// (rpg-project#850, #1181), so it may say "loot" but not "take" or "gives";
+	// a prop is not taken by anything yet, so its statement says none of the four.
+	banned := map[string][]string{
+		"item": {"take", "taken", "gives"},
+		"prop": {"loot", "take", "taken", "gives"},
+	}
+	for kind, st := range map[string]readback.Statement{"item": item, "prop": prop} {
+		for _, word := range banned[kind] {
 			require.False(t, strings.Contains(strings.ToLower(st.Sentence), word),
-				"nothing in a run uses items yet, so %q does not say %q", st.Sentence, word)
+				"the %s statement %q does not say %q: nothing takes a prop yet, and an item's statement says only what looting does with it", kind, st.Sentence, word)
 		}
 	}
 	for _, un := range rb.NotYetSaid {
 		require.NotContains(t, un.Path, "equipment")
 		require.NotContains(t, un.Path, "customItems")
+	}
+}
+
+// Test 4 (rpg-project#1181): the statement for an item says whether a character
+// owns at most one of it or any number.
+func TestAnItemStatementSaysUniqueOrAnyNumber(t *testing.T) {
+	const (
+		one = "A character owns at most one of it: a looter who already has it leaves it on the body."
+		any = "A character can own any number of it: each one looted is its own item."
+	)
+	for name, tc := range map[string]struct{ file, old, replacement, want string }{
+		"unique true":  {"../testdata/unique-item/site.yaml", "", "", one},
+		"unique false": {"../testdata/unique-item/site.yaml", "unique: true", "unique: false", any},
+		"word absent":  {"../testdata/custom-items/site.yaml", "", "", any},
+		"false is any": {"../testdata/custom-items/site.yaml", "    slot: cloak\n", "    slot: cloak\n    unique: false\n", any},
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(tc.file) //nolint:gosec // a test reading its own fixture
+			require.NoError(t, err)
+			source := string(raw)
+			if tc.old != "" {
+				require.Equal(t, 1, strings.Count(source, tc.old))
+				source = strings.Replace(source, tc.old, tc.replacement, 1)
+			}
+			rb, err := readback.Of([]byte(source))
+			require.NoError(t, err)
+			for _, st := range rb.Statements() {
+				if st.Kind == readback.KindItem {
+					require.True(t, strings.HasSuffix(st.Sentence, tc.want), st.Sentence)
+					other := one
+					if tc.want == one {
+						other = any
+					}
+					require.NotContains(t, st.Sentence, other)
+					return
+				}
+			}
+			require.Fail(t, "no item statement")
+		})
 	}
 }
