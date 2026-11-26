@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
@@ -38,8 +39,16 @@ var _ encounter.Disengager = strikerSeam{}
 // composition is mid-verb over enc, so nothing is adopted and nothing is
 // committed here. The landing saves the dirty monster sheet into the session
 // record ([writeScope.replaceMonsterSheet]), which the verb's own commit
-// persists. No Cost: the driver already spent the bonus action, and a driven
-// activation charges nothing.
+// persists.
+//
+// PAID FROM THE SHEET AT THE DOOR (rpg-project#1131, 2026-11-26): the
+// activation carries the price [monster.CostOfDisengage] reads off the stored
+// sheet (a bonus action with Nimble Escape), and the door charges the
+// monster's own economy. THE STATE BETWEEN TWO SLICES: the encounter asks for
+// a Disengage only when its own count says a bonus action is left (its slice
+// is next, rpg-project#1131), so a sheet that cannot pay means the two counts
+// disagree. That is a malfunction: the error returns like any other, aborts
+// the caller's verb, tells nothing and saves nothing.
 //
 // Errors are malfunctions and abort the caller's verb: [ErrNoMember] for
 // somebody the encounter does not hold, [ErrNoSheet] for a member with no
@@ -53,8 +62,13 @@ func (s strikerSeam) Disengage(ctx context.Context, enc *encounter.Encounter, me
 	if !slices.ContainsFunc(roster, func(m encounter.Member) bool { return m.ID == member }) {
 		return fmt.Errorf("disengage: member %q: %w", member, ErrNoMember)
 	}
-	if _, found := npcSheet(s.scope.data, string(member)); !found {
+	sheet, found := npcSheet(s.scope.data, string(member))
+	if !found {
 		return fmt.Errorf("disengage: member %q has no stat block: %w", member, ErrNoSheet)
+	}
+	price, err := monster.CostOfDisengage(&monster.CostOfDisengageInput{Sheet: sheet})
+	if err != nil {
+		return fmt.Errorf("disengage: member %q: %w", member, err)
 	}
 
 	cast, err := s.m.castFor(ctx, s.scope, roster, nil)
@@ -77,6 +91,7 @@ func (s strikerSeam) Disengage(ctx context.Context, enc *encounter.Encounter, me
 		Live:         enc,
 		Participants: cast,
 		Machine:      machine,
+		Cost:         &resolution.Cost{PayerID: string(member), Profile: price.Cost},
 	}))
 	if err != nil {
 		return fmt.Errorf("disengage: %w", translateResolution(err))

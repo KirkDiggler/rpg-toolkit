@@ -729,16 +729,23 @@ func strikeFixtureFighter(id string) *character.Data {
 	}
 }
 
-// TestStrikeRefusesAPersistedMonsterPriceBeforeRolling pins the one door the
-// driven monster strike now shares with a player's own swing: if persisted
-// content declares a non-nil price, it is refused there rather than executing
-// free.
-func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
+// TestAPersistedMonsterPriceIsPaidFromItsSheetOrRefusedBeforeRolling guards
+// the same danger the test of its older name did: a monster's action that
+// states a price must never be a free hit.
+//
+// BEFORE (until 2026-11-26): the door refused a monster as a payer, so the seam
+// refused the strike before any die rolled. NOW (rpg-project#1131, resolver
+// v0.83.0): the door charges the monster's own sheet, so the guard is that a
+// priced strike is PAID, and one that cannot be paid is refused before any die
+// rolls. The fixture is the same: a skeleton whose stored actions each state a
+// price of one action, and a fighter. The brief is
+// https://github.com/KirkDiggler/rpg-project/issues/1198 (Amendment 1).
+func TestAPersistedMonsterPriceIsPaidFromItsSheetOrRefusedBeforeRolling(t *testing.T) {
 	ctx := context.Background()
 	sessions := &strikeSessions{byID: map[string]*SessionData{}}
 	encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 	characters := &strikeCharacters{byID: map[string]*character.Data{"fighter": strikeFixtureFighter("fighter")}}
-	roller := &scriptedDice{rolls: []int{17, 4}}
+	roller := &scriptedDice{rolls: []int{17, 4, 17, 4}}
 
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{},
@@ -774,19 +781,46 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 
 	scope, err := mgr.openForWrite(ctx, "sess")
 	require.NoError(t, err)
+	seam := strikerSeam{m: mgr, scope: scope}
 	beforeStory, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
 	require.NoError(t, err)
-	beforeHP := characters.byID["fighter"].HitPoints
 
-	err = (strikerSeam{m: mgr, scope: scope}).Strike(ctx, scope.enc, "skel-1", "fighter", *actionRef)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrBadCost)
-	require.NotErrorIs(t, err, resolution.ErrNoPayer, "the seam translates resolution's monster-payer refusal")
-	require.Zero(t, roller.next, "the priced strike is refused before attack or damage dice roll")
-	require.Equal(t, beforeHP, characters.byID["fighter"].HitPoints, "no free hit lands when pricing is declared")
-	afterStory, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
+	// The first strike is paid, not refused: the dice roll, the story gains
+	// the strike's beat, and the sheet shows the action spent.
+	require.NoError(t, seam.Strike(ctx, scope.enc, "skel-1", "fighter", *actionRef))
+	require.Positive(t, roller.next, "the paid strike rolled its dice")
+	afterFirst, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
 	require.NoError(t, err)
-	require.Len(t, afterStory, len(beforeStory), "an unrecorded refusal must not append a strike beat")
+	require.Greater(t, len(afterFirst), len(beforeStory), "the strike told its beat")
+	sheet, found := npcSheet(scope.data, "skel-1")
+	require.True(t, found)
+	require.Equal(t, 0, sheet.SlotsLeft(coreCombat.ActionStandard), "the stored sheet paid its action")
+	require.Equal(t, 1, sheet.SlotsLeft(coreCombat.ActionBonus))
+	require.Equal(t, 1, sheet.SlotsLeft(coreCombat.ActionReaction))
+	sheetAfterFirst, err := json.Marshal(sheet)
+	require.NoError(t, err)
+	rolledAfterFirst := roller.next
+	fighter, err := mgr.sheetsFor(nil).load(ctx, "participant", "fighter")
+	require.NoError(t, err)
+	hpAfterFirst := fighter.HitPoints
+
+	// A second strike before its turn start cannot be paid: refused before
+	// any die rolls, and nothing changes.
+	err = seam.Strike(ctx, scope.enc, "skel-1", "fighter", *actionRef)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCannotAfford)
+	require.Equal(t, rolledAfterFirst, roller.next, "the refused strike rolls nothing")
+	fighter, err = mgr.sheetsFor(nil).load(ctx, "participant", "fighter")
+	require.NoError(t, err)
+	require.Equal(t, hpAfterFirst, fighter.HitPoints, "no free hit lands")
+	afterSecond, err := scope.enc.Story(&encounter.StoryInput{Audience: "fighter"})
+	require.NoError(t, err)
+	require.Len(t, afterSecond, len(afterFirst), "a refusal appends no strike beat")
+	sheet, found = npcSheet(scope.data, "skel-1")
+	require.True(t, found)
+	sheetAfterSecond, err := json.Marshal(sheet)
+	require.NoError(t, err)
+	require.JSONEq(t, string(sheetAfterFirst), string(sheetAfterSecond), "the stored sheet is as the first strike left it")
 }
 
 // recordOne tells one outcome as a train of one, the shape every lone record

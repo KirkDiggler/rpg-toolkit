@@ -4,6 +4,7 @@
 package session_test
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
@@ -76,7 +77,9 @@ func (s *CastSuite) spendSkeletonReaction() {
 	s.T().Helper()
 	for i := range s.sessions.byID["sess"].NPCs {
 		if s.sessions.byID["sess"].NPCs[i].ID == "skeleton" {
-			s.sessions.byID["sess"].NPCs[i].ReactionSpent = true
+			economy := combat.NewActionEconomy()
+			economy.ReactionsRemaining = 0
+			s.sessions.byID["sess"].NPCs[i].Economy = economy
 			return
 		}
 	}
