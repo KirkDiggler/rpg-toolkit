@@ -197,6 +197,26 @@ type CheckContentOutput struct {
 	// Templates is every stat block whose `lets` the rules refuse, in template
 	// id order. A stat block that writes no `lets` is not asked about.
 	Templates []TemplateRefusal
+
+	// Activations is every word a table row activates that the rules have no
+	// ability for, in word order. A word that IS an ability is never refused,
+	// whoever runs the table: a row for an ability its creature lacks is
+	// simply never offered.
+	Activations []ActivationRefusal
+}
+
+// ActivationRefusal is one word a table row says after `activate` that names
+// no ability the rules describe.
+//
+// It has no Path, on purpose: a compiled row no longer knows which line of the
+// site file it came from (one behaviour definition compiles into every
+// creature that uses it). The host that holds the file places the refusal on
+// the row.
+type ActivationRefusal struct {
+	// Word is the word the row wrote.
+	Word string
+	// Message says so and lists the words that are abilities.
+	Message string
 }
 
 // TemplateRefusal is one stat block whose `lets` the rules refuse.
