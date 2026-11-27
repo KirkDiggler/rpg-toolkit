@@ -931,6 +931,11 @@ type Temper struct {
 // A GROUP LOADS BY THE WORD ITS `as` NAMES (R13), and at 100 when it names
 // none: it has no word of its own, and a hidden rule reading its rows would
 // be a number the author never wrote.
+//
+// AN `activate` ROW FALLS TO THE DEFAULT, 100. A temperament is a disposition
+// toward attacking, closing, running and standing still; it says nothing
+// about using an ability, and a sixth number is not added to every profile
+// in content.
 func (t Temper) factor(a Answer) int {
 	if t.Profile == (TemperProfile{}) {
 		return 100
@@ -1090,6 +1095,16 @@ type Facts struct {
 	// rule, so a host that has not thought about the action gets no run.
 	CanDash bool
 
+	// CanActivate is every ability this creature has AND can pay for right
+	// now, each by the word a row names it with ([Answer.Activate]). The host
+	// fills it from the creature's own sheet; this module only asks whether a
+	// word is among them.
+	//
+	// AN ABILITY THE CREATURE LACKS OR CANNOT PAY FOR IS ABSENT, NOT REFUSED,
+	// for [Facts.CanDash]'s reason. The zero value is "none", the other Can
+	// fields' rule.
+	CanActivate []string
+
 	// Deeds is every deed this creature holds against itself — the [ScopeSelf]
 	// reading, and the only one this module knew before scopes existed.
 	Deeds []HeldDeed
@@ -1216,6 +1231,10 @@ func (f Facts) affords(a Answer) bool {
 	case a.Dash != nil:
 		return f.CanMove && f.CanDash && f.locates(a.Dash, a.When, f.SeenFoes, f.RememberedFoes) &&
 			!f.inReachOf(a.Dash, a.When)
+	case a.Activate != "":
+		// EXACT: no trimming, no case folding. The dialect that decoded the
+		// file wrote the word, and the host listed it the same way.
+		return slices.Contains(f.CanActivate, a.Activate)
 	case a.Away != nil:
 		return f.CanMove && f.locates(a.Away, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Search != nil:

@@ -251,7 +251,10 @@ what the creature can still pay for, and an entry it cannot pay for is absent
 for the same reason an unmet condition is. A `dash` also needs
 `Facts.CanDash`: the run spends the creature's action, so the host clears it
 once the swing is spent on a turn, and a run it cannot pay for is absent
-rather than picked and refused (rpg-project#671). A pick that cannot act is noise on
+rather than picked and refused (rpg-project#671). An `activate` row is on the
+table only while its word is in `Facts.CanActivate`, the abilities the host says
+the creature has and can pay for now; the match is exact and nothing else gates
+it. A pick that cannot act is noise on
 the log. `hold` is never gated — it is the word that lets a creature with
 nothing left still have HAD its turn — and the zero value is "cannot", so a
 caller that forgets a budget gets a creature that holds rather than one that
@@ -261,7 +264,7 @@ quietly swings.
 
 One trigger is named here, `KeyTime` — a creature having time is the one thing
 every game has. Every other key is the caller's to name, seal and refuse. The
-words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Dash`, `Away`, `Search`) are
+words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Dash`, `Activate`, `Away`, `Search`) are
 DATA: this module knows which one fired and has no idea what attacking is or
 where `toward` walks to. A `Selector` is carried and resolved by the caller.
 

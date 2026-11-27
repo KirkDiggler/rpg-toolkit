@@ -153,7 +153,7 @@ func checkCompositionRows(rows []Answer) error {
 		}
 		words := 0
 		for _, present := range []bool{
-			row.Hold, row.Attack != nil, row.Toward != nil, row.Dash != nil,
+			row.Hold, row.Attack != nil, row.Toward != nil, row.Dash != nil, row.Activate != "",
 			row.Away != nil, row.Search != nil, row.Flee, row.Fact != "",
 		} {
 			if present {
