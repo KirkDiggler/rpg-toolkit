@@ -214,6 +214,14 @@ var omitted = map[string]string{
 	"encounter.MonsterView.Abilities": "the abilities an `activate` row reads; encounter.TableDriver " +
 		"reads them on the composition view, never through this twin",
 
+	// A creature's own hit points (rpg-project#1131), omitted for Table's
+	// reason: `hit_points` is a `when` word, and the one driver that reads it
+	// reads the composition's own view.
+	"encounter.MonsterView.HitPoints": "the hit points a `hit_points` condition reads; encounter.TableDriver " +
+		"reads them on the composition view, never through this twin",
+	"encounter.MonsterView.MaxHitPoints": "the maximum a `hit_points` condition reads; encounter.TableDriver " +
+		"reads it on the composition view, never through this twin",
+
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is
 	// refused, not something a roster listing reports back afterward. The

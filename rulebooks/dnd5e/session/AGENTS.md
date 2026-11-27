@@ -234,6 +234,16 @@ every `activate` word of every table row, a group's rows included
 rules do not know is refused, a real ability its creature lacks is not, and a
 launch refuses the first as `ErrUnknownContent`.
 
+**A creature acts on its own hit points (rpg-project#1131, 2026-11-28,
+rpg-project#1246).** `sheetSeam.readFacts` also fills `SheetFacts.HitPoints` and
+`MaxHitPoints` from a monster's stored sheet, beside `Turn` and for its reason:
+the verb's facts memo forgets a monster the moment its sheet is written, so a
+creature hurt or healed in the same verb is read at its new hit points. A
+character states none (the encounter never drives a player's turn from a table).
+The module adds no rule and no check: the encounter's `hit_points: { at_most: N }`
+condition compares the two numbers, N a percent of the maximum. The session's
+`MonsterView` twin omits both fields, for `Table`'s reason.
+
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
 ([`standing.go`](./standing.go):46), `checkSeam` and `witnessSeam`
