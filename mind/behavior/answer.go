@@ -29,8 +29,8 @@ import (
 // that neither speaks nor acts is a row the author wrote for no reason.
 //
 // THE WORD IS LEGAL PER KEY (design §2). `fact` and `flee` answer a social
-// verdict; `hold`, `attack`, `toward`, `dash`, `away` and `search` are what
-// a creature does with TIME. A `when` is a `time` word too — a social verdict is already the
+// verdict; `hold`, `attack`, `toward`, `dash`, `activate`, `away` and `search` are
+// what a creature does with TIME. A `when` is a `time` word too — a social verdict is already the
 // condition. the rulebook refuses the crossings by name.
 type Answer struct {
 	// Weight is this entry's share of the table. AT LEAST 1, refused
@@ -123,6 +123,18 @@ type Answer struct {
 	// did before the word existed and no compiled table moves.
 	Dash *Selector `json:",omitempty"`
 
+	// Activate has the creature USE A NAMED ABILITY (rpg-project#1131,
+	// rpg-toolkit ADR-0051): the word names it as an author writes it in a
+	// row (`activate: second wind`). What the ability is, what it costs and
+	// what it does are the caller's; this module carries the word.
+	//
+	// AN ABILITY THE CREATURE CANNOT PAY FOR IS ABSENT, NOT A PASS: the row is
+	// on the table only while the word is in [Facts.CanActivate].
+	//
+	// OMITTED WHEN EMPTY, so a row that activates nothing marshals exactly as
+	// it did before the word existed and no compiled table moves.
+	Activate string `json:",omitempty"`
+
 	// Away walks away from the selected member, this turn's movement — the
 	// coward's run. Command's and Dissonant Whispers' compelled walks keep
 	// their own engine-driven its own router path and do not pass through the
@@ -148,7 +160,7 @@ type Answer struct {
 	// lands on it, a second die rolls over its own candidates ([Pick]).
 	//
 	// A GROUP CARRIES NO WORD. Its answer is its rows, so a group row sets no
-	// Hold, Attack, Toward, Dash, Away, Flee, Search, Say or Fact, and holds at
+	// Hold, Attack, Toward, Dash, Activate, Away, Flee, Search, Say or Fact, and holds at
 	// least one row ([Answer.Validate], ErrBadGroup). Groups nest, to
 	// [MaxGroupDepth] (R14).
 	//
@@ -305,7 +317,7 @@ func (a *Answer) words() []string {
 		set  bool
 	}{
 		{"`hold`", a.Hold}, {"`attack`", a.Attack != nil}, {"`toward`", a.Toward != nil},
-		{"`dash`", a.Dash != nil}, {"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
+		{"`dash`", a.Dash != nil}, {"`activate`", a.Activate != ""}, {"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
 		{"`say`", a.Say != ""}, {"`fact`", a.Fact != ""}, {"`activity`", a.Activity != nil},
 	} {
 		if w.set {
