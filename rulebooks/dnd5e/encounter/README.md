@@ -277,9 +277,11 @@ content, not writing Go.
 ### What you cannot express yet
 
 **A creature cannot be told to go and look somewhere it has no reason to.**
-The words are `hold`, `attack`, `toward`, `dash`, `away`, `search`, `fact` and
+The words are `hold`, `attack`, `toward`, `dash`, `activate`, `away`, `search`, `fact` and
 `flee` (a `dash` is a run at `toward`'s selectors: twice the movement, no swing
-that turn), and a selector names a creature, an authored cell, an authored route, or where a
+that turn; `activate: <word>` names an ability as a stat block's `lets` writes it,
+and is on a creature's table only when the host says it can pay for it, which
+nothing does yet), and a selector names a creature, an authored cell, an authored route, or where a
 sound was heard. A creature that walks to where it last saw somebody, or to
 where a clang rang, and finds nobody there holds. `alarm`, `lure` and
 `pretend` are designed and refused by name; `patrol` is refused with what to

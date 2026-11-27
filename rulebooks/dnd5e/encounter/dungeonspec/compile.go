@@ -1164,6 +1164,11 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		}
 	}
 
+	activate := ""
+	if entry.Activate != nil {
+		activate = strings.TrimSpace(*entry.Activate)
+	}
+
 	return encounter.Answer{
 		Activity: activity,
 		Weight:   weight,
@@ -1176,6 +1181,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Attack:   selectorOf(entry.Attack, o),
 		Toward:   selectorOf(entry.Toward, o),
 		Dash:     selectorOf(entry.Dash, o),
+		Activate: activate,
 		Away:     selectorOf(entry.Away, o),
 		Search:   search,
 	}

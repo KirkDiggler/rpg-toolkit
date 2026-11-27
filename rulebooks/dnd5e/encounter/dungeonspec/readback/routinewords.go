@@ -350,6 +350,10 @@ func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection)
 	if a.Dash != nil {
 		does = append(does, "runs (dashes) toward "+selectorWords(a.Dash, who, b.actorWords(a)))
 	}
+	if a.Activate != "" {
+		does = append(does, "activates "+said(a.Activate)+", when it has that ability and can pay for it")
+		conns = append(conns, Connection{Kind: ConnAbility, ID: a.Activate, Role: RoleActivates})
+	}
 	if a.Away != nil {
 		does = append(does, "moves away from "+selectorWords(a.Away, who, b.actorWords(a)))
 	}

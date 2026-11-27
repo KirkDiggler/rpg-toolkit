@@ -77,7 +77,7 @@ var acknowledged = map[string][]string{
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},
 	"faction":            {"behaviors", "behaviorState", "blockingStates", "posts", "table", "on", "states"},
 	"behaviorDefinition": {"ref", "parameters", "end", "body"},
-	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "away", "search", "use", "with", "as"},
+	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "activate", "away", "search", "use", "with", "as"},
 	"recipe":             {"bag"},
 	"tableRow":           {"give", "tells", "relocate", "apply_status"},
 	"template":           {"addActions", "dropActions", "experience"},

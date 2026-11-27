@@ -588,6 +588,8 @@ func answerWord(entry Answer) string {
 		return "toward"
 	case entry.Dash != nil:
 		return "dash"
+	case entry.Activate != "":
+		return "activate"
 	case entry.Away != nil:
 		return "away"
 	case entry.Search != nil:
@@ -719,7 +721,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 			return fmt.Errorf("answer %q entry %d: `%s` answers a social verdict, not time: %w",
 				key, i, word, ErrBadAnswer)
 		}
-	case "hold", "attack", "toward", "dash", "away", "search":
+	case "hold", "attack", "toward", "dash", "activate", "away", "search":
 		if social {
 			return fmt.Errorf("answer %q entry %d: `%s` is what a creature does with time: %w",
 				key, i, word, ErrBadAnswer)

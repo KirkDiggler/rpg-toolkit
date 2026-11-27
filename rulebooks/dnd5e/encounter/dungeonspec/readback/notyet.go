@@ -58,7 +58,7 @@ var saidKeys = map[string][]string{
 	"state":              {"transitions", "terminal"},
 	"transition":         {"on", "when", "to", "do", "reason"},
 	"act":                {"pick", "wake_in", "set", "clear", "anchor"},
-	"tableRow": {"weight", "say", "loudness", "activity", "fact", "flee", "when", "hold", "attack", "toward", "dash", "away",
+	"tableRow": {"weight", "say", "loudness", "activity", "fact", "flee", "when", "hold", "attack", "toward", "dash", "activate", "away",
 		"search", "use", "with", "as"},
 	"template": {"base", "name", "hitDice", "armor", "abilities", "proficiency", "skills", "actions", "lets"},
 	"ending":   {"id", "when", "if", "outcome"},

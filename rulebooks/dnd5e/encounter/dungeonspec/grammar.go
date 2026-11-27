@@ -1021,6 +1021,15 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 			g.fail(at+".apply_status", "apply_status is only on a line's success or failure row: a table row grants nothing")
 		}
 	}
+	// `activate` IS ONE WORD (rpg-project#1131). Its shape (a string) was
+	// judged at decode; an empty or blank one is judged here, where a row's
+	// own shape is, and before a `use:` row is set aside. Whether the word is
+	// an ability is the host's content check, never this module's (C1).
+	if entry.Activate != nil && strings.TrimSpace(*entry.Activate) == "" {
+		g.fail(at+".activate", "%s (line %d)", errActivateShape, entry.Line)
+
+		return
+	}
 	g.loudness(at, entry.Loudness)
 	if entry.Weight != nil && *entry.Weight < 1 {
 		g.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
@@ -1401,6 +1410,9 @@ func entryWords(entry AnswerSpec) []string {
 	}
 	if entry.Dash != nil {
 		out = append(out, "dash")
+	}
+	if entry.Activate != nil {
+		out = append(out, "activate")
 	}
 	if entry.Away != nil {
 		out = append(out, "away")
