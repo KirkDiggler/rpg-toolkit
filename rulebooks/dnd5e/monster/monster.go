@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -17,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -63,6 +65,20 @@ type Monster struct {
 	// is a full turn. Every write to it goes through the ledger methods in
 	// ledger.go, the reaction's doors below, or the keeper's turn start.
 	economy *combat.ActionEconomy
+
+	// kit is what this creature can use and the pools it keeps for itself; nil
+	// is a creature with none. See [Data.Kit]. It is a copy: it shares nothing
+	// with a Data.
+	kit *kits.Kit
+	// left is what is left in each of the kit's pools. See [Data.Left].
+	//
+	// NOTHING REFILLS A COUNT. A turn start gives back the turn and leaves
+	// these alone, and no rest names a creature, so none is wired here: a
+	// creature's count is spent for the fight and the sheet's life. A reader
+	// looking for the rest that refills it will not find one (the story:
+	// rpg-project#1131). The pool's restore_on is carried for the day a rest
+	// can name a creature.
+	left map[string]int
 
 	// Event bus wiring
 	bus             events.EventBus
@@ -941,6 +957,12 @@ func (m *Monster) ToData() *Data {
 
 	// Then, add unapplied trait data (from factory functions)
 	data.Conditions = append(data.Conditions, m.traitData...)
+
+	// The kit and its counts are copies: the sheet and the Data share nothing.
+	if m.kit != nil {
+		data.Kit = cloneKit(m.kit)
+		data.Left = maps.Clone(m.left)
+	}
 
 	return data
 }

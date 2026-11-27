@@ -7,6 +7,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 )
 
 // A sheet is a [combat.Ledger].
@@ -105,19 +106,54 @@ func (m *Monster) BankCapacity(key combat.CapacityType, n int) {
 	m.writable().BankCapacity(key, n)
 }
 
-// PoolLeft answers zero for every pool: a monster has no counts yet, so a cost
-// that names a pool is refused whole rather than charged to nothing.
-//
-// Implements [combat.Ledger].
-func (m *Monster) PoolLeft(_ coreResources.ResourceKey) int {
-	return 0
+// PoolKey is the key of one of a creature's own pools, as a cost names it and
+// as this sheet's ledger answers it. It is compared whole, never parsed back.
+func PoolKey(pool string) coreResources.ResourceKey {
+	return coreResources.ResourceKey("kit:" + pool)
 }
 
-// SpendPool does nothing, because there is nothing here to take. The gate never
-// reaches it: [Monster.PoolLeft] answers zero, so a pool cost is refused first.
+// poolNamed finds the pool a key names: the pool's name, when key is
+// [PoolKey] of a pool the kit declares. ok is false for any other key.
+func (m *Monster) poolNamed(key coreResources.ResourceKey) (name string, ok bool) {
+	if m.kit == nil {
+		return "", false
+	}
+	for pool := range m.kit.Pools {
+		if PoolKey(pool) == key {
+			return pool, true
+		}
+	}
+
+	return "", false
+}
+
+// PoolLeft answers what is left in the creature's own pool that key names, and
+// zero for any other key: a cost that names a pool this creature does not keep
+// is refused whole rather than charged to nothing. It creates nothing and marks
+// nothing.
 //
 // Implements [combat.Ledger].
-func (m *Monster) SpendPool(_ coreResources.ResourceKey, _ int) {
+func (m *Monster) PoolLeft(key coreResources.ResourceKey) int {
+	name, ok := m.poolNamed(key)
+	if !ok {
+		return 0
+	}
+
+	return m.left[name]
+}
+
+// SpendPool debits the creature's own pool that key names, floored at zero, and
+// marks the sheet. For any other key it does nothing: the gate never reaches it,
+// because [Monster.PoolLeft] answers zero and the cost is refused first.
+//
+// Implements [combat.Ledger].
+func (m *Monster) SpendPool(key coreResources.ResourceKey, n int) {
+	name, ok := m.poolNamed(key)
+	if !ok {
+		return
+	}
+	m.left[name] = max(0, m.left[name]-n)
+	m.dirty = true
 }
 
 // copyEconomy returns a copy of an account, nil for nil. The live sheet and a
@@ -129,6 +165,18 @@ func copyEconomy(economy *combat.ActionEconomy) *combat.ActionEconomy {
 	}
 
 	copied := *economy
+
+	return &copied
+}
+
+// cloneKit returns a copy of a kit, nil for nil. The live sheet and a [Data]
+// never share a map, slice or byte of it.
+func cloneKit(kit *kits.Kit) *kits.Kit {
+	if kit == nil {
+		return nil
+	}
+
+	copied := kit.Clone()
 
 	return &copied
 }
