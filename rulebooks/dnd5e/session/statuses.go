@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/status"
 )
@@ -192,6 +193,20 @@ type CheckContentOutput struct {
 
 	// Items is every custom item the rules refuse, in item id order.
 	Items []ItemRefusal
+
+	// Templates is every stat block whose `lets` the rules refuse, in template
+	// id order. A stat block that writes no `lets` is not asked about.
+	Templates []TemplateRefusal
+}
+
+// TemplateRefusal is one stat block whose `lets` the rules refuse.
+type TemplateRefusal struct {
+	// TemplateID is the block's id under the site's `templates:`.
+	TemplateID string
+	// Path is where it is set in the site file: `templates.<id>.lets`.
+	Path string
+	// Message is the rules' refusal, which names the stat block and the word.
+	Message string
 }
 
 // ItemRefusal is one custom item a site can give that the rules refuse.
@@ -211,7 +226,9 @@ type ItemRefusal struct {
 // refuse is one [StatusRefusal], in status id order. It also reads every
 // custom item the site carries, on a creature's equipment or on a prop, once
 // per item id, with [magicitems.Compile]; an item the rules refuse is one
-// [ItemRefusal], in item id order.
+// [ItemRefusal], in item id order. It also asks the rules ([monster.CheckLets])
+// about every stat block that writes `lets`; one the rules refuse is one
+// [TemplateRefusal], in template id order.
 //
 // Errors: a nil input or dungeon.
 func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
@@ -236,12 +253,28 @@ func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
 			out.Items = append(out.Items, ItemRefusal{ItemID: id, Path: "customItems." + id, Message: err.Error()})
 		}
 	}
+	templateIDs := make([]string, 0, len(in.Dungeon.Templates))
+	for id, spec := range in.Dungeon.Templates {
+		if len(spec.Lets) > 0 {
+			templateIDs = append(templateIDs, id)
+		}
+	}
+	sort.Strings(templateIDs)
+	for _, id := range templateIDs {
+		lets, err := letsOf(in.Dungeon.Templates[id])
+		if err == nil {
+			err = monster.CheckLets(&monster.CheckLetsInput{ID: id, Lets: lets})
+		}
+		if err != nil {
+			out.Templates = append(out.Templates, TemplateRefusal{TemplateID: id, Path: "templates." + id + ".lets", Message: err.Error()})
+		}
+	}
 	return out, nil
 }
 
 // refuseLaunchContent is the content check as launch asks it: the first
-// refusal, statuses before items, as [ErrUnknownContent] naming the status or
-// item and the rules' words.
+// refusal, statuses before items before stat blocks, as [ErrUnknownContent] naming the status or
+// item or stat block and the rules' words.
 func refuseLaunchContent(dungeon *dungeonspec.Compiled) error {
 	checked, err := CheckContent(&CheckContentInput{Dungeon: dungeon})
 	if err != nil {
