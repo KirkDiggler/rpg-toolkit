@@ -288,10 +288,6 @@ func refuseLaunchContent(dungeon *dungeonspec.Compiled) error {
 		r := checked.Items[0]
 		return fmt.Errorf("%w: item %q at %s: %s", ErrUnknownContent, r.ItemID, r.Path, r.Message)
 	}
-	if len(checked.Templates) > 0 {
-		r := checked.Templates[0]
-		return fmt.Errorf("%w: stat block %q at %s: %s", ErrUnknownContent, r.TemplateID, r.Path, r.Message)
-	}
 	return nil
 }
 

@@ -199,17 +199,29 @@ func TestTheContentCheckRefusesAStatBlockTheRulesCannotRun(t *testing.T) {
 	}
 }
 
-// Test 6. A launch refuses the same site at the stat block, and launches nothing.
+// Test 6. A launch of each bad site is refused by the stat block's own assembly
+// (ErrInvalidWorld, the rules' sentence as text), and launches nothing.
 func TestALaunchRefusesAStatBlockTheRulesCannotRunAndLaunchesNothing(t *testing.T) {
-	compiled := compileSite(t, lieutenantVariant(t, "use: second wind", "use: fireball"))
-	s, err := newLieutenantScene(t, compiled)
-	require.ErrorIs(t, err, session.ErrUnknownContent)
-	require.ErrorContains(t, err, `stat block "gate-lieutenant"`)
-	require.ErrorContains(t, err, "templates.gate-lieutenant.lets")
-	require.ErrorContains(t, err, "fireball")
-	require.Empty(t, s.sessions.byID, "no session was stored")
-	require.Zero(t, s.enc.saves, "no encounter was stored")
-	t.Logf("launch: %v", err)
+	cases := []struct {
+		name     string
+		from, to string
+		contains string
+	}{
+		{"an ability the rules do not know", "use: second wind", "use: fireball", "fireball"},
+		{"a count that cannot be used", "max: 1", "max: 0", "uses.max"},
+		{"a cost a stat block does not declare", "uses: { max: 1, refills: { on: [short rest, long rest] } }", "cost: { charges: 1 }", "charges"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s, err := newLieutenantScene(t, compileSite(t, lieutenantVariant(t, c.from, c.to)))
+			require.ErrorIs(t, err, session.ErrInvalidWorld)
+			require.ErrorContains(t, err, `stat block "gate-lieutenant"`)
+			require.ErrorContains(t, err, c.contains)
+			require.Empty(t, s.sessions.byID, "no session was stored")
+			require.Zero(t, s.enc.saves, "no encounter was stored")
+			t.Logf("launch: %v", err)
+		})
+	}
 }
 
 // Test 7. A site with no `lets` is as it was.
