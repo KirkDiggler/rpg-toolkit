@@ -38,11 +38,19 @@ func (m *Monster) InCombat() bool {
 // account is the economy a read answers from: the sheet's own, or a full turn
 // when it holds none. It never stores what it builds.
 func (m *Monster) account() *combat.ActionEconomy {
-	if m.economy == nil {
+	return accountOf(m.economy)
+}
+
+// accountOf is the one place a read learns what a sheet's economy says: the
+// economy itself, or a full turn when the sheet holds none. The loaded creature
+// and a stored sheet's read-only ledger both answer from it, so they cannot
+// disagree about what a nil account means. It never stores what it builds.
+func accountOf(economy *combat.ActionEconomy) *combat.ActionEconomy {
+	if economy == nil {
 		return combat.NewActionEconomy()
 	}
 
-	return m.economy
+	return economy
 }
 
 // writable is the account a write changes: it creates a full turn on the first
@@ -115,10 +123,16 @@ func PoolKey(pool string) coreResources.ResourceKey {
 // poolNamed finds the pool a key names: the pool's name, when key is
 // [PoolKey] of a pool the kit declares. ok is false for any other key.
 func (m *Monster) poolNamed(key coreResources.ResourceKey) (name string, ok bool) {
-	if m.kit == nil {
+	return poolNamedIn(m.kit, key)
+}
+
+// poolNamedIn is [Monster.poolNamed] over a kit alone, so a stored sheet finds
+// the pool a key names by the same code the loaded creature does.
+func poolNamedIn(kit *kits.Kit, key coreResources.ResourceKey) (name string, ok bool) {
+	if kit == nil {
 		return "", false
 	}
-	for pool := range m.kit.Pools {
+	for pool := range kit.Pools {
 		if PoolKey(pool) == key {
 			return pool, true
 		}

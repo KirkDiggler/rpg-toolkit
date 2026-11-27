@@ -85,6 +85,24 @@ err = monstertraits.AttachMonster(ctx, m, bus, roller)
 refs, damage properties, condition parameters, or save abilities cannot alter
 the stored sheet.
 
+## A creature's kit and what it can use
+
+A stat block's `lets` becomes the sheet's `Kit` (what the creature can use and
+the pools it keeps) and `Left` (what is left in each pool). A loaded creature
+describes a grant with `Monster.GrantedAbility`. A host that holds only the
+stored sheet asks `monster.AbilitiesOf`:
+
+```go
+out, err := monster.AbilitiesOf(&monster.AbilitiesOfInput{Sheet: data})
+// out.Abilities: Word "second wind", Grant "second-wind", Name, Payable, Definition
+```
+
+Both build the description in one place, so they cannot differ. `Payable` is
+`combat.CanPay` over a read-only ledger on the sheet whose reads are the loaded
+creature's own code; the read needs no bus and no context and changes nothing.
+`Word` is the rules' word from `features.NamedAbilities`, never made from the
+grant's name.
+
 ## Adding content
 
 Use [`monsters/bandit.go`](monsters/bandit.go) for a simple melee/ranged
