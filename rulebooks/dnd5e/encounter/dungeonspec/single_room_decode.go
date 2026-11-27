@@ -927,6 +927,37 @@ func templatesShape(doc *yaml.Node, add errSink) {
 				stringListShape(list, fieldPath(p, key), add)
 			}
 		}
+		if lets := optionalNode(t, "lets", p, add); lets != nil {
+			templateLetsShape(lets, fieldPath(p, "lets"), add)
+		}
+	}
+}
+
+// templateLetsShape judges the SHAPE of a stat block's `lets` and nothing
+// inside the words (rpg-project#1131): a non-empty list of mappings, each with
+// `use` as non-empty text. Whether the use names an ability, what `with` takes
+// and what `uses` means are the rules' to judge, as a custom item's are.
+func templateLetsShape(n *yaml.Node, p string, add errSink) {
+	n = resolveNode(n)
+	if n == nil || n.Kind != yaml.SequenceNode {
+		add(p, errNotAList+": what the creature can use, one entry each")
+		return
+	}
+	if len(n.Content) == 0 {
+		add(p, "lets is empty: leave `lets` out for a creature that has none")
+		return
+	}
+	for j, entry := range n.Content {
+		at := fmt.Sprintf("%s[%d]", p, j)
+		entry = resolveNode(entry)
+		if entry == nil || entry.Kind != yaml.MappingNode {
+			add(at, errNotAMapping+": an entry is written with use, and optionally with and uses")
+			continue
+		}
+		use := childNode(entry, "use")
+		if use == nil || isNull(use) || use.Tag != "!!str" || strings.TrimSpace(use.Value) == "" {
+			add(at+".use", "a lets entry needs use as non-empty text: the word of what the creature can use")
+		}
 	}
 }
 
@@ -1034,6 +1065,14 @@ func templateValues(templates map[string]TemplateSpec, add errSink) {
 			if !skillIDPattern.MatchString(skill) {
 				add(fmt.Sprintf("%s.skills[%d]", p, j),
 					fmt.Sprintf("%q is not a skill id: a skill is named in lowercase, like perception or sleight-of-hand", skill))
+			}
+		}
+		// NOTHING IN A `lets` ENTRY IS A VALUE THAT CANNOT BE WRITTEN, the rule a
+		// custom item has; the words themselves are the rules' to judge.
+		for j, entry := range t.Lets {
+			if where, value, bad := unwritable(entry, ""); bad {
+				add(fmt.Sprintf("%s.lets[%d]", p, j), fmt.Sprintf("the value %s at %s cannot be written: "+
+					"a lets entry holds only text, whole numbers, yes/no, and lists and maps of those", value, where))
 			}
 		}
 		// THE WEAPONS ARE A BINDING'S WEAPONS, judged by the one function that

@@ -165,6 +165,9 @@ func (b *builder) place() []Group {
 			parts = append(parts, "arms "+strings.Join(t.Actions, ", "))
 		}
 		add(b.stmt(KindTemplate, Subject{Kind: "template", ID: id}, "templates."+id, strings.Join(parts, "; ")+"."))
+		if st, ok := b.templateLetsStatement(id, templateLetsSource{name: t.Name, lets: t.Lets}); ok {
+			add(st)
+		}
 	}
 	for _, id := range sortedKeys(b.spec.Bundles) {
 		add(b.stmt(KindBundle, Subject{Kind: "bundle", ID: id}, "bundles."+id, fmt.Sprintf(

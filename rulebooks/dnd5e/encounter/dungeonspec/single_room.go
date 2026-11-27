@@ -302,6 +302,13 @@ type TemplateSpec struct {
 	// Experience is what the block is worth when it falls. It NEVER
 	// inherits from the base (design R8): absent, or 0, is worth nothing.
 	Experience int `yaml:"experience,omitempty" json:"experience,omitempty"`
+
+	// Lets is what this block's creature can use, each entry in the author's
+	// words (`use`, `with`, `uses`), as a custom item's `lets` is. Carried; the
+	// rules judge the words. Nil when not authored, and left out of the
+	// compiled picture then, so a site that does not say it compiles as it did
+	// (rpg-project#1131).
+	Lets []map[string]any `yaml:"lets,omitempty" json:"lets,omitempty"`
 }
 
 // TableSpec is one authored answer table at the root: a named block of orders
