@@ -1,0 +1,120 @@
+# THE LIEUTENANT USES SECOND WIND (rpg-project#1131, #1240): a small walk site,
+# copied from lieutenant-holds-second-wind-walk.yaml (the same hall, gate, stat
+# block and placement), with ONE change to what is authored: his table gains a
+# first row, `activate: second wind`. One open hall, a fighter at one end, and ONE
+# hostile creature, the Lieutenant, 3 cells from her start:
+#   1. He has Second Wind and ONE use. On his first turn he uses it (a bonus
+#      action and his one use) and also walks or swings, in whichever order the
+#      table's roll lands: rows are weighed, not ranked.
+#   2. It heals him 1d10 plus 1, up to his maximum hit points, so used at full
+#      hit points it heals nothing, and the story still tells that he used it.
+#   3. Nothing gives the use back in a run (a rest does), so on every later turn
+#      the row is not on his table: his sheet cannot pay for it.
+# WHAT IS NOT YET: he does not wait until he is hurt to use it. That is a later
+# step (reading his own hit points in a row's `when`).
+# Issue: https://github.com/KirkDiggler/rpg-project/issues/1240
+version: 5
+key: lieutenant-uses-second-wind-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  gate-lieutenant:
+    base: dnd5e:monsters:human
+    name: Lieutenant
+    hitDice: 2d8
+    actions: [dnd5e:weapons:longsword]
+    lets:
+      - use: second wind
+        with: { level: 1 }
+        uses: { max: 1, refills: { on: [short rest, long rest] } }
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: hostile }
+
+behaviorDefinitions:
+  lieutenant-policy:
+    recipe:
+      ref: site:behaviors:lieutenant-policy
+      initial: fighting
+      states:
+        fighting:
+          transitions:
+            - { on: time, do: [{ pick: time }] }
+            - { on: turn, do: [{ pick: time }] }
+    table:
+      time:
+        - { activate: second wind }
+        - { when: { enemy: walk }, toward: enemy }
+        - { when: { enemy: reach }, attack: enemy }
+
+room:
+  version: 3
+  id: room-1
+  name: The Lieutenant Uses Second Wind
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Lieutenant Uses Second Wind
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-10, 4]] }
+          - { r: 4, q: [[-11, 3]] }
+          - { r: 5, q: [[-11, 3]] }
+          - { r: 6, q: [[-12, 2]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -8, r: 4 }
+    monsterDeclarations:
+      - id: lieutenant
+        ref: dnd5e:monsters:gate-lieutenant
+        startingCell: { location: { q: -5, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      lieutenant:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: lieutenant-policy
+        behaviorState: policy

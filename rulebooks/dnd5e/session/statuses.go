@@ -6,13 +6,16 @@ package session
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -197,6 +200,26 @@ type CheckContentOutput struct {
 	// Templates is every stat block whose `lets` the rules refuse, in template
 	// id order. A stat block that writes no `lets` is not asked about.
 	Templates []TemplateRefusal
+
+	// Activations is every word a table row activates that the rules have no
+	// ability for, in word order. A word that IS an ability is never refused,
+	// whoever runs the table: a row for an ability its creature lacks is
+	// simply never offered.
+	Activations []ActivationRefusal
+}
+
+// ActivationRefusal is one word a table row says after `activate` that names
+// no ability the rules describe.
+//
+// It has no Path, on purpose: a compiled row no longer knows which line of the
+// site file it came from (one behaviour definition compiles into every
+// creature that uses it). The host that holds the file places the refusal on
+// the row.
+type ActivationRefusal struct {
+	// Word is the word the row wrote.
+	Word string
+	// Message says so and lists the words that are abilities.
+	Message string
 }
 
 // TemplateRefusal is one stat block whose `lets` the rules refuse.
@@ -228,7 +251,10 @@ type ItemRefusal struct {
 // per item id, with [magicitems.Compile]; an item the rules refuse is one
 // [ItemRefusal], in item id order. It also asks the rules ([monster.CheckLets])
 // about every stat block that writes `lets`; one the rules refuse is one
-// [TemplateRefusal], in template id order.
+// [TemplateRefusal], in template id order. Last it reads every table row of the
+// site, a group's rows too, for the words it activates, once per distinct word,
+// and asks the rules ([features.NamedAbility]); a word that is no ability is one
+// [ActivationRefusal], in word order.
 //
 // Errors: a nil input or dungeon.
 func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
@@ -269,12 +295,23 @@ func CheckContent(in *CheckContentInput) (*CheckContentOutput, error) {
 			out.Templates = append(out.Templates, TemplateRefusal{TemplateID: id, Path: "templates." + id + ".lets", Message: err.Error()})
 		}
 	}
+	for _, word := range siteActivations(in.Dungeon) {
+		if _, ok := features.NamedAbility(word); !ok {
+			out.Activations = append(out.Activations, ActivationRefusal{
+				Word: word,
+				Message: fmt.Sprintf("a table row says `activate: %s`, and the rules describe no ability by that word; it is one of %s",
+					word, strings.Join(features.NamedAbilities(), ", ")),
+			})
+		}
+	}
 	return out, nil
 }
 
 // refuseLaunchContent is the content check as launch asks it: the first
-// refusal, statuses before items before stat blocks, as [ErrUnknownContent] naming the status or
-// item or stat block and the rules' words.
+// refusal, statuses before items, then a table row's activation, as
+// [ErrUnknownContent] naming the status, item or word and the rules' words.
+// A stat block the rules cannot run is refused later, when its creature is
+// assembled, as [ErrInvalidWorld]: that refusal is not this function's.
 func refuseLaunchContent(dungeon *dungeonspec.Compiled) error {
 	checked, err := CheckContent(&CheckContentInput{Dungeon: dungeon})
 	if err != nil {
@@ -288,7 +325,32 @@ func refuseLaunchContent(dungeon *dungeonspec.Compiled) error {
 		r := checked.Items[0]
 		return fmt.Errorf("%w: item %q at %s: %s", ErrUnknownContent, r.ItemID, r.Path, r.Message)
 	}
+	if len(checked.Activations) > 0 {
+		r := checked.Activations[0]
+		return fmt.Errorf("%w: %s", ErrUnknownContent, r.Message)
+	}
 	return nil
+}
+
+// siteActivations is every word a table row of the compiled site activates,
+// once each, in word order. Rows are found by walking the compiled form for
+// [encounter.Answer]; the walk does not descend into a match, so the rows
+// inside a group row, to any depth, are walked by hand.
+func siteActivations(dungeon *dungeonspec.Compiled) []string {
+	words := map[string]struct{}{}
+	var visit func(row encounter.Answer)
+	visit = func(row encounter.Answer) {
+		if row.Activate != "" {
+			words[row.Activate] = struct{}{}
+		}
+		for _, inner := range row.Rows {
+			visit(inner)
+		}
+	}
+	walkCompiled(dungeon, reflect.TypeOf(encounter.Answer{}), func(v reflect.Value) {
+		visit(v.Interface().(encounter.Answer))
+	})
+	return slices.Sorted(maps.Keys(words))
 }
 
 // siteStatusGrants is every status any line of the compiled site can give,

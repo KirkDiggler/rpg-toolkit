@@ -206,6 +206,14 @@ var omitted = map[string]string{
 	"encounter.MonsterView.Known": "the fact ids a `when: { fact }` condition reads; encounter.TableDriver " +
 		"reads them on the composition view, never through this twin",
 
+	// What a creature can use (rpg-project#1131, rpg-toolkit ADR-0051),
+	// omitted for Table's reason: `activate` is a table word, and the one
+	// driver that speaks it reads the composition's own view. A host's own
+	// driver has no intent to activate with (this package's TurnIntent has
+	// no fifth case); the day it does, this is projected with it.
+	"encounter.MonsterView.Abilities": "the abilities an `activate` row reads; encounter.TableDriver " +
+		"reads them on the composition view, never through this twin",
+
 	// BlocksMovement (rpg-toolkit#1434) is consulted by the canvas's own
 	// occupancy check at Join/Step time — it decides whether an arrival is
 	// refused, not something a roster listing reports back afterward. The
