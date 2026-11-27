@@ -426,8 +426,8 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact, Threat
-// or Not.
+// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact, Threat,
+// HitPoints or Not.
 // An entry that needs two writes two Whens in its list ([Answer.When], R8 of
 // rpg-project#569): the list is the `and`, every entry in it must hold, and
 // `not` wraps a negative. Two conditions in one When would be a second way to
@@ -536,6 +536,24 @@ type When struct {
 	// OMITTED WHEN EMPTY, for Scope's reason: a condition that names no
 	// threat marshals exactly as it did before the word existed.
 	Threat ThreatWord `json:",omitempty"`
+
+	// HitPoints holds when the creature's OWN hit points are at most a share
+	// of its own maximum (rpg-project#1131, ruled 2026-11-28: the author
+	// writes the number). `hit_points: { at_most: 30 }` holds for a creature
+	// at 30% of its maximum or less. The two numbers it is judged against are
+	// the caller's ([Facts.HitPoints], [Facts.MaxHitPoints]).
+	//
+	// OMITTED WHEN NIL, so a condition that does not ask marshals exactly as
+	// it did before the word existed and no compiled table moves.
+	HitPoints *HitPointsWhen `json:",omitempty"`
+}
+
+// HitPointsWhen is `hit_points: { at_most: N }`: a share of the creature's own
+// maximum hit points, as a whole percent.
+type HitPointsWhen struct {
+	// AtMost is the percent, 1 to 100. The condition holds when the
+	// creature's hit points are AT OR BELOW that share of its maximum.
+	AtMost int
 }
 
 // HeardWhen is a `heard` condition: which kind of sound, and how recently.
@@ -590,6 +608,9 @@ func (w *When) conditions() []string {
 	if w.Threat != "" {
 		out = append(out, "`threat`")
 	}
+	if w.HitPoints != nil {
+		out = append(out, "`hit_points`")
+	}
 
 	return out
 }
@@ -614,7 +635,7 @@ func (w *When) Validate() error {
 		for _, d := range WhenDeeds {
 			words = append(words, "`"+d+"`")
 		}
-		words = append(words, "`heard`", "`fact`", "`threat`")
+		words = append(words, "`heard`", "`fact`", "`threat`", "`hit_points`")
 
 		return fmt.Errorf("a `when` entry names no condition; give it one of %s or `not`: %w",
 			strings.Join(words, ", "), ErrBadWhen)
@@ -644,6 +665,9 @@ func (w *When) Validate() error {
 		return w.Fact.validate("`fact`")
 	case w.Threat != "" && !w.Threat.sealed():
 		return fmt.Errorf("`threat: %s`: a threat is none, walk or dash: %w", w.Threat, ErrBadWhen)
+	case w.HitPoints != nil && (w.HitPoints.AtMost < 1 || w.HitPoints.AtMost > 100):
+		return fmt.Errorf("`hit_points` at most %d: a share of the creature's own maximum is a "+
+			"whole percent from 1 to 100: %w", w.HitPoints.AtMost, ErrBadWhen)
 	case w.Not != nil:
 		if err := w.Not.Validate(); err != nil {
 			return fmt.Errorf("inside `not`: %w", err)
@@ -1105,6 +1129,16 @@ type Facts struct {
 	// fields' rule.
 	CanActivate []string
 
+	// HitPoints and MaxHitPoints are this creature's own hit points now and
+	// at most, as the host tells them. A `hit_points` condition reads both.
+	//
+	// A MAXIMUM OF ZERO OR LESS IS "NOT TOLD", and then the condition holds
+	// nothing: a host that has not said what a creature's hit points are gets
+	// a creature that never acts on them. The zero value is "not told", the
+	// other facts' rule.
+	HitPoints    int
+	MaxHitPoints int
+
 	// Deeds is every deed this creature holds against itself — the [ScopeSelf]
 	// reading, and the only one this module knew before scopes existed.
 	Deeds []HeldDeed
@@ -1434,6 +1468,12 @@ func (w *When) holds(f Facts) bool {
 		// AN UNSEALED OR UNCOMPUTED THREAT HOLDS NOTHING: the host's empty
 		// answer is "I did not judge it", never "none".
 		return w.Threat.sealed() && f.threat == w.Threat
+	case w.HitPoints != nil:
+		// A MAXIMUM OF ZERO OR LESS IS "NOT TOLD" and holds nothing. Whole
+		// numbers, no division, no rounding: 3 of 10 is at most 30%. Under a
+		// `not` it is plain negation, so a creature the host told nothing
+		// about holds the `not`, as it does for `threat`.
+		return f.MaxHitPoints > 0 && f.HitPoints*100 <= w.HitPoints.AtMost*f.MaxHitPoints
 	}
 
 	switch w.Enemy {
