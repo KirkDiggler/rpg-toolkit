@@ -7,7 +7,7 @@ One line per entry. Every line ends with a link.
 ## Shipped
 
 - `HitPointsWhen.AtMost` is hit points and `Percent` marks a share of the maximum; `holds` and `Validate` judge each in its own unit; README rows and one decisions line say both — [commit](https://github.com/KirkDiggler/rpg-toolkit/commit/36bbe26a).
-- Seven new tests in `hit_points_test.go` (raw number, share, same number two meanings, not told, each unit judged, the record, plus the edited originals) — [commit](https://github.com/KirkDiggler/rpg-toolkit/commit/36bbe26a).
+- Six new tests in `hit_points_test.go` (raw number, share, same number two meanings, not told, each unit judged, the record), and the originals edited — [commit](https://github.com/KirkDiggler/rpg-toolkit/commit/36bbe26a).
 
 ## Decided
 
