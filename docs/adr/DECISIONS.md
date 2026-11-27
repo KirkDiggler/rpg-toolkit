@@ -194,6 +194,12 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   stalls one monster harmlessly, so one may default and the other must not.
   *Rule: a capability whose absence is locally inert may default; one whose
   absence blocks the whole composition may not.*
+- **0051** — **A driven turn can activate an ability**: a fifth turn intent,
+  `Activate`, names an ability by the author's word; the host says what a
+  member can use and whether it can pay for it now, a row is on the table only
+  when it can, and a new optional seam, `Activator`, resolves and records it as
+  a `Striker` does a swing. *Rule: the composition is told three facts about
+  content and asks once; it never learns what an ability costs or does.*
 - **0044** — **Regions replace rooms**: a region is a named set of absolute
   cells carrying per-area world facts (lighting now); rooms, origins and
   connections were the room chain's vocabulary and are gone. The floor is
