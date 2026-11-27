@@ -583,8 +583,12 @@ func (m *activationMachine) Start(_ context.Context, cast *Participants) (Step, 
 	if !ok {
 		// Named separately from "not in the cast at all" because a monster IS
 		// in the cast and still cannot be here: its abilities are driven, not
-		// declared, and its economy is not on its sheet. Its driver reaches it
-		// through [ActivationInput.Driven] and [activationMachine.startDriven].
+		// declared. Its driver reaches what the driver itself decides (Disengage,
+		// Dash) through [ActivationInput.Driven] and
+		// [activationMachine.startDriven]. A described ability its stat block
+		// lets it use is not an activation at all: it takes the action door, an
+		// action definition run by [NewAction], and reaches the cast branch
+		// above (rpg-project#1231).
 		if _, isMonster := cast.Monster(m.member); isMonster {
 			return nil, fmt.Errorf("%w: %q is a monster; its abilities are driven, not declared",
 				ErrBadActivation, m.member)
