@@ -1,0 +1,61 @@
+version: 5
+key: template-lets-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+factions:
+  - { id: garrison }
+dispositions:
+  - { between: [garrison, party], stance: neutral }
+
+# THE STAT-BLOCK LETS SITE (rpg-project#1131, slice 2c): a stat block that says what its
+# creature can use. It lives in its own directory so the content-picture net
+# (testdata/*.yaml) does not take it: no picture is committed for it.
+templates:
+  gate-lieutenant:
+    base: dnd5e:monsters:human
+    name: Lieutenant
+    hitDice: 2d8
+    actions: [dnd5e:weapons:longsword]
+    lets:
+      - use: second wind
+        with: { level: 1 }
+        uses: { max: 1, refills: { on: [short rest, long rest] } }
+
+room:
+  version: 3
+  id: room-1
+  name: The Gate Room
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: The Gate Room
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: The Gate Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: -2
+            q: [[0, 2]]
+          - r: -1
+            q: [[-1, 2]]
+          - r: 0
+            q: [[-2, 2]]
+          - r: 1
+            q: [[-2, 1]]
+          - r: 2
+            q: [[-2, 0]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: -2, r: 1}
+    monsterDeclarations:
+      - {id: lieutenant, ref: 'dnd5e:monsters:gate-lieutenant', startingCell: { location: { q: 2, r: -1 } }}
+    monsterBindings:
+      lieutenant:
+        faction: garrison

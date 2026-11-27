@@ -406,6 +406,7 @@ func templatesOf(templates map[string]TemplateSpec) map[string]TemplateSpec {
 		t.Actions = slices.Clone(t.Actions)
 		t.AddActions = slices.Clone(t.AddActions)
 		t.DropActions = slices.Clone(t.DropActions)
+		t.Lets = letsCopy(t.Lets)
 		out[id] = t
 	}
 	return out
@@ -464,4 +465,21 @@ func deriveSingleRoomSeats(cells []spatial.Position, start spatial.Position, mon
 		seats[i].Region = ""
 	}
 	return seats
+}
+
+// letsCopy deep-copies a stat block's `lets`: its entries are maps holding
+// maps and lists, and a caller holding the compile must not reach the spec
+// through any of them. Nil for none.
+func letsCopy(lets []map[string]any) []map[string]any {
+	if len(lets) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, len(lets))
+	for i, entry := range lets {
+		if entry == nil {
+			continue
+		}
+		out[i], _ = plainValue(entry).(map[string]any)
+	}
+	return out
 }
