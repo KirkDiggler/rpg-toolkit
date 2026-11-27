@@ -48,7 +48,7 @@ behaviorDefinitions:
             - { on: turn, do: [{ pick: time }] }
     table:
       time:
-        - { when: { hit_points: { at_most: 30 } }, activate: second wind }
+        - { when: { hit_points: { at_most: 30% } }, activate: second wind }
         - { when: { enemy: walk }, toward: enemy }
         - { when: { enemy: reach }, attack: enemy }
 
