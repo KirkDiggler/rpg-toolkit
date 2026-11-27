@@ -59,7 +59,7 @@ var unchangedGolden = map[string]golden{
 	"unknown item word":    {refused: true, want: "item \"it\": the item: unknown word `colour`; it is one of name, slot, unique, charges, lets"},
 	"unknown charges word": {refused: true, want: "item \"it\": `charges`: unknown word `regain`; it is one of max, refills"},
 	"unknown refills word": {refused: true, want: "item \"it\": `refills`: unknown word `when`; it is one of on"},
-	"unknown lets word":    {refused: true, want: "item \"it\": lets[0]: unknown word `when`; it is one of use, with, cost"},
+	"unknown lets word":    {refused: true, want: "item \"it\": lets[0]: unknown word `when`; it is one of use, with, cost, uses"},
 	"unknown cost word":    {refused: true, want: "item \"it\": lets[0] `cost`: unknown word `gold`; it is one of charges"},
 	"bad slot":             {refused: true, want: "item \"it\": `slot` is \"gloves\"; it is one of cloak, amulet, ring, belt, helm, boots"},
 	"no slot":              {refused: true, want: "item \"it\": the item has no `slot`; it is one of cloak, amulet, ring, belt, helm, boots"},
@@ -395,7 +395,8 @@ func TestWordsAreInTheOrderTheRefusalsOfferThem(t *testing.T) {
 	assert.Equal(t, []string{
 		"item.name", "item.slot", "item.unique", "item.charges", "item.lets",
 		"charges.max", "charges.refills", "refills.on",
-		"lets entry.use", "lets entry.with", "lets entry.cost", "cost.charges",
+		"lets entry.use", "lets entry.with", "lets entry.cost", "lets entry.uses", "cost.charges",
+		"uses.max", "uses.refills",
 	}, got)
 	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
 		require.NotEmpty(t, v.With, v.Word)

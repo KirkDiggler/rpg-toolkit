@@ -27,6 +27,9 @@ const (
 	PlaceWith Place = "with"
 	// PlaceCost is what one use costs the holder.
 	PlaceCost Place = "cost"
+	// PlaceUses is an entry's own count: how many times it can be used and when
+	// they come back.
+	PlaceUses Place = "uses"
 )
 
 // Shape is what an authored word takes as its value. A shape that means what a
@@ -187,8 +190,12 @@ var table = []entry{
 	{place: PlaceLetsEntry, name: wordUse, shape: ShapeOneOf, required: true, label: "lets its wearer use {value}", values: abilityValues()},
 	{place: PlaceLetsEntry, name: wordWith, shape: ShapeEntries, holds: PlaceWith, label: "the values the ability is used with"},
 	{place: PlaceLetsEntry, name: wordCost, shape: ShapeEntries, holds: PlaceCost, label: "what one use costs the item"},
+	{place: PlaceLetsEntry, name: wordUses, shape: ShapeEntries, holds: PlaceUses, label: "how many times it can be used before it comes back"},
 
 	{place: PlaceCost, name: wordCharges, shape: ShapeWholeNumber, required: true, bounds: &Bounds{Min: 1, NoMax: true}, label: "costs {value} of the item's charges"},
+
+	{place: PlaceUses, name: wordMax, shape: ShapeWholeNumber, required: true, bounds: &Bounds{Min: 1, Max: 1000}, label: "can be used {value} times"},
+	{place: PlaceUses, name: wordRefills, shape: ShapeEntries, holds: PlaceRefills, label: "when its uses come back"},
 }
 
 // abilityValues is every named ability as a value of `use`, each with the
