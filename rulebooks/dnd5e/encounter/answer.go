@@ -511,6 +511,11 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 	if chosen.Answer.Activity != nil {
 		body["activity"] = activityDataFrom(chosen.Answer.Activity)
 	}
+	// THE ABILITY A ROW USES, only for a row that activates (ADR-0051): the
+	// `word` is already `activate`, and this is which ability.
+	if chosen.Answer.Activate != "" {
+		body["ability"] = chosen.Answer.Activate
+	}
 
 	return body
 }
@@ -612,6 +617,10 @@ func intentTarget(intent TurnIntent) MemberID {
 		return i.Target
 	case Routed:
 		return i.Anchor
+	case Activate:
+		// NAMES NOBODY: an ability has no target here (ADR-0051), so the
+		// pick's beat carries no target for it.
+		return ""
 	default:
 		return ""
 	}

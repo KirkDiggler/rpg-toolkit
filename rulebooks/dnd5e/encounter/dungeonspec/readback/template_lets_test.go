@@ -53,7 +53,7 @@ func TestAStatBlockThatLetsIsSaid(t *testing.T) {
 	require.Equal(t, readback.Subject{Kind: "template", ID: "gate-lieutenant"}, st.About)
 	require.Equal(t, "The stat block `gate-lieutenant` (Lieutenant) can use “second wind”, 1 use. "+
 		"What that is and how it is counted is written in its own words under `templates.gate-lieutenant.lets`, "+
-		"and the rules judge them. Nothing makes a creature use what it has yet.", st.Sentence)
+		"and the rules judge them. A behaviour's row uses one with `activate`.", st.Sentence)
 	require.Equal(t, []readback.Connection{{Kind: readback.ConnAbility, ID: "second wind", Role: readback.RoleLets}}, st.Connects)
 }
 

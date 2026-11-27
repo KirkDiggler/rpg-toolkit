@@ -14,8 +14,9 @@ import (
 // interface-typed field of RefusingCapabilities (or of its Actors) is left nil,
 // except Roller, which is optional and refused loudly at the roll, Disengager,
 // whose nil is a defined answer (the ask is skipped and the walk provokes as
-// any walk does — see [Disengager]), and Dasher, whose nil is one too (a run on
-// a turn is refused, told — see [Dasher]). It cannot
+// any walk does — see [Disengager]), Dasher, whose nil is one too (a run on
+// a turn is refused, told — see [Dasher]), and Activator, whose nil makes no
+// ability payable (see [Activator]). It cannot
 // see whether a stand-in answers what the door actually asks — that invariant
 // is held by the behavioural tests in standins_test.go, which construct and
 // load from this value (TestNewEncounterConstructsFromRefusingCapabilities,
@@ -30,7 +31,7 @@ func TestRefusingCapabilitiesLeaveNoInterfaceSlotNil(t *testing.T) {
 			switch {
 			case field.Type.Kind() == reflect.Struct:
 				walk(name, v.Field(i))
-			case field.Type.Kind() != reflect.Interface || field.Name == "Roller" || field.Name == "Disengager" || field.Name == "Dasher":
+			case field.Type.Kind() != reflect.Interface || field.Name == "Roller" || field.Name == "Disengager" || field.Name == "Dasher" || field.Name == "Activator":
 				continue
 			default:
 				require.False(t, v.Field(i).IsNil(), "%s is nil", name)

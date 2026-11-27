@@ -139,5 +139,6 @@ behaviorDefinitions:
 ```
 
 On his first turn the Lieutenant uses Second Wind (a bonus action and his one
-use), then walks or swings as his other rows say. On every later turn the first
+use) and also walks or swings as his other rows say, in whichever order the
+table's roll lands: rows are weighed, not ranked. On every later turn the first
 row is not on his table: his sheet cannot pay for it.

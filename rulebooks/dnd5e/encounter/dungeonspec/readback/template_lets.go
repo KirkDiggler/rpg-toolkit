@@ -64,10 +64,8 @@ func (b *builder) templateLetsStatement(id string, t templateLetsSource) (Statem
 		block += " (" + t.name + ")"
 	}
 	at := "templates." + id + ".lets"
-	// THE LAST SENTENCE IS TRUE TODAY AND IS REMOVED WHEN IT STOPS BEING TRUE:
-	// a later step of rpg-project#1131 lets a behaviour use an ability.
 	sentence := fmt.Sprintf("The stat block %s can use %s. What that is and how it is counted is written in its own words "+
-		"under %s, and the rules judge them. Nothing makes a creature use what it has yet.", block, joinAnd(phrases), quote(at))
+		"under %s, and the rules judge them. A behaviour's row uses one with `activate`.", block, joinAnd(phrases), quote(at))
 	return b.stmt(KindTemplateLets, Subject{Kind: "template", ID: id}, at, sentence, conns...), true
 }
 

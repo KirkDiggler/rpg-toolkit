@@ -13,6 +13,7 @@ package turntest
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -26,7 +27,8 @@ import (
 // IT WRAPS A TEST'S OWN HOST. The Sheets, Striker, optional Disengager and
 // Announcer a scene already has stay what they were; the turn host answers
 // the same facts with [encounter.SheetFacts.Turn] filled and passes every
-// call through to the host it wraps. It is itself a [encounter.Dasher].
+// call through to the host it wraps. It is itself a [encounter.Dasher], and
+// an [encounter.Activator] once a scene wires it as one ([Host.WithActivator]).
 //
 // A member has one action and one bonus action a turn unless a test says
 // otherwise ([Host.AllowPerTurn]). A Strike that returned nil or
@@ -43,14 +45,23 @@ type Host struct {
 	// failDash, when set, is what every Dash answers with.
 	FailDash error
 
-	perTurn map[encounter.MemberID]encounter.TurnFacts
-	left    map[encounter.MemberID]encounter.TurnFacts
+	// FreeActivations, when set, is a host that does not charge an ability: it
+	// is told and never spent, so the ability stays payable for ever. For the
+	// test that holds the anti-spin bound.
+	FreeActivations bool
+	// FailActivate, when set, is what every Activate answers with.
+	FailActivate error
+
+	perTurn   map[encounter.MemberID]encounter.TurnFacts
+	left      map[encounter.MemberID]encounter.TurnFacts
+	abilities map[encounter.MemberID][]*ability
 
 	// What it was asked, in order.
-	Strikes    []encounter.MemberID
-	Dashes     []encounter.MemberID
-	Disengages []encounter.MemberID
-	Announced  []encounter.Boundary
+	Strikes     []encounter.MemberID
+	Dashes      []encounter.MemberID
+	Disengages  []encounter.MemberID
+	Activations []Activation
+	Announced   []encounter.Boundary
 }
 
 // New wraps a scene's own host. disengager and announcer may be nil:
@@ -66,7 +77,40 @@ func New(
 		sheets: sheets, Striker: striker, announcer: announcer,
 		perTurn: map[encounter.MemberID]encounter.TurnFacts{},
 		left:    map[encounter.MemberID]encounter.TurnFacts{},
+
+		abilities: map[encounter.MemberID][]*ability{},
 	}
+}
+
+// ability is one ability the host gave a member: it costs one bonus action and
+// one use.
+type ability struct {
+	word, name string
+	uses       int
+}
+
+// Activation is one ask of [Host.Activate], in the order asked.
+type Activation struct {
+	Member  encounter.MemberID
+	Ability string
+}
+
+// Give gives member an ability that costs one bonus action and one use, with
+// that many uses to spend. word is what a row says, name what the story calls
+// it.
+func (h *Host) Give(member encounter.MemberID, word, name string, uses int) {
+	h.abilities[member] = append(h.abilities[member], &ability{word: word, name: name, uses: uses})
+}
+
+// Uses is how many uses of the ability member has left.
+func (h *Host) Uses(member encounter.MemberID, word string) int {
+	for _, a := range h.abilities[member] {
+		if a.word == word {
+			return a.uses
+		}
+	}
+
+	return 0
 }
 
 // AllowPerTurn says how many actions and bonus actions member has on a full
@@ -109,6 +153,11 @@ func (h *Host) Sheets(members []encounter.MemberID) (map[encounter.MemberID]enco
 	for id, facts := range inner {
 		turn := h.Left(id)
 		facts.Turn = &turn
+		for _, a := range h.abilities[id] {
+			facts.Abilities = append(facts.Abilities, encounter.AbilityFacts{
+				Word: a.word, Name: a.name, Payable: turn.BonusActionsLeft > 0 && a.uses > 0,
+			})
+		}
 		out[id] = facts
 	}
 
@@ -161,6 +210,36 @@ func (h *Host) Dash(_ context.Context, _ *encounter.Encounter, member encounter.
 	return nil
 }
 
+// Activate is the host's [encounter.Activator]: the ability costs a bonus
+// action and a use, and one activation is told, as a rules host tells one. The
+// smallest input RecordActivation accepts is an actor and an ability's ref and
+// name, and that is all this sends: no target, no result.
+func (h *Host) Activate(_ context.Context, enc *encounter.Encounter, member encounter.MemberID, word string) error {
+	h.Activations = append(h.Activations, Activation{Member: member, Ability: word})
+	if h.FailActivate != nil {
+		return h.FailActivate
+	}
+	for _, a := range h.abilities[member] {
+		if a.word != word {
+			continue
+		}
+		if !h.FreeActivations {
+			t := h.Left(member)
+			t.BonusActionsLeft = max(0, t.BonusActionsLeft-1)
+			h.left[member] = t
+			a.uses--
+		}
+		_, err := enc.RecordActivation(&encounter.RecordActivationInput{
+			Actor:   member,
+			Ability: encounter.ActivationIdentity{Ref: "test:abilities:" + a.word, Name: a.name},
+		})
+
+		return err
+	}
+
+	return fmt.Errorf("turntest: %q has no ability %q", member, word)
+}
+
 func (h *Host) Announce(ctx context.Context, enc *encounter.Encounter, crossed []encounter.Boundary) error {
 	h.Announced = append(h.Announced, crossed...)
 	for _, b := range crossed {
@@ -184,6 +263,14 @@ func (h *Host) Actors(mover encounter.Mover, withDisengage bool) encounter.Actor
 	}
 
 	return a
+}
+
+// WithActivator wires the host as the scene's [encounter.Activator]. [With] and
+// [Wrap] do not: a scene that names none must behave as it always did.
+func WithActivator(c encounter.Capabilities, h *Host) encounter.Capabilities {
+	c.Activator = h
+
+	return c
 }
 
 // With puts a scene's own Sheets, Striker and Announcer (and its

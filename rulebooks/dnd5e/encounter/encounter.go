@@ -363,6 +363,11 @@ type Encounter struct {
 	// refuses the run, told; see [Dasher].
 	dasher Dasher
 
+	// activator has a member use a named ability on its turn. OPTIONAL — nil
+	// makes every ability unpayable in a view and refuses an Activate intent,
+	// told; see [Activator].
+	activator Activator
+
 	// mover announces a [Move] intent's steps before this composition takes
 	// them. Required at both constructors for the same reason striker is;
 	// see [Mover], whose doc explains why announce-before-step is a contract.
@@ -1079,6 +1084,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		striker:             in.Striker,
 		disengager:          in.Disengager,
 		dasher:              in.Dasher,
+		activator:           in.Activator,
 		mover:               in.Mover,
 		announcer:           in.Announcer,
 		endings:             nil,

@@ -52,10 +52,12 @@ func TestAnActivateRowSurvivesAClone(t *testing.T) {
 	require.Equal(t, "second wind", cloneAnswer(Answer{Weight: 1, Activate: "second wind"}).Activate)
 }
 
-// Test 10: THE ROW IS NEVER CHOSEN YET. Nothing here fills Facts.CanActivate,
-// so by mind/behavior's rule the row is absent from every roll. The next slice
-// turns this assertion over.
-func TestAnActivateRowIsNeverChosenYet(t *testing.T) {
+// Test 10 of the row's own slice: A VIEW THAT LISTS NO ABILITY NEVER OFFERS THE
+// ROW. The view below lists no ability, so Facts.CanActivate is empty and, by
+// mind/behavior's rule, the row is absent from every roll. (It was once never
+// chosen because nothing filled the fact; a host that lists abilities now
+// does, see activate_turn_test.go.)
+func TestAnActivateRowIsAbsentFromAViewThatListsNoAbility(t *testing.T) {
 	table := Table{AnswerTime: {
 		{Weight: 1, Activate: "second wind"},
 		{Weight: 1, When: []When{{Enemy: EnemyWalk}}, Toward: &Selector{Word: SelectorEnemy}},

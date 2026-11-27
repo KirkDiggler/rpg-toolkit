@@ -322,6 +322,16 @@ func factsFromView(view MonsterView) Facts {
 	// swing to forfeit.
 	facts.CanDash = view.Budget.AttacksLeft > 0 || view.Clock == ClockWorld
 
+	// AFFORDABILITY IS ELIGIBILITY (ADR-0051): a row that activates is on the
+	// table only for an ability the view says can be paid for now, in the
+	// view's order. The view already folded the clock and the host into
+	// Payable ([Encounter.buildMonsterView]); nothing else is read here.
+	for _, a := range view.Abilities {
+		if a.Payable {
+			facts.CanActivate = append(facts.CanActivate, a.Word)
+		}
+	}
+
 	return facts
 }
 

@@ -93,11 +93,18 @@ member whose sheet names a `SheetFacts.BonusDisengage` trait Disengage as a bonu
 driven walk any step of which leaves a standing hostile's melee reach (rpg-toolkit#2032). Nil skips
 the ask, and the walk provokes as any walk does. `Dasher` has a member's sheet pay for a run on a
 turn (rpg-project#1131); nil refuses the run, told, because nobody can be paid for it.
+`Activator` has a member use a named ability on its turn (rpg-toolkit ADR-0051): the host resolves
+it at the rules' one door and tells it itself, by `RecordActivation`. Nil makes no ability payable
+in any driver's view, so a row that says `activate` is never offered, and an `Activate` intent from
+another driver ends the turn with a stayed beat (`encounter:intent:activate`) that says why.
 
 **A driven creature's turn is its sheet's, and this module counts none of it.** What a creature can
 still afford on its turn — actions and bonus actions — is `SheetFacts.Turn`, asked every time the
 view is built and before a swing, a run or a Disengage is judged; nil is a full turn (one and one),
-and a round of the world has none at all. The host spends them (`Striker`, `Disengager`, `Dasher`);
+and a round of the world has none at all. The host spends them (`Striker`, `Disengager`, `Dasher`,
+`Activator`); what a member can use beyond its attacks is `SheetFacts.Abilities` (a word, a name
+and whether it can be paid now: three facts and no rule), and a view lists it as `MonsterView.Abilities`
+with `Payable` false on the world clock and when no `Activator` is wired;
 the only thing the turn counts for itself is its movement, in feet, and that is all a paused turn
 saves.
 

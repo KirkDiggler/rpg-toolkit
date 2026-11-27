@@ -76,6 +76,7 @@ func (e *Encounter) Rebind(in *RebindInput) error {
 	e.striker = in.Striker
 	e.disengager = in.Disengager
 	e.dasher = in.Dasher
+	e.activator = in.Activator
 	e.mover = in.Mover
 	e.announcer = in.Announcer
 	e.witness = nil

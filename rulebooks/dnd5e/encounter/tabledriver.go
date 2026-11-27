@@ -143,6 +143,13 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 	case entry.Search != nil:
 		return d.searchIntent(view, *entry.Search), nil
 
+	case entry.Activate != "":
+		// THE CREATURE USES AN ABILITY (rpg-project#1131, ADR-0051). BEFORE
+		// the line case below, because a row may speak and activate: the
+		// line is said where the pick's beat is written, and the intent is
+		// the ability, not a Pass that would end the turn.
+		return Activate{Ability: entry.Activate}, nil
+
 	case entry.Fact != "", !entry.Flee && entry.Say != "":
 		// THE CREATURE SPENDS ITS TIME SAYING SOMETHING (rpg-project#569 R6):
 		// an alarm raised, or a line with nothing else in it. Saying is not a
