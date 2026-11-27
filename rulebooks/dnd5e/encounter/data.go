@@ -1742,6 +1742,18 @@ type WhenData struct {
 	// R18). Omitted when empty, Scope's reason: a blob written before the
 	// word existed loads to the condition it always meant.
 	Threat string `json:"threat,omitempty"`
+
+	// HitPoints is a `hit_points: { at_most: N }` condition (rpg-project#1131).
+	// Omitted when nil, Threat's reason: a blob written before the word
+	// existed loads to the condition it always meant.
+	HitPoints *HitPointsData `json:"hit_points,omitempty"`
+}
+
+// HitPointsData is the persistent representation of a [behavior.HitPointsWhen]:
+// the share of the creature's own maximum, a whole percent.
+type HitPointsData struct {
+	// AtMost is the percent, 1 to 100.
+	AtMost int `json:"at_most"`
 }
 
 // HeardData is the persistent representation of a [HeardWhen]: the sound's
@@ -1894,6 +1906,9 @@ func whenDataFrom(w When) WhenData {
 	if w.Heard != nil {
 		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
+	if w.HitPoints != nil {
+		out.HitPoints = &HitPointsData{AtMost: w.HitPoints.AtMost}
+	}
 	if w.Not != nil {
 		inner := whenDataFrom(*w.Not)
 		out.Not = &inner
@@ -2008,6 +2023,9 @@ func whenFromData(w WhenData) When {
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
+	}
+	if w.HitPoints != nil {
+		out.HitPoints = &behavior.HitPointsWhen{AtMost: w.HitPoints.AtMost}
 	}
 	if w.Not != nil {
 		inner := whenFromData(*w.Not)

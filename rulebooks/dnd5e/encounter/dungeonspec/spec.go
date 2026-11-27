@@ -2190,9 +2190,23 @@ type WhenSpec struct {
 	// of [behavior.ThreatWords], refused at decode otherwise.
 	Threat string
 
+	// HitPoints is `hit_points: { at_most: N }` (rpg-project#1131): the
+	// creature's own hit points are at most N percent of its own maximum.
+	// Nil when this condition names something else.
+	HitPoints *HitPointsSpec
+
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
+}
+
+// HitPointsSpec is the body of a `hit_points` condition: a share of the
+// creature's own maximum, a whole percent the author writes (ruled 2026-11-28,
+// rpg-project#1131). What it is judged against is the host's to tell and
+// mind/behavior's to compare.
+type HitPointsSpec struct {
+	// AtMost is the percent, 1 to 100.
+	AtMost int
 }
 
 // HeardSpec is the body of a `heard` condition: which kind, and how recently.
@@ -2226,6 +2240,10 @@ const (
 	whenFact   = "fact"
 	whenNot    = "not"
 	whenThreat = "threat"
+	// whenHitPoints is `hit_points: { at_most: N }`.
+	whenHitPoints = "hit_points"
+	// whenHitPointsAtMost is the one key a `hit_points` body takes.
+	whenHitPointsAtMost = "at_most"
 )
 
 // The four keys a deed condition's body may carry, sealed so the hand-read
@@ -2236,6 +2254,35 @@ const (
 	whenBodyAs     = "as"
 	whenBodyWho    = "who"
 )
+
+// decodeHitPoints reads a `hit_points` body: a mapping with exactly the one key
+// `at_most`, a whole percent from 1 to 100. Every other key is refused BY HAND,
+// naming it, because Decode's strictness does not reach inside a custom
+// unmarshaler (see the deed condition's body below).
+func decodeHitPoints(body *yaml.Node) (*HitPointsSpec, error) {
+	shape := fmt.Sprintf("line %d: `hit_points` takes { at_most: N }, a whole percent of the creature's own maximum hit points, and ",
+		body.Line)
+	if body.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("%sthis is not that", shape)
+	}
+	if len(body.Content) == 0 {
+		return nil, fmt.Errorf("%sthis writes nothing", shape)
+	}
+	for i := 0; i < len(body.Content); i += 2 {
+		if key := body.Content[i].Value; key != whenHitPointsAtMost {
+			return nil, fmt.Errorf("line %d: `hit_points` takes { at_most: N }, a whole percent of the creature's own maximum hit points, and this writes `%s`",
+				body.Content[i].Line, key)
+		}
+	}
+	value := body.Content[1]
+	percent, err := strconv.Atoi(value.Value)
+	if value.Kind != yaml.ScalarNode || err != nil || percent < 1 || percent > 100 {
+		return nil, fmt.Errorf("line %d: `hit_points: { at_most: %s }`: a share of the creature's own maximum is a whole percent from 1 to 100",
+			value.Line, value.Value)
+	}
+
+	return &HitPointsSpec{AtMost: percent}, nil
+}
 
 // withinSpec is the body a deed condition takes: `{ within: N }`, and — since
 // rpg-toolkit#1883 — optionally WHOSE deed it is about.
@@ -2257,7 +2304,7 @@ type withinSpec struct {
 func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
 		return fmt.Errorf("line %d: a `when` is one of { enemy: %s }, { <deed>: { within: N } }, "+
-			"{ heard: { kind, within } }, { fact: <id> }, { threat: %s } or { not: { … } }",
+			"{ heard: { kind, within } }, { fact: <id> }, { threat: %s }, { hit_points: { at_most: N } } or { not: { … } }",
 			value.Line, strings.Join(enemyWords(), " | "), strings.Join(threatWords(), " | "))
 	}
 	if len(value.Content) > 2 {
@@ -2298,6 +2345,14 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 		w.Threat = body.Value
 
 		return nil
+	case whenHitPoints:
+		hp, err := decodeHitPoints(body)
+		if err != nil {
+			return err
+		}
+		w.HitPoints = hp
+
+		return nil
 	case whenNot:
 		var inner WhenSpec
 		if err := body.Decode(&inner); err != nil {
@@ -2320,7 +2375,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if !knownWhenDeed(key) {
-		return fmt.Errorf("line %d: `%s` is not a deed this build knows: they are %s (and `enemy`, `heard`, `fact`, `threat`, `not`)",
+		return fmt.Errorf("line %d: `%s` is not a deed this build knows: they are %s (and `enemy`, `heard`, `fact`, `threat`, `hit_points`, `not`)",
 			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
 	}
 	// UNKNOWN KEYS ARE REFUSED BY HAND, because Decode's strictness does not

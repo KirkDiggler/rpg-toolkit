@@ -843,6 +843,12 @@ func validateWhenWords(when *When) error {
 		// already asked of this entry): a threat names no vocabulary this
 		// build owns, so there is nothing more to refuse here.
 		return nil
+	case when.HitPoints != nil:
+		// THE NUMBER IS mind/behavior's TO SEAL ([behavior.When.Validate],
+		// already asked of this entry): a share of the creature's own maximum
+		// names no vocabulary this build owns, so there is nothing more to
+		// refuse here.
+		return nil
 	case when.Enemy != "":
 		for _, known := range EnemyWords {
 			if when.Enemy == known {
@@ -1036,6 +1042,10 @@ func cloneWhen(w When) When {
 	if w.Heard != nil {
 		heard := *w.Heard
 		out.Heard = &heard
+	}
+	if w.HitPoints != nil {
+		hp := *w.HitPoints
+		out.HitPoints = &hp
 	}
 	if w.Not != nil {
 		inner := cloneWhen(*w.Not)

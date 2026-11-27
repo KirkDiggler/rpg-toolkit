@@ -189,6 +189,19 @@ type SheetFacts struct {
 	// A Word or a Name that is empty, and the same Word twice, are refused
 	// (ErrInvalidData).
 	Abilities []AbilityFacts
+
+	// HitPoints and MaxHitPoints are this member's hit points now and at
+	// most, as its sheet has them. A row's `hit_points` condition reads both
+	// (rpg-project#1131). Told for a driven member; a host that tells neither
+	// (zero and zero) has a creature no such row ever fires for.
+	//
+	// A negative number is refused, and so are hit points with no maximum
+	// (ErrInvalidData). Hit points ABOVE the maximum are not refused:
+	// temporary hit points and oddities are the rulebook's, and the condition
+	// just does not hold. This module is told the two numbers and compares
+	// nothing itself.
+	HitPoints    int
+	MaxHitPoints int
 }
 
 // AbilityFacts is one ability a member's sheet holds, as its host tells it.
@@ -348,6 +361,15 @@ func validateSheetFacts(facts SheetFacts) error {
 			return fmt.Errorf("ability %q is listed twice", a.Word)
 		}
 		seen[a.Word] = true
+	}
+	if facts.HitPoints < 0 {
+		return fmt.Errorf("hit points %d are negative", facts.HitPoints)
+	}
+	if facts.MaxHitPoints < 0 {
+		return fmt.Errorf("maximum hit points %d are negative", facts.MaxHitPoints)
+	}
+	if facts.HitPoints > 0 && facts.MaxHitPoints == 0 {
+		return fmt.Errorf("%d hit points with no maximum", facts.HitPoints)
 	}
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)

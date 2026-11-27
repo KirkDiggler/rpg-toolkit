@@ -55,6 +55,7 @@ type Host struct {
 	perTurn   map[encounter.MemberID]encounter.TurnFacts
 	left      map[encounter.MemberID]encounter.TurnFacts
 	abilities map[encounter.MemberID][]*ability
+	hurt      map[encounter.MemberID][2]int
 
 	// What it was asked, in order.
 	Strikes     []encounter.MemberID
@@ -79,6 +80,7 @@ func New(
 		left:    map[encounter.MemberID]encounter.TurnFacts{},
 
 		abilities: map[encounter.MemberID][]*ability{},
+		hurt:      map[encounter.MemberID][2]int{},
 	}
 }
 
@@ -111,6 +113,13 @@ func (h *Host) Uses(member encounter.MemberID, word string) int {
 	}
 
 	return 0
+}
+
+// Hurt says member's hit points now and at most; every sheet the host answers
+// for that member carries them. A member it was never told about reports what
+// the host it wraps does (zero and zero for every existing test).
+func (h *Host) Hurt(member encounter.MemberID, now, most int) {
+	h.hurt[member] = [2]int{now, most}
 }
 
 // AllowPerTurn says how many actions and bonus actions member has on a full
@@ -153,6 +162,9 @@ func (h *Host) Sheets(members []encounter.MemberID) (map[encounter.MemberID]enco
 	for id, facts := range inner {
 		turn := h.Left(id)
 		facts.Turn = &turn
+		if hp, ok := h.hurt[id]; ok {
+			facts.HitPoints, facts.MaxHitPoints = hp[0], hp[1]
+		}
 		for _, a := range h.abilities[id] {
 			facts.Abilities = append(facts.Abilities, encounter.AbilityFacts{
 				Word: a.word, Name: a.name, Payable: turn.BonusActionsLeft > 0 && a.uses > 0,
