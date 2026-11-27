@@ -211,7 +211,11 @@ func whenShorthand(w *When) string {
 	case w.Threat != "":
 		return "threat " + string(w.Threat)
 	case w.HitPoints != nil:
-		return "hit points at most " + strconv.Itoa(w.HitPoints.AtMost) + "%"
+		if w.HitPoints.Percent {
+			return "hit points at most " + strconv.Itoa(w.HitPoints.AtMost) + "%"
+		}
+
+		return "hit points at most " + strconv.Itoa(w.HitPoints.AtMost)
 	}
 
 	deed := w.Deed + " within " + strconv.Itoa(w.Within)

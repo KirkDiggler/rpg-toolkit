@@ -83,7 +83,11 @@ func (b *builder) shortWhen(w behavior.When) string {
 	case !w.Fact.IsZero():
 		return "it knows " + quote(w.Fact.String())
 	case w.HitPoints != nil:
-		return fmt.Sprintf("hit points at most %d%%", w.HitPoints.AtMost)
+		if w.HitPoints.Percent {
+			return fmt.Sprintf("hit points at most %d%%", w.HitPoints.AtMost)
+		}
+
+		return fmt.Sprintf("hit points at most %d", w.HitPoints.AtMost)
 	}
 	s, _ := b.whenWords(w, "it")
 	return s

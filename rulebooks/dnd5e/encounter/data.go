@@ -1743,17 +1743,25 @@ type WhenData struct {
 	// word existed loads to the condition it always meant.
 	Threat string `json:"threat,omitempty"`
 
-	// HitPoints is a `hit_points: { at_most: N }` condition (rpg-project#1131).
-	// Omitted when nil, Threat's reason: a blob written before the word
-	// existed loads to the condition it always meant.
+	// HitPoints is a `hit_points: { at_most: N }` or `{ at_most: N% }`
+	// condition (rpg-project#1131). Omitted when nil, Threat's reason: a blob
+	// written before the word existed loads to the condition it always meant.
 	HitPoints *HitPointsData `json:"hit_points,omitempty"`
 }
 
 // HitPointsData is the persistent representation of a [behavior.HitPointsWhen]:
-// the share of the creature's own maximum, a whole percent.
+// a number of hit points, or a share of the creature's own maximum when
+// Percent is set.
 type HitPointsData struct {
-	// AtMost is the percent, 1 to 100.
+	// AtMost is the number: hit points, 1 or more, unless Percent is set, and
+	// then a whole percent, 1 to 100.
 	AtMost int `json:"at_most"`
+
+	// Percent says AtMost is a share of the maximum. Left out when false, so a
+	// number of hit points saves as `{"at_most":8}` alone. Both tags: this
+	// module marshals some blobs with encoding/json/v2, where omitempty does
+	// not leave a false bool out and omitzero does.
+	Percent bool `json:"percent,omitempty,omitzero"`
 }
 
 // HeardData is the persistent representation of a [HeardWhen]: the sound's
@@ -1907,7 +1915,7 @@ func whenDataFrom(w When) WhenData {
 		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.HitPoints != nil {
-		out.HitPoints = &HitPointsData{AtMost: w.HitPoints.AtMost}
+		out.HitPoints = &HitPointsData{AtMost: w.HitPoints.AtMost, Percent: w.HitPoints.Percent}
 	}
 	if w.Not != nil {
 		inner := whenDataFrom(*w.Not)
@@ -2025,7 +2033,7 @@ func whenFromData(w WhenData) When {
 		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.HitPoints != nil {
-		out.HitPoints = &behavior.HitPointsWhen{AtMost: w.HitPoints.AtMost}
+		out.HitPoints = &behavior.HitPointsWhen{AtMost: w.HitPoints.AtMost, Percent: w.HitPoints.Percent}
 	}
 	if w.Not != nil {
 		inner := whenFromData(*w.Not)
