@@ -80,6 +80,13 @@ type Decision struct {
 }
 
 type MonsterView struct {
+	// HitPoints and MaxHitPoints are this member's own hit points now and at
+	// most, its [Sheets] answer of the moment this view was built
+	// ([SheetFacts.HitPoints]), on either clock: they are not part of a turn's
+	// economy. A `hit_points` row reads both through [Facts].
+	HitPoints    int
+	MaxHitPoints int
+
 	// Self is who this view is for.
 	Self MemberID
 

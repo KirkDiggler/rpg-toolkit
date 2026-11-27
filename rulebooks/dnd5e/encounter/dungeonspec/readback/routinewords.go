@@ -278,6 +278,8 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 		return fmt.Sprintf("%s knows the fact %s", who, quote(id)), []Connection{{Kind: "fact", ID: id, Role: "asks"}}
 	case w.Threat != "":
 		return fmt.Sprintf("the threat at the cell %s move lands on is %s", whose(who), quote(string(w.Threat))), nil
+	case w.HitPoints != nil:
+		return fmt.Sprintf("%s hit points are at most %d%% of %s maximum", whose(who), w.HitPoints.AtMost, whose(who)), nil
 	case w.Deed != "":
 		return b.deedWords(w, who), nil
 	}

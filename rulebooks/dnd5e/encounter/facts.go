@@ -322,6 +322,11 @@ func factsFromView(view MonsterView) Facts {
 	// swing to forfeit.
 	facts.CanDash = view.Budget.AttacksLeft > 0 || view.Clock == ClockWorld
 
+	// THE CREATURE'S OWN HIT POINTS (rpg-project#1131): the two numbers the
+	// host told, carried verbatim. This module compares nothing; a maximum of
+	// zero is "not told" and mind/behavior's condition then holds nothing.
+	facts.HitPoints, facts.MaxHitPoints = view.HitPoints, view.MaxHitPoints
+
 	// AFFORDABILITY IS ELIGIBILITY (ADR-0051): a row that activates is on the
 	// table only for an ability the view says can be paid for now, in the
 	// view's order. The view already folded the clock and the host into

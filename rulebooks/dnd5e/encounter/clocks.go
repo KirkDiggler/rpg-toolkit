@@ -2649,6 +2649,7 @@ func (e *Encounter) buildMonsterView(
 		Lost:       lost,
 		Budget:     TurnBudget{AttacksLeft: actions, MovementFeet: budget.MovementFeet, BonusActions: bonus},
 		Abilities:  e.abilitiesOf(sheet, kind),
+		HitPoints:  sheet.HitPoints, MaxHitPoints: sheet.MaxHitPoints,
 		Clock:      kind,
 		SpeedFeet:  sheet.SpeedFeet,
 		CannotMove: sheet.CannotMove,
