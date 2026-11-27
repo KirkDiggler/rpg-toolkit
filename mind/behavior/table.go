@@ -537,23 +537,30 @@ type When struct {
 	// threat marshals exactly as it did before the word existed.
 	Threat ThreatWord `json:",omitempty"`
 
-	// HitPoints holds when the creature's OWN hit points are at most a share
-	// of its own maximum (rpg-project#1131, ruled 2026-11-28: the author
-	// writes the number). `hit_points: { at_most: 30 }` holds for a creature
-	// at 30% of its maximum or less. The two numbers it is judged against are
-	// the caller's ([Facts.HitPoints], [Facts.MaxHitPoints]).
+	// HitPoints holds when the creature's OWN hit points are at most a number,
+	// or at most a share of its own maximum when the number is marked a percent
+	// (rpg-project#1131, ruled 2026-11-28: both, with the unit written).
+	// `hit_points: { at_most: 8 }` holds at 8 hit points or fewer;
+	// `{ at_most: 30% }` at 30% of the maximum or less. The numbers it is
+	// judged against are the caller's ([Facts.HitPoints], [Facts.MaxHitPoints]).
 	//
 	// OMITTED WHEN NIL, so a condition that does not ask marshals exactly as
 	// it did before the word existed and no compiled table moves.
 	HitPoints *HitPointsWhen `json:",omitempty"`
 }
 
-// HitPointsWhen is `hit_points: { at_most: N }`: a share of the creature's own
-// maximum hit points, as a whole percent.
+// HitPointsWhen is `hit_points: { at_most: N }` or `{ at_most: N% }`: a number
+// of hit points, or a share of the creature's own maximum (rpg-project#1131,
+// ruled 2026-11-28: both, with the unit written).
 type HitPointsWhen struct {
-	// AtMost is the percent, 1 to 100. The condition holds when the
-	// creature's hit points are AT OR BELOW that share of its maximum.
+	// AtMost is the number. With Percent false it is HIT POINTS: the
+	// condition holds when the creature has that many or fewer; 1 or more.
+	// With Percent true it is a whole percent of the creature's own maximum,
+	// 1 to 100: the condition holds at or below that share.
 	AtMost int
+	// Percent says AtMost is a share of the maximum, not a number of hit
+	// points. Omitted when false, so a raw number marshals as the number alone.
+	Percent bool `json:",omitempty"`
 }
 
 // HeardWhen is a `heard` condition: which kind of sound, and how recently.
@@ -665,9 +672,12 @@ func (w *When) Validate() error {
 		return w.Fact.validate("`fact`")
 	case w.Threat != "" && !w.Threat.sealed():
 		return fmt.Errorf("`threat: %s`: a threat is none, walk or dash: %w", w.Threat, ErrBadWhen)
-	case w.HitPoints != nil && (w.HitPoints.AtMost < 1 || w.HitPoints.AtMost > 100):
-		return fmt.Errorf("`hit_points` at most %d: a share of the creature's own maximum is a "+
+	case w.HitPoints != nil && w.HitPoints.Percent && (w.HitPoints.AtMost < 1 || w.HitPoints.AtMost > 100):
+		return fmt.Errorf("`hit_points` at most %d%%: a share of the creature's own maximum is a "+
 			"whole percent from 1 to 100: %w", w.HitPoints.AtMost, ErrBadWhen)
+	case w.HitPoints != nil && !w.HitPoints.Percent && w.HitPoints.AtMost < 1:
+		return fmt.Errorf("`hit_points` at most %d: a number of hit points is 1 or more: %w",
+			w.HitPoints.AtMost, ErrBadWhen)
 	case w.Not != nil:
 		if err := w.Not.Validate(); err != nil {
 			return fmt.Errorf("inside `not`: %w", err)
@@ -1469,11 +1479,19 @@ func (w *When) holds(f Facts) bool {
 		// answer is "I did not judge it", never "none".
 		return w.Threat.sealed() && f.threat == w.Threat
 	case w.HitPoints != nil:
-		// A MAXIMUM OF ZERO OR LESS IS "NOT TOLD" and holds nothing. Whole
+		// A MAXIMUM OF ZERO OR LESS IS "NOT TOLD" and holds nothing, for a
+		// raw number too (hit points of 0 would read as nearly dead). Whole
 		// numbers, no division, no rounding: 3 of 10 is at most 30%. Under a
 		// `not` it is plain negation, so a creature the host told nothing
 		// about holds the `not`, as it does for `threat`.
-		return f.MaxHitPoints > 0 && f.HitPoints*100 <= w.HitPoints.AtMost*f.MaxHitPoints
+		if f.MaxHitPoints <= 0 {
+			return false
+		}
+		if w.HitPoints.Percent {
+			return f.HitPoints*100 <= w.HitPoints.AtMost*f.MaxHitPoints
+		}
+
+		return f.HitPoints <= w.HitPoints.AtMost
 	}
 
 	switch w.Enemy {
