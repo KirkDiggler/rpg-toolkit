@@ -121,3 +121,19 @@ func TestKitsDoesNotDependOnItsHolders(t *testing.T) {
 	}
 	assert.Contains(t, string(out), "rulebooks/dnd5e/features", "the kit reads the named abilities")
 }
+
+// An item's saved shape is its own: `grants` is written even when empty, and
+// the keys keep the order they were always written in. This is why a
+// description holds its two maps as fields and does not embed a kit, whose
+// own `grants` tag omits an empty map.
+func TestAnItemsSavedShapeIsItsOwnAndNotTheKits(t *testing.T) {
+	raw, err := json.Marshal(magicitems.Description{
+		Name: "N", Slots: []string{"cloak"},
+		Pools:  map[string]magicitems.Pool{"charges": {Maximum: 1}},
+		Grants: map[string]magicitems.Grant{},
+	})
+	require.NoError(t, err)
+	assert.Equal(t,
+		`{"ref":{"module":"","type":"","id":""},"name":"N","slots":["cloak"],"pools":{"charges":{"maximum":1}},"grants":{}}`,
+		string(raw))
+}
