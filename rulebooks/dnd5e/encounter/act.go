@@ -171,7 +171,7 @@ func (e *Encounter) underAct(act string, fn func() error) error {
 }
 
 // intentVerb names the act a driven [TurnIntent] is: a walk of either kind
-// is a move, a swing an attack, a pass a pass.
+// is a move, a swing an attack, a pass a pass, an ability an activate.
 func intentVerb(intent TurnIntent) string {
 	switch intent.(type) {
 	case Move, Routed:
@@ -180,6 +180,8 @@ func intentVerb(intent TurnIntent) string {
 		return "attack"
 	case Pass:
 		return "pass"
+	case Activate:
+		return "activate"
 	default:
 		return "intent"
 	}

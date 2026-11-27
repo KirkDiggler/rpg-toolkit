@@ -550,7 +550,14 @@ func (e *Encounter) driveOneMonsterTurn(
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
 	// driver returns once it has nothing left; the rest is however many
 	// cells this member could ever afford to ask for one at a time.
-	innerBound := intentBound(budget)
+	//
+	// AND ONE MORE FOR EACH ABILITY THE SHEET LISTS at the turn's start
+	// (ADR-0051): a turn can use each once and still swing, and a host that
+	// says an ability is still payable after running it is asked at most that
+	// many more times, after which the turn ends as any turn that reaches the
+	// bound does. Only a turn: a round of the world pays for no ability, so
+	// [intentBound]'s other caller needs no growth.
+	innerBound := intentBound(budget) + len(sheet.Abilities)
 
 	return e.runTurnIntents(bubble, active, m, round, &budget, 0, innerBound)
 }
@@ -1188,6 +1195,27 @@ func (e *Encounter) executeTurnIntent(
 		}
 		return false, nil, nil
 
+	case Activate:
+		// A CREATURE USES AN ABILITY (rpg-project#1131, ADR-0051): judged
+		// first and told when refused, then asked of the host, which spends
+		// the price on the sheet and tells the story itself. NOT terminal: the
+		// loop builds the next view from the sheet, which now says what was
+		// spent, and this module counts nothing.
+		why, jerr := e.activateRefusal(activeID, it.Ability, coords.Clock)
+		if jerr != nil {
+			return false, nil, jerr
+		}
+		if why != "" {
+			if berr := e.appendStayedBeat(activeID, intentCauseActivate, why, uint64(e.clock.ToData().HighWater)); berr != nil {
+				return false, nil, berr
+			}
+			return true, nil, nil
+		}
+		if aerr := e.activator.Activate(context.Background(), e, activeID, it.Ability); aerr != nil {
+			return false, nil, fmt.Errorf("activate: %w", aerr)
+		}
+		return false, nil, nil
+
 	case Move:
 		// A HELD MEMBER'S WALK DOES NOT HAPPEN (rpg-project#990): before
 		// anything is charged, a run included, it stays where it is, the
@@ -1507,7 +1535,8 @@ func (e *Encounter) executeTurnIntent(
 // once more mid-turn (rpg-project#671) and a bound read before the run must
 // not refuse the longer walk the run bought. Read at the turn's start, where
 // the movement is the speed, so twice it is the most a turn can walk. On both
-// clocks.
+// clocks. It does not count abilities: a turn adds one for each its sheet
+// lists ([Encounter.driveOneMonsterTurn]) and a round of the world adds none.
 func intentBound(budget TurnBudget) int {
 	return 2 + 2*CellsFromFeet(budget.MovementFeet)
 }
@@ -2261,6 +2290,43 @@ func (e *Encounter) settleWalk(audience []MemberID, moved int) (map[MemberID]*In
 // judged, and a hand-written driver's swing is not the table's.
 var intentCauseAttack = core.Ref{Module: "encounter", Type: "intent", ID: "attack"}
 
+// intentCauseActivate is the cause a refused [Activate]'s [BeatStayed]
+// carries, for intentCauseAttack's reason: it names the intent, not the table,
+// because a hand-written driver's activation is not the table's.
+var intentCauseActivate = core.Ref{Module: "encounter", Type: "intent", ID: "activate"}
+
+// activateRefusal is why member's [Activate] cannot be carried out, or "" when
+// it can. IT IS THE BACKSTOP FOR ANY DRIVER BUT THE TABLE'S, as
+// [Encounter.refuseUnpaidDash] is for a run: the table driver never reaches a
+// refusal, because a row it cannot pay for is not on its table
+// ([behavior.Facts.CanActivate]). The sheet is read now, not taken from the
+// view, so the judge is the sheet's word at the moment of the ask. The first
+// reason that holds is the one told.
+func (e *Encounter) activateRefusal(member MemberID, word string, kind ClockKind) (string, error) {
+	if kind == ClockWorld {
+		return "an ability is used on a turn, and this is a round of the world", nil
+	}
+	if e.activator == nil {
+		return "nobody can run an ability for it", nil
+	}
+	sheet, err := e.sheetOf(member)
+	if err != nil {
+		return "", fmt.Errorf("activate %q: %w", member, err)
+	}
+	for _, a := range sheet.Abilities {
+		if a.Word != word {
+			continue
+		}
+		if !a.Payable {
+			return fmt.Sprintf("it cannot pay for %s now", a.Name), nil
+		}
+
+		return "", nil
+	}
+
+	return fmt.Sprintf("it has no ability %q", word), nil
+}
+
 // The sentences a refused attack's stayed beat carries, one per reason the
 // attack is refused, in the order they are asked.
 const (
@@ -2582,6 +2648,7 @@ func (e *Encounter) buildMonsterView(
 		Remembered: remembered,
 		Lost:       lost,
 		Budget:     TurnBudget{AttacksLeft: actions, MovementFeet: budget.MovementFeet, BonusActions: bonus},
+		Abilities:  e.abilitiesOf(sheet, kind),
 		Clock:      kind,
 		SpeedFeet:  sheet.SpeedFeet,
 		CannotMove: sheet.CannotMove,
@@ -2589,6 +2656,26 @@ func (e *Encounter) buildMonsterView(
 		Dwelling:   e.dwelling(m),
 		Threats:    threats,
 	}, nil
+}
+
+// abilitiesOf is the sheet's abilities as a driver's view shows them, nil for a
+// sheet with none. A view's Payable is the sheet's AND a turn AND a wired
+// [Activator]: a round of the world "carries no action economy at all"
+// ([turnNumbers]), so nothing is payable there, and with nobody to run it
+// nothing is payable anywhere.
+func (e *Encounter) abilitiesOf(sheet SheetFacts, kind ClockKind) []AbilityView {
+	if len(sheet.Abilities) == 0 {
+		return nil
+	}
+	out := make([]AbilityView, 0, len(sheet.Abilities))
+	for _, a := range sheet.Abilities {
+		out = append(out, AbilityView{
+			Word: a.Word, Name: a.Name,
+			Payable: a.Payable && kind != ClockWorld && e.activator != nil,
+		})
+	}
+
+	return out
 }
 
 // routeTo is the search [Encounter.buildMonsterView]'s reach-aware Path runs

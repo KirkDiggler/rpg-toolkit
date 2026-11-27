@@ -125,6 +125,13 @@ type Actors struct {
 	// the world asks nobody. See [Dasher].
 	Dasher Dasher
 
+	// Activator has a member use a named ability on its turn and tells what
+	// it did (rpg-toolkit ADR-0051). OPTIONAL, and not checked by
+	// [Capabilities.Validate]: nil means no ability is payable in any driver's
+	// view, so no row that activates is ever offered, and an [Activate] intent
+	// from another driver ends the turn with a stayed beat. See [Activator].
+	Activator Activator
+
 	// Mover announces a member's step before the encounter takes it, so
 	// whatever reacts to movement can (rpg-project#316). REQUIRED, for the
 	// same reason Striker is and at the same door: a fight can form with an

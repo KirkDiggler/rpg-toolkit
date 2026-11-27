@@ -175,6 +175,32 @@ type SheetFacts struct {
 	//
 	// A negative number is refused (ErrInvalidData).
 	Turn *TurnFacts
+
+	// Abilities is what this member can USE on its own turn, beyond its
+	// attacks: each named ability its sheet holds, by the word an author
+	// writes in a row (`activate: second wind`), with whether the sheet can
+	// pay its whole price this moment (rpg-toolkit ADR-0051). Empty for a
+	// member with none, which is every member of a host that says nothing.
+	//
+	// THREE FACTS AND NO RULE (law C1): this module does not learn what an
+	// ability costs or does. It learns the word, a name to tell it by, and
+	// whether it can be paid for now.
+	//
+	// A Word or a Name that is empty, and the same Word twice, are refused
+	// (ErrInvalidData).
+	Abilities []AbilityFacts
+}
+
+// AbilityFacts is one ability a member's sheet holds, as its host tells it.
+type AbilityFacts struct {
+	// Word is the ability as an author writes it in a row and on a stat
+	// block's `lets`: `second wind`.
+	Word string
+	// Name is how the story names it: "Second Wind".
+	Name string
+	// Payable is whether the sheet can pay the ability's whole price right
+	// now: every slot and every count it costs.
+	Payable bool
 }
 
 // TurnFacts is what is left of a member's own turn on its sheet.
@@ -304,11 +330,24 @@ func (e *Encounter) sheetOf(id MemberID) (SheetFacts, error) {
 // validateSheetFacts refuses a negative speed, a negative passive Perception, a
 // negative watch reset distance, a watch arc outside 0–360, a negative action
 // range, a half-named [SheetFacts.BonusDisengage] and a blank
-// [SheetFacts.CannotMove] name, and a negative count of what is left of a turn.
+// [SheetFacts.CannotMove] name, a negative count of what is left of a turn, and
+// an ability with no word or no name or a word listed twice.
 func validateSheetFacts(facts SheetFacts) error {
 	if t := facts.Turn; t != nil && (t.ActionsLeft < 0 || t.BonusActionsLeft < 0) {
 		return fmt.Errorf("turn left %d actions and %d bonus actions: a count is negative",
 			t.ActionsLeft, t.BonusActionsLeft)
+	}
+	seen := make(map[string]bool, len(facts.Abilities))
+	for _, a := range facts.Abilities {
+		switch {
+		case a.Word == "":
+			return fmt.Errorf("abilities list one with no word")
+		case a.Name == "":
+			return fmt.Errorf("ability %q has no name", a.Word)
+		case seen[a.Word]:
+			return fmt.Errorf("ability %q is listed twice", a.Word)
+		}
+		seen[a.Word] = true
 	}
 	if facts.SpeedFeet < 0 {
 		return fmt.Errorf("speed %d feet is negative", facts.SpeedFeet)

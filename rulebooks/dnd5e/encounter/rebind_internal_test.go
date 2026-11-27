@@ -25,6 +25,7 @@ func TestRebindBindsEveryCapability(t *testing.T) {
 	caps := wakeCapabilities(&askedDriver{inner: BehaviorDriver{}})
 	caps.Disengager = quietDisengager{}
 	caps.Dasher = quietDasher{}
+	caps.Activator = quietActivator{}
 	caps.CheckResolver = RefusingCheckResolver{}
 	caps.Witness = nobodyPerceives{}
 
@@ -86,6 +87,12 @@ func (quietDisengager) Disengage(context.Context, *Encounter, MemberID) error { 
 type quietDasher struct{}
 
 func (quietDasher) Dash(context.Context, *Encounter, MemberID) error { return nil }
+
+// quietActivator is an Activator that does nothing, so the optional actor has a
+// value to bind.
+type quietActivator struct{}
+
+func (quietActivator) Activate(context.Context, *Encounter, MemberID, string) error { return nil }
 
 // TestRebindRefusesDuringADrivenTurnOrAWorldRound: the other half of
 // ErrVerbInFlight. With no act open, a rebind is still refused while a driven

@@ -212,6 +212,18 @@ type MonsterView struct {
 	// why, and its turn ends (rpg-project#990).
 	CannotMove []string
 
+	// Abilities is what this member can use on its turn, beyond its attacks:
+	// its sheet's [SheetFacts.Abilities], asked when the view was built, with
+	// each [AbilityView.Payable] made true only when the whole ask can be
+	// carried out (rpg-toolkit ADR-0051). Nil, not empty, for a member whose
+	// sheet lists none.
+	//
+	// PAYABLE HERE IS THE SHEET'S AND A TURN AND A WIRED [Activator]: false
+	// for every ability on the world clock, where a round carries no action
+	// economy at all, and false for every ability when no Activator is wired,
+	// because nobody could run it.
+	Abilities []AbilityView
+
 	// Clock is which clock this time is on — [ClockTurn] for a turn in a
 	// fight, [ClockWorld] for a round of the world — set where the view is
 	// asked for ([Encounter.runIntents]). What it decides is whether a run
@@ -449,6 +461,19 @@ type SeenMember struct {
 	AwayPath []spatial.Position
 }
 
+// AbilityView is one ability a driver may name in an [Activate] intent: a copy
+// of the sheet's [AbilityFacts], with [AbilityView.Payable] already judged
+// against the clock and the host (see [MonsterView.Abilities]).
+type AbilityView struct {
+	// Word is the ability as an author writes it in a row; an [Activate]
+	// intent names it.
+	Word string
+	// Name is how the story names it.
+	Name string
+	// Payable is whether activating it can be asked right now.
+	Payable bool
+}
+
 // TurnBudget is what remains of a member's turn, as a [Driver] sees it.
 //
 // ONLY MOVEMENT IS THIS MODULE'S. The two counts of the economy are the
@@ -490,13 +515,13 @@ type TurnBudget struct {
 // the budget, so it needed no words of its own. The name is kept because
 // renaming a sealed vocabulary every caller switches on buys nothing.
 //
-// FOUR CASES, following this repo's practice for sealed vocabularies at
+// FIVE CASES, following this repo's practice for sealed vocabularies at
 // this seam (ADR-0038's rule for Gather | Pose | Request | Done): Pass,
-// Attack, Move, Routed. The doc here used to say three and that a fourth
-// "should probably earn its own ADR rather than being added quietly". It
-// did: [Routed] arrived with Command, and the design that argues for it is
-// the ADR (rpg-project, ideas/spells/command). A fifth should expect the
-// same.
+// Attack, Move, Routed, Activate. The doc here used to say three and that a
+// fourth "should probably earn its own ADR rather than being added quietly".
+// It did: [Routed] arrived with Command, and the design that argues for it is
+// the ADR (rpg-project, ideas/spells/command). The fifth did too: [Activate]
+// is argued in ADR-0051, and a sixth should expect the same.
 type TurnIntent interface {
 	isTurnIntent()
 }
@@ -724,6 +749,17 @@ type Routed struct {
 
 // isTurnIntent marks Routed as a TurnIntent.
 func (Routed) isTurnIntent() {}
+
+// Activate asks the encounter to have the member USE A NAMED ABILITY, and
+// then asks the driver again: it is NOT terminal, so one turn can use an
+// ability and still swing (ADR-0051).
+type Activate struct {
+	// Ability is the ability's word, as [AbilityView.Word] gives it.
+	Ability string
+}
+
+// isTurnIntent marks Activate as a TurnIntent.
+func (Activate) isTurnIntent() {}
 
 // PassDriver is a [Driver] that always passes — the same v1 answer every
 // unplayed member's turn used to get automatically before this capability
@@ -1001,6 +1037,28 @@ type Dasher interface {
 	// Dash has member's sheet pay for a run. An error is a MALFUNCTION and
 	// aborts the caller's whole verb, as a [Disengager]'s does.
 	Dash(ctx context.Context, enc *Encounter, member MemberID) error
+}
+
+// Activator has one member use a named ability and tells what it did.
+//
+// THE DECISION IS THE DRIVER'S, THE RULE AND THE PRICE ARE THE SHEET'S. This
+// module knows a row named the ability and that the sheet said it could be
+// paid for; it cannot know what the ability costs or does (C1). The
+// implementation resolves it at the rules' one door, where the price is
+// charged before anything lands.
+//
+// THE IMPLEMENTATION RECORDS, as a [Striker] does: this module cannot tell
+// what an ability did, so the implementation tells it, by
+// [Encounter.RecordActivation], with the beats a player's activation tells.
+//
+// OPTIONAL, like [Dasher], and not checked by [Capabilities.Validate]. With
+// none wired no ability is ever payable in a driver's view, so no row that
+// activates is on any table, and an [Activate] intent from any other driver
+// ends the turn with a stayed beat that says nobody can run it.
+type Activator interface {
+	// Activate has member use the ability with that word. An error is a
+	// MALFUNCTION and aborts the caller's whole verb, as a [Striker]'s does.
+	Activate(ctx context.Context, enc *Encounter, member MemberID, ability string) error
 }
 
 // Mover announces one member's step before this composition takes it.
