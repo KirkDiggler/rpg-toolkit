@@ -19,7 +19,7 @@ import (
 // The combined compiled shape includes StructuralWallInput.Sections, even nil.
 // This pin must be recomputed after a base merge, not taken from either side.
 // ContentHash is engine-version-local; legacy persisted SiteHash is separate.
-const castleContentHash = "89d972b705ab58eaf8dda685f3c6cbdf02941a20c8694fd4bfeae2b7229af3a7"
+const castleContentHash = "f00dabc819ced6196f919d536eda051caeeca39a7b920f5202d80a4002cc099d"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()
