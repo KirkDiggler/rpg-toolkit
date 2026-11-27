@@ -30,6 +30,8 @@ Slice [rpg-project#1250](https://github.com/KirkDiggler/rpg-project/issues/1250)
 - Proof (b), `at_most: 5%` on the away row: the back-away test fails at "he steps out of her reach: she is asked whether to take an opportunity attack" (nothing opens), and the read-back test fails on "of its maximum" — [f4571aec](https://github.com/KirkDiggler/rpg-toolkit/commit/f4571aec).
 - Proof (c), `not` dropped from the attack row: the back-away test PASSES 20 of 20 runs, because rows are weighed in order and the away row, first, wins at 5; the `not` rows only make the table read as exclusive, they change no behaviour on this site — [f4571aec](https://github.com/KirkDiggler/rpg-toolkit/commit/f4571aec).
 - The suite was not run separately at the old pins (the first run is F4's, at the new pins); at the final head `go build`, `go vet`, the whole suite and `golangci-lint` are green — [f4571aec](https://github.com/KirkDiggler/rpg-toolkit/commit/f4571aec).
+- The table's pick is one die over the sum of the candidates' loaded shares (100 each); these tests' dice say 10, which lands on the first candidate, so proof (c) could not fail: a fixed face, not a random pick — [comment](https://github.com/KirkDiggler/rpg-project/issues/1250#issuecomment-7229659623).
+- Amendment 1, proof (c) again with `TestALieutenantAtTheNumberBacksAwayEvenWhenThePickLandsOnTheLastCandidate` (`faceDice` raised to a face above every die, clamped to the top face by `onTheDie`): with the `not` dropped it FAILS ("he does not swing": a `struck` by him), 20 of 20 runs; as authored it passes — [comment](https://github.com/KirkDiggler/rpg-project/issues/1250#issuecomment-7229659623).
 
 ## Mistaken
 
