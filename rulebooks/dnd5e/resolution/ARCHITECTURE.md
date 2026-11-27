@@ -199,6 +199,23 @@ The rules price it: `monster.CostOfDash`, one action with nothing banked
 (`rulebooks/dnd5e/v0.240.0`). Nothing in play changes: no caller sends a driven
 Dash yet.
 
+### What changed on 2026-11-28 (rpg-project#1231, slice 3a)
+
+A monster's own described ability runs through the action door, not the driven
+arm. An action definition with an effect, asked of a creature built from a stat
+block whose `lets` gives it the ability (`(*monster.Monster).GrantedAbility`,
+`rulebooks/dnd5e/v0.243.0`), goes to `NewAction` like a strike does, with the
+monster as `AttackerID` and as the cost's payer. `newEffect` hands the heal to
+the activation machine's gateless arm (`cast` set), which `Start` takes before
+its refusal of a monster, and `healable` admits a monster. The door charges the
+monster's bonus action and its pool use together, all or none, before the heal
+lands; the heal lands on the monster, the outcome is the player's
+`ActivationOutcome` with a `healing-applied` effect, and the changed sheet
+comes back in `Output.DirtyMonsters`. Nothing in resolution changed to allow
+this: the slice proves it. The driven arm stays for what a monster's driver
+decides and carries out itself (Disengage, Dash), and a declared activation of a
+monster is still refused. No caller sends it yet (rpg-project#1131).
+
 ## Extension rule
 
 > Add a profile arm only when a distinct machine exists. Dispatch by profile
