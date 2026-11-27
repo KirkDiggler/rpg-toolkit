@@ -53,6 +53,25 @@ type Kit struct {
 	Grants map[string]Grant `json:"grants,omitempty"`
 }
 
+// Holder is how a refusal speaks of who holds a kit. Both are required: an
+// empty one is a caller's defect and is refused by name.
+type Holder struct {
+	// Named is the holder by name, already quoted: `item "Lieutenant's cloak"`.
+	Named string
+	// Noun is the holder mid-sentence: "the item".
+	Noun string
+}
+
+func (h Holder) check() error {
+	switch {
+	case h.Named == "":
+		return fmt.Errorf("a kit's holder needs a Named, the holder by name, already quoted")
+	case h.Noun == "":
+		return fmt.Errorf("a kit's holder %s needs a Noun, the holder mid-sentence", h.Named)
+	}
+	return nil
+}
+
 // Clone returns a copy that shares no map, slice or byte with the original.
 // A map that is nil stays nil.
 func (k Kit) Clone() Kit {
@@ -74,22 +93,25 @@ func (k Kit) Clone() Kit {
 	return out
 }
 
-// Validate refuses a kit the rulebook cannot run, naming the thing. holder is
-// how a refusal names who holds the kit, already quoted: `item "Lieutenant's
-// cloak"`. It does not require a grant to exist: whether a holder must let
-// something be used is the holder's own rule.
-func (k Kit) Validate(holder string) error {
+// Validate refuses a kit the rulebook cannot run, naming the thing. holder says
+// who holds the kit: its Named opens a refusal, its Noun is how the sentence
+// refers to it after. It does not require a grant to exist: whether a holder
+// must let something be used is the holder's own rule.
+func (k Kit) Validate(holder Holder) error {
+	if err := holder.check(); err != nil {
+		return err
+	}
 	for _, name := range slices.Sorted(maps.Keys(k.Pools)) {
 		if !validName(name) {
-			return fmt.Errorf("%s pool name %q must be letters, digits, '-' and '_'", holder, name)
+			return fmt.Errorf("%s pool name %q must be letters, digits, '-' and '_'", holder.Named, name)
 		}
-		if err := validatePool(holder, name, k.Pools[name]); err != nil {
+		if err := validatePool(holder.Named, name, k.Pools[name]); err != nil {
 			return err
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(k.Grants)) {
 		if !validName(name) {
-			return fmt.Errorf("%s grant name %q must be letters, digits, '-' and '_'", holder, name)
+			return fmt.Errorf("%s grant name %q must be letters, digits, '-' and '_'", holder.Named, name)
 		}
 		if err := k.validateGrant(holder, name, k.Grants[name]); err != nil {
 			return err
@@ -98,7 +120,7 @@ func (k Kit) Validate(holder string) error {
 	return nil
 }
 
-func validatePool(holder, name string, pool Pool) error {
+func validatePool(holder string, name string, pool Pool) error {
 	if pool.Maximum < 1 {
 		return fmt.Errorf("%s pool %q maximum %d must be at least 1", holder, name, pool.Maximum)
 	}
@@ -115,24 +137,24 @@ func validatePool(holder, name string, pool Pool) error {
 	return nil
 }
 
-func (k Kit) validateGrant(holder, name string, grant Grant) error {
+func (k Kit) validateGrant(holder Holder, name string, grant Grant) error {
 	if err := features.ValidateParameters(&features.ValidateParametersInput{
 		Ref:        grant.Ability,
 		Parameters: grant.Parameters,
 	}); err != nil {
-		return fmt.Errorf("%s grant %q: %w", holder, name, err)
+		return fmt.Errorf("%s grant %q: %w", holder.Named, name, err)
 	}
 	if grant.Pool == "" {
 		if grant.Uses != 0 {
-			return fmt.Errorf("%s grant %q has uses %d but names no pool to pay from", holder, name, grant.Uses)
+			return fmt.Errorf("%s grant %q has uses %d but names no pool to pay from", holder.Named, name, grant.Uses)
 		}
 		return nil
 	}
 	if _, ok := k.Pools[grant.Pool]; !ok {
-		return fmt.Errorf("%s grant %q names pool %q, which the item does not declare", holder, name, grant.Pool)
+		return fmt.Errorf("%s grant %q names pool %q, which %s does not declare", holder.Named, name, grant.Pool, holder.Noun)
 	}
 	if grant.Uses < 1 {
-		return fmt.Errorf("%s grant %q pays from pool %q but its uses %d is below 1", holder, name, grant.Pool, grant.Uses)
+		return fmt.Errorf("%s grant %q pays from pool %q but its uses %d is below 1", holder.Named, name, grant.Pool, grant.Uses)
 	}
 	return nil
 }

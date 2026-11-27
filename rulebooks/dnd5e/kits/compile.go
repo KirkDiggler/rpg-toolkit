@@ -17,8 +17,8 @@ import (
 
 // CompileInput is the kit's two blocks as an author wrote them.
 type CompileInput struct {
-	// Holder names who holds the kit in a refusal, already quoted: `item "cloak"`.
-	Holder string
+	// Holder says who holds the kit in a refusal: `item "cloak"` and "the item".
+	Holder Holder
 	// Charges is the author's `charges` block; nil when the author wrote none.
 	Charges json.RawMessage
 	// Lets is the author's `lets` list; nil when the author wrote none.
@@ -54,7 +54,10 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("compiling a kit requires input")
 	}
-	c := compiler{holder: in.Holder}
+	if err := in.Holder.check(); err != nil {
+		return nil, err
+	}
+	c := compiler{holder: in.Holder.Named, noun: in.Holder.Noun}
 	var k Kit
 	if len(in.Charges) > 0 {
 		pool, err := c.charges(in.Charges)
@@ -75,6 +78,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 
 type compiler struct {
 	holder string
+	noun   string
 }
 
 func (c *compiler) refuse(format string, args ...any) error {
@@ -223,7 +227,7 @@ func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, G
 			return "", Grant{}, c.refuse("%s `cost` names no `charges`; it is `charges`, a whole number of at least 1", where)
 		}
 		if held == 0 {
-			return "", Grant{}, c.refuse("%s `cost` is paid in `charges`, but the item declares no `charges`", where)
+			return "", Grant{}, c.refuse("%s `cost` is paid in `charges`, but %s declares no `charges`", where, c.noun)
 		}
 		uses, err := c.whole(chargesRaw, where+" cost.charges")
 		if err != nil {
@@ -233,7 +237,7 @@ func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, G
 			return "", Grant{}, c.refuse("%s `cost.charges` is %d; it is a whole number of at least 1", where, uses)
 		}
 		if uses > held {
-			return "", Grant{}, c.refuse("%s cost.charges is %d; the item holds at most %d", where, uses, held)
+			return "", Grant{}, c.refuse("%s cost.charges is %d; %s holds at most %d", where, uses, c.noun, held)
 		}
 		grant.Pool = chargesPool
 		grant.Uses = uses

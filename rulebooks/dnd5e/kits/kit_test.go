@@ -72,7 +72,7 @@ func TestADescriptionsKitIsACopy(t *testing.T) {
 // A kit refuses with the holder's name at the head of every sentence, and does
 // not require a grant: "an item grants nothing" is the item's own rule.
 func TestAKitValidatesUnderTheHoldersName(t *testing.T) {
-	holder := `stat block "gate-lieutenant"`
+	holder := kits.Holder{Named: `stat block "gate-lieutenant"`, Noun: "the stat block"}
 	assert.NoError(t, kits.Kit{}.Validate(holder), "a kit with no grant is the holder's rule to refuse")
 
 	cases := []struct {
@@ -87,7 +87,7 @@ func TestAKitValidatesUnderTheHoldersName(t *testing.T) {
 		{"grant name", kits.Kit{Grants: map[string]kits.Grant{"bad name": secondWind(t, "", 0)}},
 			`stat block "gate-lieutenant" grant name "bad name" must be letters, digits, '-' and '_'`},
 		{"undeclared pool", kits.Kit{Grants: map[string]kits.Grant{"a": secondWind(t, "charges", 1)}},
-			`stat block "gate-lieutenant" grant "a" names pool "charges", which the item does not declare`},
+			`stat block "gate-lieutenant" grant "a" names pool "charges", which the stat block does not declare`},
 		{"uses with no pool", kits.Kit{Grants: map[string]kits.Grant{"a": secondWind(t, "", 2)}},
 			`stat block "gate-lieutenant" grant "a" has uses 2 but names no pool to pay from`},
 		{"uses below one", kits.Kit{
@@ -106,6 +106,7 @@ func TestAKitValidatesUnderTheHoldersName(t *testing.T) {
 			err := tc.kit.Validate(holder)
 			require.Error(t, err)
 			assert.Equal(t, tc.want, err.Error())
+			assert.NotContains(t, err.Error(), "item", "a stat block's refusal never says item")
 		})
 	}
 }

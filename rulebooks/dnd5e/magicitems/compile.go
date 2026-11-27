@@ -42,7 +42,7 @@ const (
 // refused with a sentence naming the item's id and the word.
 //
 // The item's own words are read here; its `charges` and `lets` are the kit's
-// and are compiled by [kits.Compile] under the holder `item "<id>"`. That an
+// and are compiled by [kits.Compile] under the holder `item "<id>"`, "the item". That an
 // item must let its wearer use something is the item's rule, so it is kept
 // here: an absent or empty `lets` is refused after the kit's own blocks are
 // read, in the order the item has always refused them.
@@ -73,7 +73,7 @@ func Compile(in *CompileInput) (*CompileOutput, error) {
 		return nil, err
 	}
 	compiled, err := kits.Compile(&kits.CompileInput{
-		Holder:  fmt.Sprintf("item %q", in.ID),
+		Holder:  itemHolder(in.ID),
 		Charges: top[wordCharges],
 		Lets:    top[wordLets],
 	})

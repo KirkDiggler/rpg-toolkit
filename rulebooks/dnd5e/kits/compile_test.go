@@ -5,6 +5,7 @@ package kits_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/magicitems"
 )
 
+var statBlockHolder = kits.Holder{Named: statBlock, Noun: "the stat block"}
+
 const (
 	statBlock = `stat block "gate-lieutenant"`
 	charges   = `{"max": 2, "refills": {"on": ["short rest", "long rest"]}}`
@@ -24,7 +27,7 @@ const (
 // Test 4: a kit alone compiles to what the same words give an item.
 func TestAKitAloneCompilesToWhatTheSameWordsGiveAnItem(t *testing.T) {
 	out, err := kits.Compile(&kits.CompileInput{
-		Holder:  statBlock,
+		Holder:  statBlockHolder,
 		Charges: json.RawMessage(charges),
 		Lets:    json.RawMessage(letsPaid),
 	})
@@ -44,12 +47,12 @@ func TestAKitAloneCompilesToWhatTheSameWordsGiveAnItem(t *testing.T) {
 	require.Contains(t, out.Kit.Grants, "second-wind")
 	assert.Equal(t, "charges", out.Kit.Grants["second-wind"].Pool)
 	assert.Equal(t, 1, out.Kit.Grants["second-wind"].Uses)
-	assert.NoError(t, out.Kit.Validate(statBlock))
+	assert.NoError(t, out.Kit.Validate(statBlockHolder))
 }
 
 func TestAKitWithNoChargesAndOneEntryWithNoCostIsOneGrantAndNoPools(t *testing.T) {
 	out, err := kits.Compile(&kits.CompileInput{
-		Holder: statBlock,
+		Holder: statBlockHolder,
 		Lets:   json.RawMessage(`[{"use": "second wind", "with": {"level": 1}}]`),
 	})
 	require.NoError(t, err)
@@ -64,7 +67,7 @@ func TestAKitWithNoChargesAndOneEntryWithNoCostIsOneGrantAndNoPools(t *testing.T
 func TestAbsentOrEmptyLetsIsNoGrantsForTheHolderToJudge(t *testing.T) {
 	for name, lets := range map[string]json.RawMessage{"absent": nil, "empty": json.RawMessage(`[]`)} {
 		t.Run(name, func(t *testing.T) {
-			out, err := kits.Compile(&kits.CompileInput{Holder: statBlock, Lets: lets})
+			out, err := kits.Compile(&kits.CompileInput{Holder: statBlockHolder, Lets: lets})
 			require.NoError(t, err)
 			assert.Empty(t, out.Kit.Grants)
 		})
@@ -95,9 +98,10 @@ func TestEveryRefusalReadsUnderTheHoldersNameWithTheItemsSentence(t *testing.T) 
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := kits.Compile(&kits.CompileInput{Holder: statBlock, Charges: json.RawMessage(tc.charges), Lets: json.RawMessage(tc.lets)})
+			_, err := kits.Compile(&kits.CompileInput{Holder: statBlockHolder, Charges: json.RawMessage(tc.charges), Lets: json.RawMessage(tc.lets)})
 			require.Error(t, err)
-			assert.Equal(t, statBlock+": "+tc.want, err.Error())
+			assert.Equal(t, statBlock+": "+strings.ReplaceAll(tc.want, "the item", "the stat block"), err.Error())
+			assert.NotContains(t, err.Error(), "item", "a stat block's refusal never says item")
 
 			// The same words in an item read the same after the item's name.
 			authored := `{"name": "N", "slot": "cloak"`
@@ -119,4 +123,22 @@ func TestEveryRefusalReadsUnderTheHoldersNameWithTheItemsSentence(t *testing.T) 
 func TestCompilingNothingIsRefused(t *testing.T) {
 	_, err := kits.Compile(nil)
 	assert.Error(t, err)
+}
+
+func TestAHolderWithoutANamedOrANounIsRefused(t *testing.T) {
+	lets := json.RawMessage(`[{"use": "second wind", "with": {"level": 1}}]`)
+	for name, holder := range map[string]kits.Holder{
+		"no named": {Noun: "the stat block"},
+		"no noun":  {Named: statBlock},
+		"neither":  {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := kits.Compile(&kits.CompileInput{Holder: holder, Lets: lets})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "holder")
+			assert.Error(t, kits.Kit{}.Validate(holder))
+		})
+	}
+	_, err := kits.Compile(&kits.CompileInput{Holder: kits.Holder{Named: statBlock}})
+	assert.EqualError(t, err, `a kit's holder `+statBlock+` needs a Noun, the holder mid-sentence`)
 }

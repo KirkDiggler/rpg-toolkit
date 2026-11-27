@@ -119,7 +119,7 @@ func (d Description) Validate() error {
 	if len(d.Grants) == 0 {
 		return fmt.Errorf("item %q grants nothing: it names no grant", d.Name)
 	}
-	return kits.Kit{Pools: d.Pools, Grants: d.Grants}.Validate(fmt.Sprintf("item %q", d.Name))
+	return kits.Kit{Pools: d.Pools, Grants: d.Grants}.Validate(itemHolder(d.Name))
 }
 
 // Validate refuses an item whose description or record cannot stand.
@@ -159,4 +159,10 @@ func validName(name string) bool {
 		}
 	}
 	return true
+}
+
+// itemHolder is how a kit speaks of an item: `item "Lieutenant's cloak"`, then
+// "the item".
+func itemHolder(name string) kits.Holder {
+	return kits.Holder{Named: fmt.Sprintf("item %q", name), Noun: "the item"}
 }
