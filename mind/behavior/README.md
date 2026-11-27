@@ -166,14 +166,15 @@ refused, because the list is already the `and`.
 | `fell: { within: N, who: <id>, on/as }` | a fall, read like the deeds above: its actor is who caused it, its target who fell. `who` narrows it to one target, read off the testimony (a fall the witness could not put a name to matches no `who`); only `fell` takes `who` (rpg-project#716) | `Facts.Deeds/AllyDeeds/OwnDeeds`, `HeldDeed.Target` |
 | `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
 | `heard: { kind, within: N, loudness: L }` | as above, and the sound was at loudness L or louder, by the caller's order; a sound that states no loudness does not count | `Facts.Sounds`, `Facts.Loudness` |
-| `hit_points: { at_most: N }` | the creature's OWN hit points are at most N percent of its own maximum, N a whole percent from 1 to 100: `at_most: 30` holds at 3 of 10 and not at 3 of 9. The caller tells both numbers; a maximum of zero or less is "not told" and holds nothing, so `not` of it holds for a creature the host said nothing about, as `threat`'s does. Compared in whole numbers, no division and no rounding. The verdict records nothing: the numbers are the creature's, already in the facts (rpg-project#1131) | `Facts.HitPoints`, `Facts.MaxHitPoints` |
+| `hit_points: { at_most: N }` or `{ at_most: N% }` | the creature's OWN hit points are at most N: a number of hit points (N 1 or more, no upper limit) when written bare, or at most N percent of its own maximum (a whole percent from 1 to 100, `Percent` set) when marked: `at_most: 8` holds at 8 of 27 and not at 9; `at_most: 30%` holds at 3 of 10 and not at 3 of 9. The caller tells both numbers; a maximum of zero or less is "not told" and holds nothing in BOTH forms, so `not` of it holds for a creature the host said nothing about, as `threat`'s does. Compared in whole numbers, no division and no rounding. The verdict records nothing: the numbers are the creature's, already in the facts (rpg-project#1131) | `Facts.HitPoints`, `Facts.MaxHitPoints` |
 | `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
 | `not: { <one condition> }` | the condition inside does not hold | whatever it wraps |
 
 ```yaml
 - { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20,12] } }
 - { when: [{ enemy: dash }, { threat: none }], dash: enemy }   # the careful dasher
-- { when: [{ hit_points: { at_most: 30 } }], activate: second wind }   # a hurt creature
+- { when: [{ hit_points: { at_most: 8 } }], activate: second wind }    # 8 hit points or fewer
+- { when: [{ hit_points: { at_most: 30% } }], activate: second wind }  # 30% of its maximum or less
 ```
 
 `Answer.Validate` and `When.Validate` refuse the shape faults this module's
@@ -181,7 +182,7 @@ types cannot carry, each as a sentence for the form:
 
 - a `When` that does not name exactly one condition;
 - a `threat` that is not `none`, `walk` or `dash`;
-- a `hit_points` share that is not a whole percent from 1 to 100;
+- a `hit_points` number below 1, or a marked share that is not a whole percent from 1 to 100;
 - a `heard` with no kind or a span below 1;
 - a deed's `within` or scope on a condition that is not a deed;
 - a `who` on anything but `fell` (`WhoDeeds`);
