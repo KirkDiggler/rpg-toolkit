@@ -27,6 +27,10 @@ const (
 	// RoleLets is the role of a stat block's connection to an ability it lets
 	// its creature use.
 	RoleLets = "lets"
+	// RoleActivates is the role of a table row's connection to the ability it
+	// has its creature use: the same word a stat block's `lets` writes, so the
+	// two connect.
+	RoleActivates = "activates"
 )
 
 // templateLetsStatement says the abilities a stat block's creature can use,

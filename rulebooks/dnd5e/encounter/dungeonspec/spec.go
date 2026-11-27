@@ -1935,6 +1935,17 @@ type AnswerSpec struct {
 	//	    - { when: [{ enemy: dash }, { threat: none }], dash: enemy }
 	Dash *SelectorSpec `yaml:"dash,omitempty"`
 
+	// Activate has the creature USE AN ABILITY, by the word its stat block's
+	// `lets` writes it with (rpg-project#1131, ADR-0051). `time` only. The
+	// row is on a creature's table only when the creature has the ability and
+	// can pay for it now; what the ability is and what it costs is the
+	// rules', not this format's:
+	//
+	//	on:
+	//	  time:
+	//	    - { activate: second wind }
+	Activate *string `yaml:"activate,omitempty"`
+
 	// Away walks away from the selected member for the turn's movement —
 	// the coward's run. `time` only.
 	//
@@ -3017,13 +3028,21 @@ func knownSelectorWord(word string) bool {
 	return false
 }
 
+// errActivateShape is what an `activate` that is not one word is refused with.
+const errActivateShape = "`activate` names one ability by its word, as a stat block's `lets` writes it: `activate: second wind`"
+
+// isPlainString is whether a node is a scalar the decoder reads as a string.
+func isPlainString(n *yaml.Node) bool {
+	return n.Kind == yaml.ScalarNode && n.ShortTag() == "!!str"
+}
+
 // UnmarshalYAML reads one answer entry, refusing the designed-but-unbuilt
 // words by name ([laterWords]) and every unknown key, for
 // [PlaceSpec.UnmarshalYAML]'s reason.
 func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
 		return fmt.Errorf(
-			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, dash, away, search }",
+			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, dash, activate, away, search }",
 			value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
@@ -3044,8 +3063,14 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		if key == "recognize" {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, recognizeIsGive)
 		}
+		// `activate` is one word: a mapping, a list or a number is refused
+		// here, at the node, before a decode into a string says it in the
+		// decoder's voice. An empty or blank word is judged by the grammar.
+		if key == "activate" && !isPlainString(value.Content[i+1]) {
+			return fmt.Errorf("line %d: %s", value.Content[i+1].Line, errActivateShape)
+		}
 		switch key {
-		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
+		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "activate", "away",
 			"search", "use", "with", "as", "give", "tells", "relocate", "apply_status":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",

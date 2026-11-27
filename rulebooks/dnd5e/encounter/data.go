@@ -1659,7 +1659,12 @@ type AnswerData struct {
 	// row does not dash, so every blob written before the word existed
 	// reads as it did.
 	Dash *SelectorData `json:"dash,omitempty"`
-	Away *SelectorData `json:"away,omitempty"`
+	// Activate is `activate: <word>` (rpg-project#1131, ADR-0051): the ability
+	// the row uses, by the word a stat block's `lets` writes. Omitted when the
+	// row activates nothing, so every blob written before the word existed
+	// reads as it did.
+	Activate string        `json:"activate,omitempty"`
+	Away     *SelectorData `json:"away,omitempty"`
 	// Search is `search: { distance, heading }` (rpg-project#668 R4, #679). Omitted when
 	// the row does not search, so every blob written before the word existed
 	// reads as it did.
@@ -1854,6 +1859,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Attack:   selectorDataFrom(entry.Attack),
 		Toward:   selectorDataFrom(entry.Toward),
 		Dash:     selectorDataFrom(entry.Dash),
+		Activate: entry.Activate,
 		Away:     selectorDataFrom(entry.Away),
 	}
 	if entry.Search != nil {
@@ -1967,6 +1973,7 @@ func answerFromData(row AnswerData) Answer {
 		Attack:   selectorFromData(row.Attack),
 		Toward:   selectorFromData(row.Toward),
 		Dash:     selectorFromData(row.Dash),
+		Activate: row.Activate,
 		Away:     selectorFromData(row.Away),
 	}
 	if row.Search != nil {

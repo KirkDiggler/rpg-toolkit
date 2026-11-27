@@ -6,8 +6,8 @@ github.com/KirkDiggler/rpg-toolkit/events v0.6.2 h1:lRtKXko35bGw/l2TKYsN7JKOODUi
 github.com/KirkDiggler/rpg-toolkit/events v0.6.2/go.mod h1:JNzyCw1l/RL4nyoCpx3tSko8Dsocwye9eFg33Ot6mUw=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbspR6748sO/KYqE=
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
-github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.25.0 h1:KCr1o6w2QEC7SWiB7MOSyhNrIUjDbHu/EvvCQhoJXrA=
-github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.25.0/go.mod h1:HdjrZ//tpraKZq9rW0v2cgJuRHvITmEO3XAsIvg+pVE=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.26.0 h1:6wXTVfvFd6BHK/kGzeUtOUNfXgPOwD+LhBsooE2gxBI=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.26.0/go.mod h1:HdjrZ//tpraKZq9rW0v2cgJuRHvITmEO3XAsIvg+pVE=
 github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0 h1:yWT2iHTOkV7QDbF3OseKpJXN2zcJRtY4VMSOEUSN7/o=
 github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0/go.mod h1:7Q7d5co2WThTngjfpVf8NJWgV0iodpvkpFEcIxoLcA4=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0 h1:aoQxDJpZAmENlQr7Nl+sSHtqCdebwh24RRvc1USPnsw=

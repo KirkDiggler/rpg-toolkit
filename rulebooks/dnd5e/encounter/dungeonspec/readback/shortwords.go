@@ -119,6 +119,9 @@ func (b *builder) shortRow(a behavior.Answer) string {
 	if a.Dash != nil {
 		does = append(does, "runs to "+shortSelector(a.Dash, b.actorWords(a)))
 	}
+	if a.Activate != "" {
+		does = append(does, "activates "+said(a.Activate))
+	}
 	if a.Away != nil {
 		does = append(does, "moves away from "+shortSelector(a.Away, b.actorWords(a)))
 	}

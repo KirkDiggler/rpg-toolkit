@@ -65,7 +65,7 @@ func completionOf(row Answer) (completionShape, error) {
 		goal = row.Dash.At
 	case row.Hold:
 		return completionShape{Kind: BehaviorDelivered}, nil
-	case row.Say != "" && row.Attack == nil && row.Toward == nil && row.Dash == nil && row.Away == nil && row.Search == nil && !row.Flee:
+	case row.Say != "" && row.Attack == nil && row.Toward == nil && row.Dash == nil && row.Activate == "" && row.Away == nil && row.Search == nil && !row.Flee:
 		return completionShape{Kind: BehaviorDelivered}, nil
 	default:
 		return completionShape{}, fmt.Errorf("mapped answer requires exact-cell movement, a line or explicit hold: %w", ErrBadBehaviorWork)
