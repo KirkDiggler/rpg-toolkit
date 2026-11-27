@@ -4,7 +4,10 @@
 package session_test
 
 import (
+	"context"
+	"math"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,13 +17,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/readback"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // hit_points_npc_test.go plays "a creature acts on its own hit points"
 // (rpg-project#1131, slice rpg-project#1246) on
 // testdata/lieutenant-heals-when-hurt-walk.yaml: the Lieutenant of
 // activate_npc_test.go, whose first row now says
-// `when: { hit_points: { at_most: 30 } }, activate: second wind`. The module
+// `when: { hit_points: { at_most: 30% } }, activate: second wind` and whose
+// second row, `{ hit_points: { at_most: 5 } }, away: enemy`, backs him away at five
+// hit points (rpg-project#1250). The module
 // adds no rule and no check: it tells the encounter two numbers off his stored
 // sheet, and the encounter's table reads them.
 //
@@ -185,4 +191,132 @@ func TestTheContentCheckAcceptsTheHurtSite(t *testing.T) {
 	}
 	require.NotEmpty(t, said, "the read-back says the row's hit-points condition")
 	t.Logf("read-back: %s", said[0])
+}
+
+// ---- the number (rpg-project#1250): at 5 hit points he stops swinging and backs away.
+
+// backAwayNumber is the hit-point count the site's second row writes.
+const backAwayNumber = 5
+
+// where is the cell the creature stands on now, read off the run.
+func (s *usesScene) where(id string) spatial.Position {
+	s.t.Helper()
+	enc, err := s.mgr.LoadWorldForTest(context.Background(), "sess")
+	require.NoError(s.t, err)
+	return memberOf(s.t, enc, encounter.MemberID(id)).Position
+}
+
+// cells is the hex distance between two axial cells (X is q, Y is r).
+func cells(a, b spatial.Position) int {
+	dq, dr := a.X-b.X, a.Y-b.Y
+	return int((math.Abs(dq) + math.Abs(dr) + math.Abs(dq+dr)) / 2)
+}
+
+// inReach plays one whole round with him unhurt, so he walks to her and swings
+// and ends the round next to her: the state the next round starts from.
+func inReach(t *testing.T) *usesScene {
+	t.Helper()
+	s := newHurtScene(t)
+	s.play(1)
+	require.Equal(t, 1, cells(s.where("lieutenant"), s.where("alice")), "after one round he stands in her reach")
+	return s
+}
+
+// spend writes the use he has used: nothing is left to pay for it.
+func (s *usesScene) spend() {
+	s.t.Helper()
+	s.sheet("lieutenant").Left["second-wind"] = 0
+}
+
+// Test 2. At the number, with his use spent and her in his reach, he does not
+// swing and he ends the turn farther from her than he began it.
+func TestALieutenantAtTheNumberBacksAwayAndDoesNotSwing(t *testing.T) {
+	s := inReach(t)
+	s.spend()
+	s.sheet("lieutenant").HitPoints = backAwayNumber
+	before := cells(s.where("lieutenant"), s.where("alice"))
+
+	s.play(1)
+
+	turn := s.rounds[1]
+	require.Empty(t, by(turn, "lieutenant", "struck", "missed"), "he does not swing")
+	require.Empty(t, by(turn, "lieutenant", encounter.BeatActivated), "his use is spent")
+	require.NotEmpty(t, doneBy(turn, "lieutenant", encounter.BeatMoved), "he moves")
+	after := cells(s.where("lieutenant"), s.where("alice"))
+	require.Greater(t, after, before, "he ends the turn farther from her")
+	t.Logf("backs away: %d cells from her before, %d after; beats of the turn: %v", before, after, beatNames(turn))
+}
+
+// Test 3. One above the number he fights, and does not move away.
+func TestALieutenantOneAboveTheNumberFights(t *testing.T) {
+	s := inReach(t)
+	s.spend()
+	s.sheet("lieutenant").HitPoints = backAwayNumber + 1
+	before := cells(s.where("lieutenant"), s.where("alice"))
+
+	s.play(1)
+
+	turn := s.rounds[1]
+	require.NotEmpty(t, by(turn, "lieutenant", "struck", "missed"), "he swings")
+	require.Equal(t, before, cells(s.where("lieutenant"), s.where("alice")), "he does not move away")
+	require.Empty(t, doneBy(turn, "lieutenant", encounter.BeatMoved))
+	t.Logf("fights at %d: beats of the turn: %v", backAwayNumber+1, beatNames(turn))
+}
+
+// Test 4. Both at once: his use is not spent and he is at the number, which is
+// also under the share. He heals first (the first row), and the heal puts him
+// above the number whatever it rolls (1d10 plus 1 is at least 2, and 5 plus 2 is
+// 7), so the second row is out and he fights: one activated beat, then a swing.
+func TestALieutenantAtTheNumberWithHisUseLeftHealsAndFights(t *testing.T) {
+	s := inReach(t)
+	s.sheet("lieutenant").HitPoints = backAwayNumber
+	before := cells(s.where("lieutenant"), s.where("alice"))
+
+	s.play(1)
+
+	turn := s.rounds[1]
+	require.Len(t, by(turn, "lieutenant", encounter.BeatActivated), 1, "exactly one activated beat, his")
+	result := resultOf(t, by(turn, "lieutenant", encounter.BeatActivationResult)[0])
+	require.Equal(t, backAwayNumber, *result.Before)
+	require.Equal(t, backAwayNumber+11, *result.After, "the scripted die rolls 10, plus 1")
+	require.NotEmpty(t, by(turn, "lieutenant", "struck", "missed"), "then he swings")
+	require.Empty(t, doneBy(turn, "lieutenant", encounter.BeatMoved), "he does not back away")
+	require.Equal(t, before, cells(s.where("lieutenant"), s.where("alice")))
+	names := beatNames(turn)
+	activated := slices.Index(names, encounter.BeatActivated)
+	struck := slices.IndexFunc(names, func(n string) bool { return n == "struck" || n == "missed" })
+	require.Less(t, activated, struck, "he heals before he swings")
+	t.Logf("heals then fights: beats of the turn: %v", names)
+}
+
+// Test 5. The site check says each row, and the `not` rows as the read-back says a `not`.
+func TestTheReadBackSaysTheShareAndTheNumber(t *testing.T) {
+	compiled := compileSite(t, hurtSite(t))
+	checked, err := session.CheckContent(&session.CheckContentInput{Dungeon: &compiled})
+	require.NoError(t, err)
+	require.Empty(t, checked.Refusals)
+	require.Empty(t, checked.Items)
+	require.Empty(t, checked.Templates)
+	require.Empty(t, checked.Activations)
+
+	rb, err := readback.Of(hurtSite(t))
+	require.NoError(t, err)
+	require.Empty(t, rb.NotYetSaid)
+	var said []string
+	for _, st := range rb.Statements() {
+		if strings.Contains(st.Sentence, "hit points") {
+			said = append(said, st.Sentence)
+		}
+	}
+	require.Len(t, said, 4, "one sentence for each of his four rows: %v", said)
+	for _, sentence := range said {
+		t.Logf("read-back: %s", sentence)
+	}
+	require.Contains(t, said[0], "hit points are at most 30% of its maximum")
+	require.Contains(t, said[1], "hit points are at most 5")
+	require.NotContains(t, said[1], "of its maximum")
+	require.Contains(t, said[2], "not")
+	require.Contains(t, said[3], "not")
+	require.Contains(t, said[2], "hit points are at most 5")
+	require.NotContains(t, said[2], "of its maximum")
 }
