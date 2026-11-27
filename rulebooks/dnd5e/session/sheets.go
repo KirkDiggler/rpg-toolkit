@@ -199,6 +199,9 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 			// Nobody's zone is a character's (design R9, R14), so it states
 			// no arc; zero is the encounter's no-arc, all-round answer.
 			WatchArc: 0,
+			// HitPoints and MaxHitPoints stay zero for the same reason: the
+			// encounter never drives a player's turn from a table, so it
+			// reads no hit points of theirs.
 			// Turn stays nil on purpose: a player's turn is paid through the
 			// player's own verbs from its own sheet's economy, and the
 			// encounter never drives a player's swing, Disengage or run, so
@@ -253,6 +256,18 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 			// A character states none: the encounter never drives a player, a
 			// player's own ability is its own Activate verb.
 			Abilities: abilities,
+			// Its own hit points and the most it can hold, off the stored
+			// sheet (rpg-project#1131, 2026-11-28): a `hit_points` condition
+			// on a table row compares them, and the encounter is told them
+			// here because it holds no sheet. Read for Turn's reason: the
+			// verb's facts memo forgets a monster the moment its sheet is
+			// written ([writeScope.replaceMonsterSheet]), so a creature hurt
+			// or healed in the same verb is read at its new hit points. The
+			// encounter refuses a negative count and hit points with no
+			// maximum; a stored sheet holds neither, and if one did, that
+			// refusal is returned as it is.
+			HitPoints:    held.monster.HitPoints,
+			MaxHitPoints: held.monster.MaxHitPoints,
 			// How far a sneaker must stand outside this watcher's zone
 			// before the pair re-arms (design R10, O6). SEEDED HERE until
 			// content states it on the stat block; the encounter picks no
