@@ -32,7 +32,7 @@ func TestSingleRoomActionAugmentStrictDecode(t *testing.T) {
 		require.ErrorIs(t, err, ErrBadSpec)
 		var validation *ValidationError
 		require.ErrorAs(t, err, &validation)
-		require.Contains(t, validation.Errors, FieldError{Path: "templates.guard.addAction", Message: `"addAction" is not a key this build reads: they are abilities, actions, addActions, armor, base, dropActions, experience, hitDice, name, proficiency, skills`})
+		require.Contains(t, validation.Errors, FieldError{Path: "templates.guard.addAction", Message: `"addAction" is not a key this build reads: they are abilities, actions, addActions, armor, base, dropActions, experience, hitDice, lets, name, proficiency, skills`})
 	})
 }
 
