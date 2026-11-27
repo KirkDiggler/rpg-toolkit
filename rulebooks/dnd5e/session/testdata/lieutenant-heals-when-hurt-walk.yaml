@@ -1,19 +1,25 @@
-# THE LIEUTENANT HEALS WHEN HURT (rpg-project#1131, slice 4c): a small walk site,
-# copied from lieutenant-uses-second-wind-walk.yaml (the same hall, gate and
-# placement), with TWO changes to what is authored: his stat block is 6d8 hit
-# dice (the earlier site's 9 hit points put "30%" at 2 or fewer, which a fighter's
-# blows usually pass on the way to killing him), and his table's first row now
-# asks about his own hit points. One open hall, a fighter at one end, and ONE
-# hostile creature, the Lieutenant, 3 cells from her start:
-#   1. He has Second Wind and ONE use. He uses it on his turn only when his hit
-#      points are at most 30% of his maximum (the number the author writes is a
-#      percent of the maximum, compared exactly), and only once.
-#   2. Until then he walks to her and swings: the row is not true, so the
-#      other two rows are all he weighs.
-#   3. It heals him 1d10 plus 1, up to his maximum hit points.
-#   4. Nothing gives the use back in a run (a rest does), so after he has used
-#      it the row is not on his table: his sheet cannot pay for it, however
-#      hurt he is.
+# THE LIEUTENANT HEALS WHEN HURT AND BACKS AWAY (rpg-project#1131, slices 4c and
+# 4c-2): a small walk site, copied from lieutenant-uses-second-wind-walk.yaml (the
+# same hall, gate and placement), with TWO changes to what is authored: his stat
+# block is 6d8 hit dice (27 hit points; the earlier site's 9 put "30%" at 2 or
+# fewer, which a fighter's blows usually pass on the way to killing him), and his
+# table asks about his own hit points. One open hall, a fighter at one end, and
+# ONE hostile creature, the Lieutenant, 3 cells from her start. His table says,
+# in this order:
+#   1. At 30% of his maximum or less (8 of his 27) he uses Second Wind, and only
+#      once: nothing gives the use back in a run (a rest does), so once it is
+#      spent the row is not on his table, however hurt he is. It heals him 1d10
+#      plus 1, up to his maximum. `30%` is a share of his maximum, compared
+#      exactly; a bare number is hit points.
+#   2. At 5 hit points or fewer he backs away from his enemy and does not swing.
+#      The 5 is a number of hit points, not a share. It is the AUTHOR'S estimate
+#      of "one more hit could kill me": the engine does not work out what a hit
+#      would do, it only compares the number. He has no way to slip away safely
+#      (no Disengage), so backing off from someone in his reach gives her an
+#      opportunity attack.
+#   3. Otherwise (above 5) he walks to her, and when she is in reach he swings.
+#      Those two rows carry `not` the same number, so a row that says "away" and
+#      a row that says "swing" are never both true.
 # Issue: https://github.com/KirkDiggler/rpg-project/issues/1246
 version: 5
 key: lieutenant-heals-when-hurt-walk
@@ -49,8 +55,9 @@ behaviorDefinitions:
     table:
       time:
         - { when: { hit_points: { at_most: 30% } }, activate: second wind }
-        - { when: { enemy: walk }, toward: enemy }
-        - { when: { enemy: reach }, attack: enemy }
+        - { when: { hit_points: { at_most: 5 } }, away: enemy }
+        - { when: [{ not: { hit_points: { at_most: 5 } } }, { enemy: walk }], toward: enemy }
+        - { when: [{ not: { hit_points: { at_most: 5 } } }, { enemy: reach }], attack: enemy }
 
 room:
   version: 3

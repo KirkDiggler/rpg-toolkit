@@ -228,6 +228,39 @@ func (s *usesScene) spend() {
 	s.sheet("lieutenant").Left["second-wind"] = 0
 }
 
+// opportunityAsked is whether the fighter has an open reaction window.
+func (s *usesScene) opportunityAsked() bool {
+	s.t.Helper()
+	return s.reactRow().ID != ""
+}
+
+func (s *usesScene) reactRow() session.Declaration {
+	s.t.Helper()
+	out, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	require.NoError(s.t, err)
+	for _, row := range out.Declarations {
+		if row.Verb == session.VerbReact {
+			return row
+		}
+	}
+	return session.Declaration{}
+}
+
+// declineTheOpportunity answers her window with no attack, and keeps what the
+// answer told her as the rest of the round she just played.
+func (s *usesScene) declineTheOpportunity() {
+	s.t.Helper()
+	row := s.reactRow()
+	require.NotEmpty(s.t, row.ID, "she has a window to answer")
+	mark := lastSeq(storyBeats(s.t, s.mgr, "sess", "alice"))
+	_, err := s.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "alice", DeclarationID: row.ID, Answer: session.Decline(),
+	})
+	require.NoError(s.t, err)
+	last := len(s.rounds) - 1
+	s.rounds[last] = append(s.rounds[last], storyBeatsAfter(s.t, s.mgr, "sess", "alice", mark)...)
+}
+
 // Test 2. At the number, with his use spent and her in his reach, he does not
 // swing and he ends the turn farther from her than he began it.
 func TestALieutenantAtTheNumberBacksAwayAndDoesNotSwing(t *testing.T) {
@@ -237,6 +270,8 @@ func TestALieutenantAtTheNumberBacksAwayAndDoesNotSwing(t *testing.T) {
 	before := cells(s.where("lieutenant"), s.where("alice"))
 
 	s.play(1)
+	require.True(t, s.opportunityAsked(), "he steps out of her reach: she is asked whether to take an opportunity attack")
+	s.declineTheOpportunity()
 
 	turn := s.rounds[1]
 	require.Empty(t, by(turn, "lieutenant", "struck", "missed"), "he does not swing")
@@ -315,8 +350,8 @@ func TestTheReadBackSaysTheShareAndTheNumber(t *testing.T) {
 	require.Contains(t, said[0], "hit points are at most 30% of its maximum")
 	require.Contains(t, said[1], "hit points are at most 5")
 	require.NotContains(t, said[1], "of its maximum")
-	require.Contains(t, said[2], "not")
-	require.Contains(t, said[3], "not")
+	require.Contains(t, said[2], "NOT (")
+	require.Contains(t, said[3], "NOT (")
 	require.Contains(t, said[2], "hit points are at most 5")
 	require.NotContains(t, said[2], "of its maximum")
 }
