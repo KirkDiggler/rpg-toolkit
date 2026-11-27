@@ -35,12 +35,13 @@ func TestAHitPointsConditionIsSaid(t *testing.T) {
 	rb := hitPointsReadBack(t, "{ when: { hit_points: { at_most: 30 } }, hold: {} }")
 	var row readback.Statement
 	for _, st := range rb.Statements() {
-		if st.Kind == readback.KindRoutineRow && strings.Contains(st.Sentence, "hit points are at most 30%") {
+		if st.Kind == readback.KindRoutineRow && strings.Contains(st.Sentence, "hit points are at most 30% of its maximum") {
 			row = st
 		}
 	}
 	require.NotEmpty(t, row.Sentence, "the row is said")
 	t.Log(row.Sentence)
+	require.Contains(t, row.Sentence, "if Goblin (gate-patrol)'s hit points are at most 30% of its maximum, ")
 	// The same row with no condition: the connections are the ones it had.
 	var bare readback.Statement
 	for _, st := range hitPointsReadBack(t, "{ hold: {} }").Statements() {
