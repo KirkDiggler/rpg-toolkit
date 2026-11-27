@@ -5,11 +5,15 @@ package monster
 
 import (
 	"encoding/json"
+	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
@@ -74,6 +78,14 @@ type Data struct {
 	// saved before that, carrying "reaction_spent": true, loads as a full turn;
 	// saved sessions do not outlive a server build today.
 	Economy *combat.ActionEconomy `json:"economy,omitempty"`
+
+	// Kit is what this creature can use and the counts it keeps for itself,
+	// written on its stat block (`lets`). Nil is a creature with none, and a
+	// creature with none saves nothing here.
+	Kit *kits.Kit `json:"kit,omitempty"`
+	// Left is what is left in each of the kit's pools. It names every pool the
+	// kit declares and no other, each from 0 to the pool's maximum.
+	Left map[string]int `json:"left,omitempty"`
 }
 
 // SpeedData represents monster movement speeds in feet
@@ -117,4 +129,40 @@ func (d *Data) SlotsLeft(slot coreCombat.ActionType) int {
 	}
 
 	return d.Economy.SlotsLeft(slot)
+}
+
+// statBlockHolder is how a kit speaks of a creature: `stat block "Guard"`, then
+// "the stat block".
+func statBlockHolder(name string) kits.Holder {
+	return kits.Holder{Named: fmt.Sprintf("stat block %q", name), Noun: "the stat block"}
+}
+
+// validateKit refuses a saved kit and counts that cannot stand: a kit the
+// rulebook cannot run, a count for a pool the kit does not declare, no count
+// for a pool it does, or a count outside 0 to the pool's maximum. A sheet with
+// no kit must carry no counts.
+func (d *Data) validateKit() error {
+	holder := statBlockHolder(d.Name)
+	var pools map[string]kits.Pool
+	if d.Kit != nil {
+		if err := d.Kit.Validate(holder); err != nil {
+			return err
+		}
+		pools = d.Kit.Pools
+	}
+	for _, name := range slices.Sorted(maps.Keys(d.Left)) {
+		if _, ok := pools[name]; !ok {
+			return fmt.Errorf("%s keeps a count for pool %q, which %s does not declare", holder.Named, name, holder.Noun)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(pools)) {
+		left, ok := d.Left[name]
+		if !ok {
+			return fmt.Errorf("%s keeps no count for pool %q", holder.Named, name)
+		}
+		if limit := pools[name].Maximum; left < 0 || left > limit {
+			return fmt.Errorf("%s pool %q holds %d, outside 0 to %d", holder.Named, name, left, limit)
+		}
+	}
+	return nil
 }

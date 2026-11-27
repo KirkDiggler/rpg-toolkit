@@ -6,6 +6,7 @@ package monster
 import (
 	"context"
 	"encoding/json"
+	"maps"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -81,6 +82,10 @@ func (m *Monster) TakeUnappliedConditions() []json.RawMessage {
 // loadMonster builds the sheet both loaders hand back. Everything that reads
 // [Data] lives here; everything that touches a bus lives in [SheetKeeper].
 func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
+	if err := d.validateKit(); err != nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, err.Error())
+	}
+
 	// Handle proficiency bonus - default to 2 if not set
 	profBonus := proficiencyBonusOf(d.ProficiencyBonus)
 
@@ -99,6 +104,8 @@ func loadMonster(d *Data, policy conditionPolicy) (*Monster, error) {
 		senses:           d.Senses,
 		targeting:        d.Targeting,
 		economy:          copyEconomy(d.Economy),
+		kit:              cloneKit(d.Kit),
+		left:             maps.Clone(d.Left),
 		subscriptionIDs:  make([]string, 0),
 		actions:          make([]combatActions.Definition, 0, len(d.Actions)),
 		proficiencies:    proficienciesOf(d.Proficiencies),

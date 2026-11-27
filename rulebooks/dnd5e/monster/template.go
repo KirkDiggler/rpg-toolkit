@@ -4,7 +4,9 @@
 package monster
 
 import (
+	"encoding/json"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -12,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/weapons"
@@ -69,6 +72,14 @@ type Template struct {
 	// zero means worth nothing, because a captain's worth is authored and a
 	// cook's is nothing (R8).
 	Experience int
+
+	// Lets is the author's `lets` list as JSON, exactly as an item's is
+	// carried: what this creature can use, each entry the item's own word and
+	// entry, and an entry may carry its own `uses`. nil = the base's; a stated
+	// list (an empty one too) replaces the base's whole. [FromTemplate]
+	// compiles it with [kits.Compile]; an absent or empty list is a creature
+	// with no kit.
+	Lets json.RawMessage
 }
 
 // Merge lays t over base, field by field (R4): a stated field wins, an
@@ -86,6 +97,7 @@ func (t Template) Merge(base Template) Template {
 		Actions:     base.Actions,
 		Speed:       base.Speed,
 		Experience:  t.Experience,
+		Lets:        base.Lets,
 	}
 
 	if t.Base != nil {
@@ -112,6 +124,9 @@ func (t Template) Merge(base Template) Template {
 	if t.Speed != (SpeedData{}) {
 		out.Speed = t.Speed
 	}
+	if t.Lets != nil {
+		out.Lets = t.Lets
+	}
 
 	out.Abilities = make(map[abilities.Ability]int, len(base.Abilities)+len(t.Abilities))
 	for ability, score := range base.Abilities {
@@ -127,6 +142,7 @@ func (t Template) Merge(base Template) Template {
 	}
 	out.Skills = append([]skills.Skill(nil), out.Skills...)
 	out.Actions = append([]weapons.WeaponID(nil), out.Actions...)
+	out.Lets = slices.Clone(out.Lets)
 
 	return out
 }
@@ -222,6 +238,11 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template experience %d is negative", merged.Experience)
 	}
 
+	kit, err := kitOf(in.Ref.ID, merged.Lets)
+	if err != nil {
+		return nil, err
+	}
+
 	scores, err := scoresOf(merged.Abilities)
 	if err != nil {
 		return nil, err
@@ -262,6 +283,13 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 		Senses:           SensesData{PassivePerception: passive},
 	})
 	m.SetSpeed(merged.Speed)
+	if kit != nil {
+		m.kit = kit
+		m.left = make(map[string]int, len(kit.Pools))
+		for name, pool := range kit.Pools {
+			m.left[name] = pool.Maximum
+		}
+	}
 
 	if len(merged.Actions) == 0 {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "template %q carries no actions", merged.Name)
@@ -271,6 +299,46 @@ func FromTemplate(in *FromTemplateInput) (*Monster, error) {
 	}
 
 	return m, nil
+}
+
+// CheckLetsInput is a stat block's id and the author's `lets`.
+type CheckLetsInput struct {
+	// ID is the template ref's id, which opens a refusal: `stat block "guard"`.
+	ID string
+	// Lets is the author's `lets` list as JSON; nil or empty is none.
+	Lets json.RawMessage
+}
+
+// CheckLets judges a stat block's `lets` with nothing built: the same compile
+// and validation [FromTemplate] runs, for a caller that judges a site before
+// anything is launched. It refuses by the kit's own sentence, which starts with
+// `stat block "<id>"`. A stat block declares no `charges`, so an entry that
+// names a `cost` is refused.
+func CheckLets(in *CheckLetsInput) error {
+	if in == nil {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "no lets input")
+	}
+	_, err := kitOf(in.ID, in.Lets)
+
+	return err
+}
+
+// kitOf is the kit a stat block's `lets` compiles to, validated, or nil for a
+// creature with none (an absent or empty list).
+func kitOf(id string, lets json.RawMessage) (kit *kits.Kit, err error) {
+	holder := statBlockHolder(id)
+	compiled, err := kits.Compile(&kits.CompileInput{Holder: holder, Lets: lets})
+	if err != nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, err.Error())
+	}
+	if err := compiled.Kit.Validate(holder); err != nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, err.Error())
+	}
+	if len(compiled.Kit.Grants) > 0 || len(compiled.Kit.Pools) > 0 {
+		kit = &compiled.Kit
+	}
+
+	return kit, nil
 }
 
 // scoresOf requires all six scores, each within 1–30, naming the one that
