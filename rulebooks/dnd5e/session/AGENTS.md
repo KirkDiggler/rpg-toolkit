@@ -217,6 +217,23 @@ ordinary error (it aborts the verb, tells nothing, saves nothing). The
 session's own `TurnBudget` twin ([`turndriver.go`](./turndriver.go)) still
 mirrors the view and is a later step.
 
+**A creature uses what its stat block lets it (rpg-project#1131, 2026-11-28,
+rpg-project#1240; rpg-toolkit ADR-0051).** `sheetSeam.readFacts` fills
+`SheetFacts.Abilities` from `monster.AbilitiesOf` of the stored sheet (word,
+name, whether the sheet can pay now); a character states none. When a table row
+says `activate`, the encounter asks `strikerSeam.Activate`
+([`activate_npc.go`](./activate_npc.go)), written the way `Dash` is: one
+`Resolve` of `resolution.NewAction` over the rules' own description on the live
+encounter, the monster's sheet paying its slot and its use at the door, and,
+unlike `Dash`, a landing with a `Record` that tells the story a player's
+activation tells (`activated`, then one `activation-result` per effect), because
+the composition cannot know what an ability did. A host driver of this module's
+own (`turndriver.go`) has no intent to activate with. `CheckContent` also judges
+every `activate` word of every table row, a group's rows included
+(`Activations`, no `Path`: a compiled row no longer knows its line); a word the
+rules do not know is refused, a real ability its creature lacks is not, and a
+launch refuses the first as `ErrUnknownContent`.
+
 **The lookups.** Ten capabilities the composition cannot implement for itself,
 each proved at compile time by a `var _` line: `standingSeam`
 ([`standing.go`](./standing.go):46), `checkSeam` and `witnessSeam`

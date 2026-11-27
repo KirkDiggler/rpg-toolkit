@@ -171,7 +171,8 @@ func TestAWoundedLieutenantHealsWhatTheRollSays(t *testing.T) {
 	require.Len(t, results, 1)
 	result := resultOf(t, results[0])
 	require.Equal(t, encounter.ResultHealingApplied, result.Kind)
-	// 10 + 1, capped at his maximum: only 4 can be healed.
+	// 10 + 1, capped at his maximum: only 4 can be healed (his maximum is 9, so
+	// the roll alone could never fit under it).
 	require.Equal(t, wounded, *result.Before)
 	require.Equal(t, max, *result.After)
 	require.Equal(t, 4, *result.Amount)
@@ -179,16 +180,6 @@ func TestAWoundedLieutenantHealsWhatTheRollSays(t *testing.T) {
 	require.Equal(t, max, s.sheet("lieutenant").HitPoints, "his stored hit points say the same")
 	t.Logf("heal when hurt: before %d after %d amount %d requested %d (max %d)", *result.Before, *result.After, *result.Amount, *result.Requested, max)
 
-	// And under the cap: wounded deeper than one roll.
-	deep := newUsesScene(t, compileSite(t, usesSite(t)))
-	deepMax := deep.sheet("lieutenant").MaxHitPoints
-	if deepMax > 12 {
-		deep.sheet("lieutenant").HitPoints = deepMax - 12
-		deep.play(1)
-		got := resultOf(t, by(deep.rounds[0], "lieutenant", encounter.BeatActivationResult)[0])
-		require.Equal(t, deepMax-12+11, *got.After, "wounded plus the roll plus 1")
-		require.Equal(t, deepMax-1, deep.sheet("lieutenant").HitPoints)
-	}
 }
 
 // Test 3. Once, and never twice in a turn.

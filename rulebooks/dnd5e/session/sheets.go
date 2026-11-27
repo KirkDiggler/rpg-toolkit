@@ -213,6 +213,10 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 		if err != nil {
 			return encounter.SheetFacts{}, err
 		}
+		abilities, err := abilityFactsOf(held.monster)
+		if err != nil {
+			return encounter.SheetFacts{}, err
+		}
 		return encounter.SheetFacts{
 			CannotMove:     cannotMove,
 			SpeedFeet:      held.monster.Speed.Walk,
@@ -239,6 +243,16 @@ func (s sheetSeam) readFacts(id encounter.MemberID) (encounter.SheetFacts, error
 				ActionsLeft:      held.monster.SlotsLeft(coreCombat.ActionStandard),
 				BonusActionsLeft: held.monster.SlotsLeft(coreCombat.ActionBonus),
 			},
+			// What its kit lets it use, and whether its sheet can pay for each
+			// now (rpg-project#1131, 2026-11-28, ADR-0051): the rules' own
+			// reading of the stored sheet, in the order the rules give. Read
+			// beside Turn for Turn's reason: a stored fact, so the verb's facts
+			// memo forgetting a monster the moment its sheet is written
+			// ([writeScope.replaceMonsterSheet]) means a second ask in the
+			// same verb reads the spent sheet, and the use is off the table.
+			// A character states none: the encounter never drives a player, a
+			// player's own ability is its own Activate verb.
+			Abilities: abilities,
 			// How far a sneaker must stand outside this watcher's zone
 			// before the pair re-arms (design R10, O6). SEEDED HERE until
 			// content states it on the stat block; the encounter picks no
@@ -417,4 +431,23 @@ func (s sheetSeam) sheetOf(id encounter.MemberID) (heldSheet, error) {
 	}
 
 	return heldSheet{character: data}, nil
+}
+
+// abilityFactsOf is what a stored sheet's kit lets its creature use, as the
+// encounter is told it: the rules' own reading ([monster.AbilitiesOf]), the
+// word, the story's name and whether the sheet can pay the whole price now.
+// A creature with no kit has none. The rules' error returns as it is.
+func abilityFactsOf(sheet *monster.Data) ([]encounter.AbilityFacts, error) {
+	read, err := monster.AbilitiesOf(&monster.AbilitiesOfInput{Sheet: sheet})
+	if err != nil {
+		return nil, err
+	}
+	if len(read.Abilities) == 0 {
+		return nil, nil
+	}
+	facts := make([]encounter.AbilityFacts, 0, len(read.Abilities))
+	for _, a := range read.Abilities {
+		facts = append(facts, encounter.AbilityFacts{Word: a.Word, Name: a.Name, Payable: a.Payable})
+	}
+	return facts, nil
 }
