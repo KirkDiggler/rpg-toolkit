@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 )
 
 // GrantedAbilityInput names one grant of the creature's kit.
@@ -58,19 +59,33 @@ func (m *Monster) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutput
 	if !ok {
 		return nil, rpgerr.Newf(rpgerr.CodeNotFound, "stat block %q has no grant %q", m.name, in.Grant)
 	}
-	var ref *core.Ref
-	if m.ref != nil {
-		own := *m.ref
-		ref = &own
+	definition, err := describeGrant(m.name, m.ref, m.id, in.Grant, grant)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GrantedAbilityOutput{Definition: definition}, nil
+}
+
+// describeGrant is the one place a grant of a creature's kit becomes the
+// description the gate runs. A loaded creature (its name, ref and id) and its
+// stored sheet ([Data.Name], [Data.Ref], [Data.ID]) both ask here, so the two
+// cannot describe a grant differently. The ref is copied: the description
+// shares nothing with the sheet's own.
+func describeGrant(name string, ref *core.Ref, id string, grantName string, grant kits.Grant) (*actions.Definition, error) {
+	var giverRef *core.Ref
+	if ref != nil {
+		own := *ref
+		giverRef = &own
 	}
 	describe := &features.DescribeFromRefInput{
 		Ref:        grant.Ability,
 		Parameters: slices.Clone(grant.Parameters),
 		Giver: dnd5eEvents.RollSource{
-			Ref:      ref,
-			Name:     m.name,
-			Label:    m.name,
-			SourceID: m.id,
+			Ref:      giverRef,
+			Name:     name,
+			Label:    name,
+			SourceID: id,
 		},
 	}
 	if grant.Pool != "" {
@@ -78,8 +93,8 @@ func (m *Monster) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutput
 	}
 	definition, err := features.DescribeFromRef(describe)
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "stat block %q grant %q", m.name, in.Grant)
+		return nil, rpgerr.Wrapf(err, "stat block %q grant %q", name, grantName)
 	}
 
-	return &GrantedAbilityOutput{Definition: definition}, nil
+	return definition, nil
 }
