@@ -279,7 +279,11 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 	case w.Threat != "":
 		return fmt.Sprintf("the threat at the cell %s move lands on is %s", whose(who), quote(string(w.Threat))), nil
 	case w.HitPoints != nil:
-		return fmt.Sprintf("%s hit points are at most %d%% of its maximum", whose(who), w.HitPoints.AtMost), nil
+		if w.HitPoints.Percent {
+			return fmt.Sprintf("%s hit points are at most %d%% of its maximum", whose(who), w.HitPoints.AtMost), nil
+		}
+
+		return fmt.Sprintf("%s hit points are at most %d", whose(who), w.HitPoints.AtMost), nil
 	case w.Deed != "":
 		return b.deedWords(w, who), nil
 	}

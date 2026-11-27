@@ -2190,9 +2190,10 @@ type WhenSpec struct {
 	// of [behavior.ThreatWords], refused at decode otherwise.
 	Threat string
 
-	// HitPoints is `hit_points: { at_most: N }` (rpg-project#1131): the
-	// creature's own hit points are at most N percent of its own maximum.
-	// Nil when this condition names something else.
+	// HitPoints is `hit_points: { at_most: N }` or `{ at_most: N% }`
+	// (rpg-project#1131): the creature's own hit points are at most N, or at
+	// most N percent of its own maximum. Nil when this condition names
+	// something else.
 	HitPoints *HitPointsSpec
 
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
@@ -2200,13 +2201,18 @@ type WhenSpec struct {
 	Line int
 }
 
-// HitPointsSpec is the body of a `hit_points` condition: a share of the
-// creature's own maximum, a whole percent the author writes (ruled 2026-11-28,
+// HitPointsSpec is the body of a `hit_points` condition: a number of hit
+// points (`8`), or a share of the creature's own maximum written with `%`
+// (`30%`), the unit in the author's words (ruled 2026-11-28,
 // rpg-project#1131). What it is judged against is the host's to tell and
 // mind/behavior's to compare.
 type HitPointsSpec struct {
-	// AtMost is the percent, 1 to 100.
+	// AtMost is the number: hit points, 1 or more, or with Percent a whole
+	// percent, 1 to 100.
 	AtMost int
+
+	// Percent says AtMost is a share of the maximum, written `N%`.
+	Percent bool
 }
 
 // HeardSpec is the body of a `heard` condition: which kind, and how recently.
@@ -2240,7 +2246,7 @@ const (
 	whenFact   = "fact"
 	whenNot    = "not"
 	whenThreat = "threat"
-	// whenHitPoints is `hit_points: { at_most: N }`.
+	// whenHitPoints is `hit_points: { at_most: N }` or `{ at_most: N% }`.
 	whenHitPoints = "hit_points"
 	// whenHitPointsAtMost is the one key a `hit_points` body takes.
 	whenHitPointsAtMost = "at_most"
@@ -2256,32 +2262,91 @@ const (
 )
 
 // decodeHitPoints reads a `hit_points` body: a mapping with exactly the one key
-// `at_most`, a whole percent from 1 to 100. Every other key is refused BY HAND,
-// naming it, because Decode's strictness does not reach inside a custom
-// unmarshaler (see the deed condition's body below).
+// `at_most`, whose value is read AS WRITTEN, its text and not a decoded number:
+// digits only is a number of hit points (1 or more); digits then `%` with
+// nothing between is a whole percent of the creature's own maximum (1 to 100);
+// anything else is refused. Every other key is refused BY HAND, naming it,
+// because Decode's strictness does not reach inside a custom unmarshaler (see
+// the deed condition's body below).
 func decodeHitPoints(body *yaml.Node) (*HitPointsSpec, error) {
-	shape := fmt.Sprintf("line %d: `hit_points` takes { at_most: N }, a whole percent of the creature's own maximum hit points, and ",
-		body.Line)
+	const shapeStart = "line %d: `hit_points` takes { at_most: N }, a number of hit points, " +
+		"or { at_most: N%% }, a share of the creature's own maximum, and "
 	if body.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("%sthis is not that", shape)
+		return nil, fmt.Errorf(shapeStart+"this is not that", body.Line)
 	}
 	if len(body.Content) == 0 {
-		return nil, fmt.Errorf("%sthis writes nothing", shape)
+		return nil, fmt.Errorf(shapeStart+"this writes nothing", body.Line)
 	}
 	for i := 0; i < len(body.Content); i += 2 {
 		if key := body.Content[i].Value; key != whenHitPointsAtMost {
-			return nil, fmt.Errorf("line %d: `hit_points` takes { at_most: N }, a whole percent of the creature's own maximum hit points, and this writes `%s`",
-				body.Content[i].Line, key)
+			return nil, fmt.Errorf(shapeStart+"this writes `%s`", body.Content[i].Line, key)
 		}
 	}
 	value := body.Content[1]
-	percent, err := strconv.Atoi(value.Value)
-	if value.Kind != yaml.ScalarNode || err != nil || percent < 1 || percent > 100 {
-		return nil, fmt.Errorf("line %d: `hit_points: { at_most: %s }`: a share of the creature's own maximum is a whole percent from 1 to 100",
-			value.Line, value.Value)
+	written := writtenAs(value)
+	refuse := func(why string) error {
+		return fmt.Errorf("line %d: `hit_points: { at_most: %s }`: %s", value.Line, written, why)
+	}
+	neither := "write a whole number of hit points (`8`) or a whole percent of the creature's own maximum (`30%`)"
+	if value.Kind != yaml.ScalarNode {
+		return nil, refuse(neither)
 	}
 
-	return &HitPointsSpec{AtMost: percent}, nil
+	digits, percent := strings.CutSuffix(value.Value, "%")
+	n, ok := wholeNumber(digits)
+	switch {
+	case !ok:
+		return nil, refuse(neither)
+	case percent && (n < 1 || n > 100):
+		return nil, refuse("a share of the creature's own maximum is a whole percent from 1% to 100%")
+	case !percent && n < 1:
+		return nil, refuse("a number of hit points is 1 or more")
+	}
+
+	return &HitPointsSpec{AtMost: n, Percent: percent}, nil
+}
+
+// wholeNumber reads text that is ASCII digits and nothing else (no sign, no
+// space, no separator, no radix, no point), and says whether it was one that
+// an int can hold.
+func wholeNumber(text string) (int, bool) {
+	if text == "" {
+		return 0, false
+	}
+	for _, r := range text {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n, err := strconv.Atoi(text)
+
+	return n, err == nil
+}
+
+// writtenAs is a value as the author wrote it, for a refusal to quote: a
+// scalar's own text, and a list or a mapping in flow style on one line.
+func writtenAs(node *yaml.Node) string {
+	if node.Kind == yaml.ScalarNode {
+		return node.Value
+	}
+	flow := *node
+	var mark func(n *yaml.Node)
+	mark = func(n *yaml.Node) {
+		if n.Kind == yaml.SequenceNode || n.Kind == yaml.MappingNode {
+			n.Style |= yaml.FlowStyle
+		}
+		for _, c := range n.Content {
+			mark(c)
+		}
+	}
+	flow.Content = append([]*yaml.Node(nil), node.Content...)
+	mark(&flow)
+	out, err := yaml.Marshal(&flow)
+	if err != nil {
+		return "…"
+	}
+
+	return strings.TrimSpace(string(out))
 }
 
 // withinSpec is the body a deed condition takes: `{ within: N }`, and — since
@@ -2304,7 +2369,7 @@ type withinSpec struct {
 func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
 		return fmt.Errorf("line %d: a `when` is one of { enemy: %s }, { <deed>: { within: N } }, "+
-			"{ heard: { kind, within } }, { fact: <id> }, { threat: %s }, { hit_points: { at_most: N } } or { not: { … } }",
+			"{ heard: { kind, within } }, { fact: <id> }, { threat: %s }, { hit_points: { at_most: N or N%% } } or { not: { … } }",
 			value.Line, strings.Join(enemyWords(), " | "), strings.Join(threatWords(), " | "))
 	}
 	if len(value.Content) > 2 {
