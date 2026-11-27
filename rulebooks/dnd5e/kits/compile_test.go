@@ -84,7 +84,7 @@ func TestEveryRefusalReadsUnderTheHoldersNameWithTheItemsSentence(t *testing.T) 
 	}{
 		{"unknown charges word", `{"max": 1, "regain": 1}`, ``, "`charges`: unknown word `regain`; it is one of max, refills"},
 		{"unknown refills word", `{"max": 1, "refills": {"on": ["long rest"], "when": 1}}`, ``, "`refills`: unknown word `when`; it is one of on"},
-		{"unknown lets word", ``, `[{"use": "second wind", "with": {"level": 1}, "when": 1}]`, "lets[0]: unknown word `when`; it is one of use, with, cost"},
+		{"unknown lets word", ``, `[{"use": "second wind", "with": {"level": 1}, "when": 1}]`, "lets[0]: unknown word `when`; it is one of use, with, cost, uses"},
 		{"unknown cost word", `{"max": 2}`, `[{"use": "second wind", "with": {"level": 1}, "cost": {"gold": 1}}]`, "lets[0] `cost`: unknown word `gold`; it is one of charges"},
 		{"bad rest", `{"max": 1, "refills": {"on": ["dawn"]}}`, ``, "`refills.on` has \"dawn\"; it is one of short rest, long rest"},
 		{"bad use", ``, `[{"use": "fireball"}]`, "lets[0]: `use` is \"fireball\"; it is one of second wind"},
@@ -94,6 +94,16 @@ func TestEveryRefusalReadsUnderTheHoldersNameWithTheItemsSentence(t *testing.T) 
 		{"cost with no charges", ``, `[{"use": "second wind", "with": {"level": 1}, "cost": {"charges": 1}}]`, "lets[0] `cost` is paid in `charges`, but the item declares no `charges`"},
 		{"level zero", ``, `[{"use": "second wind", "with": {"level": 0}}]`, "lets[0] `with` for \"second wind\": second wind level 0 must be at least 1"},
 		{"lets not a list", ``, `{"use": "second wind"}`, "`lets` must be a list of entries"},
+		{"uses and cost", `{"max": 2}`, `[{"use": "second wind", "with": {"level": 1}, "cost": {"charges": 1}, "uses": {"max": 1}}]`, "lets[0] has both `cost` and `uses`; a use is paid from the item's charges or from the entry's own uses, not both"},
+		{"uses no max", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {}}]`, "lets[0] `uses` has no `max`; it is a whole number from 1 to 1000"},
+		{"uses max zero", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 0}}]`, "lets[0] `uses.max` is 0; it is a whole number from 1 to 1000"},
+		{"uses max over", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1001}}]`, "lets[0] `uses.max` is 1001; it is a whole number from 1 to 1000"},
+		{"uses max not whole", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1.5}}]`, "lets[0] `uses.max` is 1.5; it must be a whole number"},
+		{"unknown uses word", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1, "regain": 1}}]`, "lets[0] `uses`: unknown word `regain`; it is one of max, refills"},
+		{"unknown uses refills word", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1, "refills": {"on": ["long rest"], "when": 1}}}]`, "lets[0] `uses.refills`: unknown word `when`; it is one of on"},
+		{"bad uses rest", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1, "refills": {"on": ["dawn"]}}}]`, "lets[0] `uses.refills.on` has \"dawn\"; it is one of short rest, long rest"},
+		{"uses rest twice", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": {"max": 1, "refills": {"on": ["long rest", "long rest"]}}}]`, "lets[0] `uses.refills.on` names \"long rest\" more than once"},
+		{"uses not an object", ``, `[{"use": "second wind", "with": {"level": 1}, "uses": 3}]`, "lets[0] `uses` must be an object of words"},
 		{"same ability twice", ``, `[{"use": "second wind", "with": {"level": 1}}, {"use": "second wind", "with": {"level": 2}}]`, "`use` names \"second wind\" more than once; each entry uses a different ability"},
 	}
 	for _, tc := range cases {

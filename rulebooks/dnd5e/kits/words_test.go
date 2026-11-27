@@ -33,7 +33,8 @@ func TestTheItemsWordsStartWithTheItemsOwnFiveThenTheKits(t *testing.T) {
 	assert.Equal(t, []string{
 		"item name", "item slot", "item unique", "item charges", "item lets",
 		"charges max", "charges refills", "refills on",
-		"lets entry use", "lets entry with", "lets entry cost", "cost charges",
+		"lets entry use", "lets entry with", "lets entry cost", "lets entry uses", "cost charges",
+		"uses max", "uses refills",
 	}, got)
 }
 
