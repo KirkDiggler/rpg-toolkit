@@ -4,6 +4,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -320,6 +321,15 @@ func templateOf(id string, spec dungeonspec.TemplateSpec) (monster.Template, err
 		}
 	}
 
+	// What the creature can use is the author's `lets`, handed to the rules as
+	// the JSON it is: nothing in it is read or judged here (the rules' own
+	// FromTemplate and CheckLets do), and a block that wrote none carries none.
+	lets, err := letsOf(spec)
+	if err != nil {
+		return monster.Template{}, err
+	}
+	out.Lets = lets
+
 	return out, nil
 }
 
@@ -333,4 +343,17 @@ func abilityOf(key string) (abilities.Ability, bool) {
 		}
 	}
 	return "", false
+}
+
+// letsOf is a template's compiled `lets` as the JSON the rules read, or nil when
+// the author wrote none.
+func letsOf(spec dungeonspec.TemplateSpec) (json.RawMessage, error) {
+	if len(spec.Lets) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(spec.Lets)
+	if err != nil {
+		return nil, fmt.Errorf("lets: %w: %v", ErrInvalidWorld, err)
+	}
+	return raw, nil
 }

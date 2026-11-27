@@ -159,7 +159,7 @@ func TestTheContentCheckAcceptsTheLieutenantSite(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, rb.NotYetSaid, "every word the site writes is one the read-back can say")
 	found := false
-	for _, st := range rb.Statements {
+	for _, st := range rb.Statements() {
 		if st.Kind == readback.KindTemplateLets {
 			found = true
 		}
@@ -176,7 +176,7 @@ func TestTheContentCheckRefusesAStatBlockTheRulesCannotRun(t *testing.T) {
 	}{
 		{"an ability the rules do not know", "use: second wind", "use: fireball", []string{"fireball", "second wind"}},
 		{"a count that cannot be used", "max: 1", "max: 0", []string{"uses.max"}},
-		{"a cost a stat block does not declare", "with: { level: 1 }\n", "with: { level: 1 }\n        cost: { charges: 1 }\n", []string{"charges"}},
+		{"a cost a stat block does not declare", "uses: { max: 1, refills: { on: [short rest, long rest] } }", "cost: { charges: 1 }", []string{"charges"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
