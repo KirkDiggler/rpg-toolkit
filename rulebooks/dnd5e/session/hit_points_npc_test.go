@@ -355,3 +355,51 @@ func TestTheReadBackSaysTheShareAndTheNumber(t *testing.T) {
 	require.Contains(t, said[2], "hit points are at most 5")
 	require.NotContains(t, said[2], "of its maximum")
 }
+
+// newHurtSceneOn is newHurtScene played on the dice given: newUsesScene's own
+// launch, which hard-wires secondWindDice.
+func newHurtSceneOn(t *testing.T, dice *faceDice) *usesScene {
+	t.Helper()
+	compiled := compileSite(t, hurtSite(t))
+	fighter := armedFighter("alice")
+	setLevel(fighter, 1)
+	fighter.HitPoints, fighter.MaxHitPoints = 60, 60
+	acts := &actCapture{}
+	l := &lieutenantScene{t: t, sessions: newFakeSessions(), enc: newFakeEncounters()}
+	var err error
+	l.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: acts, Seats: newFakeSeats(),
+		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: dice,
+		TurnDriver: session.Driver(), Sessions: l.sessions, Encounters: l.enc, Characters: newFakeCharacters(fighter),
+	})
+	require.NoError(t, err)
+	_, err = l.mgr.Launch(context.Background(), &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice"}})
+	require.NoError(t, err)
+	return &usesScene{lieutenantScene: l, acts: acts}
+}
+
+// Test 2b. The `not` on the swing row is what keeps him from swinging. The
+// table's pick is a die over the sum of its candidates' shares, and the dice
+// of these tests say 10, which lands on the FIRST candidate: with the `not`
+// dropped the away row is first and wins, and nothing fails. Here the die says
+// its top face (faceDice, clamped to the die by onTheDie), the LAST candidate's:
+// as authored there is one candidate, the away row, so he still backs away;
+// without the `not` the last is the swing and he swings.
+func TestALieutenantAtTheNumberBacksAwayEvenWhenThePickLandsOnTheLastCandidate(t *testing.T) {
+	dice := &faceDice{face: 10}
+	s := newHurtSceneOn(t, dice)
+	s.play(1)
+	require.Equal(t, 1, cells(s.where("lieutenant"), s.where("alice")), "after one round he stands in her reach")
+	s.spend()
+	s.sheet("lieutenant").HitPoints = backAwayNumber
+	before := cells(s.where("lieutenant"), s.where("alice"))
+	dice.face = 1000 // every die says its top face: the last candidate
+
+	s.play(1)
+	require.True(t, s.opportunityAsked(), "he steps out of her reach")
+	s.declineTheOpportunity()
+
+	turn := s.rounds[1]
+	require.Empty(t, by(turn, "lieutenant", "struck", "missed"), "he does not swing")
+	require.Greater(t, cells(s.where("lieutenant"), s.where("alice")), before, "he ends the turn farther from her")
+	t.Logf("last candidate: beats of the turn: %v", beatNames(turn))
+}
