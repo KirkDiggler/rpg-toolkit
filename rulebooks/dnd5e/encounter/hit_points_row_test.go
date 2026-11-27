@@ -286,5 +286,11 @@ func TestAHitPointsNumberAndAShareAreSavedAndLoadedAsThemselves(t *testing.T) {
 		require.Nil(t, rows[4].When[0].HitPoints)
 	}
 	require.True(t, seen, "the goblin is in the loaded encounter")
-	require.Equal(t, 2, strings.Count(string(raw), `"Percent":true`), "the share alone and inside not say it, the numbers do not")
+	// What a member's saved table really says: a share says `"Percent":true`;
+	// a number says `"Percent":false`, because mind/behavior tags the field
+	// omitempty and this module's json/v2 encoder does not leave a false bool
+	// out for it (the provider's, not fixed here). The flat WhenData form
+	// leaves the key out; see the internal test.
+	require.Equal(t, 2, strings.Count(string(raw), `"HitPoints":{"AtMost":30,"Percent":true}`)+strings.Count(string(raw), `"HitPoints":{"AtMost":40,"Percent":true}`), "the share alone and inside not")
+	require.Equal(t, 2, strings.Count(string(raw), `"HitPoints":{"AtMost":8,"Percent":false}`)+strings.Count(string(raw), `"HitPoints":{"AtMost":9,"Percent":false}`), "the number alone and inside not")
 }
