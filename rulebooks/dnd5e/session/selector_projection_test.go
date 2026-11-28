@@ -108,6 +108,9 @@ var selectorMechanicalFields = []string{
 	"actions.Definition.Cast",
 	"actions.Definition.Cost",
 	"actions.Definition.Effect",
+	// Condition is the named status the ability puts on its user (Rage's
+	// raging): what the ability does, so selector identity, as Healing is.
+	"actions.EffectProfile.Condition",
 	"actions.EffectProfile.Healing",
 	"actions.EffectProfile.To",
 	"actions.Definition.Name",

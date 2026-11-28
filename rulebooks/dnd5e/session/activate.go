@@ -100,15 +100,20 @@ type ActivateOutput struct {
 // # Which activations pay at the door
 //
 // A feature that carries a description (the sheet answers AbilityDefinition:
-// today Second Wind and the fighter's Action Surge) is built with
+// today Second Wind, the fighter's Action Surge and Rage) is built with
 // [resolution.NewAction] and resolved with the description's own cost, so it
-// is paid at the door like every other verb here. Every other feature (Rage
-// and the combat abilities) still goes through [resolution.NewActivation] with
-// [resolution.Input.Cost] nil, deliberately: the ability spends its own slot,
-// so a Cost passed alongside would charge the same ledger twice and the
-// second charge would look exactly like the first. Those are the executing
-// activations that do not pay at the door, and they are not free — see
-// [resolution.NewActivation].
+// is paid at the door like every other verb here. Rage's effect is a named
+// status on its user, which the resolver builds before anything is charged.
+// The combat abilities and the features that are not described yet still go
+// through [resolution.NewActivation] with [resolution.Input.Cost] nil,
+// deliberately: the ability spends its own slot, so a Cost passed alongside
+// would charge the same ledger twice and the second charge would look exactly
+// like the first. Those are the executing activations that do not pay at the
+// door, and they are not free — see [resolution.NewActivation].
+//
+// A described ability the resolver cannot build (a target named for an
+// ability that lands on its user, as Rage, Second Wind and Action Surge do)
+// is [ErrBadActivation], with the resolver's sentence as text.
 //
 // The row an offer shows is still the feature's, and it is compiled before the
 // door is reached, so a spent ability is refused as a stale selector first;
@@ -277,6 +282,12 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 			TargetIDs:  targets,
 			Roller:     roller,
 		})
+		if err != nil {
+			// A described ability the resolver will not build is a malformed
+			// activation, as it is on the path below; the resolver's own
+			// sentinel is carried as text and does not ride along.
+			return nil, fmt.Errorf("activate: %w: %v", ErrBadActivation, err)
+		}
 		// The price is the description's own, priced the way a swing is: the
 		// fight's round on the turn clock, the one lent round on the world
 		// clock (economy.go, priceSwing), with the profile cloned as a cast
