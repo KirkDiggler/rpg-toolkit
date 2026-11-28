@@ -43,7 +43,8 @@ func ItemPoolKey(itemID, pool string) coreResources.ResourceKey {
 //	combat.Pay(character, out.Definition.Cost)
 //
 // An item not owned, an item not worn and a grant the item does not have are
-// refused, each naming the item. [Character.AbilityDefinition] is untouched:
+// refused, each naming the item, and so is a description that puts a status on
+// its user while she holds it ("already raging"). [Character.AbilityDefinition] is untouched:
 // it answers for the character's own features only.
 func (c *Character) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutput, error) {
 	if in == nil {
@@ -58,6 +59,9 @@ func (c *Character) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutp
 	}
 	definition, err := itemDefinition(item, in.Grant)
 	if err != nil {
+		return nil, err
+	}
+	if err := features.RefuseHeldStatus(&features.RefuseHeldStatusInput{Definition: definition, Holder: c}); err != nil {
 		return nil, err
 	}
 	return &GrantedAbilityOutput{Definition: definition}, nil
@@ -177,15 +181,24 @@ func (c *Character) grantedEntry(item magicitems.Data, grantName string) Availab
 	entry.ActionType = slot
 	entry.EconomySlot = economySlotForActionType(slot)
 
+	// The reasons keep the barbarian's own row's order, so a player never
+	// reads one fact told two ways: the slot's, then a status she already
+	// holds, then the item's count. The count is shown whatever the reason is.
 	canUse := c.canUseAbilityByActionType(slot)
 	reason := c.actionTypeExhaustedReason(slot)
 	if grant.Pool != "" {
 		entry.ResourceCurrent = item.Left[grant.Pool]
 		entry.ResourceMax = item.Description.Pools[grant.Pool].Maximum
-		if canUse && entry.ResourceCurrent < grant.Uses {
+	}
+	if canUse {
+		if err := features.RefuseHeldStatus(&features.RefuseHeldStatusInput{Definition: definition, Holder: c}); err != nil {
 			canUse = false
-			reason = "the " + item.Description.Name + " has no " + grant.Pool + " left"
+			reason = err.Error()
 		}
+	}
+	if canUse && grant.Pool != "" && entry.ResourceCurrent < grant.Uses {
+		canUse = false
+		reason = "the " + item.Description.Name + " has no " + grant.Pool + " left"
 	}
 	entry.CanUse = canUse
 	entry.Reason = c.actionReason(canUse, reason)

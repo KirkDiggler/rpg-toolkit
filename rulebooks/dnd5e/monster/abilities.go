@@ -33,8 +33,13 @@ type Ability struct {
 	Name string
 	// Payable is whether the sheet can pay the ability's whole price right
 	// now: every slot and every count it costs. It is the gate's own answer
-	// ([combat.CanPay]) for Definition.Cost.
+	// ([combat.CanPay]) for Definition.Cost, and is not changed by Refused.
+	// "Can it be used right now" is Payable and Refused == "".
 	Payable bool
+	// Refused is why the creature may not use it right now even if it can
+	// pay: "already raging" for a Rage while the sheet holds the raging
+	// status. Empty when nothing refuses. See Payable for the pair.
+	Refused string
 	// Definition is the description the gate runs, as [Monster.GrantedAbility]
 	// gives it: its cost names the creature's own pool by [PoolKey].
 	Definition *actions.Definition
@@ -90,11 +95,19 @@ func AbilitiesOf(in *AbilitiesOfInput) (*AbilitiesOfOutput, error) {
 			return nil, err
 		}
 
+		refused := ""
+		if err := features.RefuseHeldStatusStored(&features.RefuseHeldStatusStoredInput{
+			Definition: definition, Stored: sheet.Conditions,
+		}); err != nil {
+			refused = err.Error()
+		}
+
 		abilities = append(abilities, Ability{
 			Word:       word,
 			Grant:      grantName,
 			Name:       definition.Name,
 			Payable:    combat.CanPay(ledger, definition.Cost),
+			Refused:    refused,
 			Definition: definition,
 		})
 	}

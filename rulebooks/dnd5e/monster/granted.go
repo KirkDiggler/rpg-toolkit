@@ -47,7 +47,9 @@ func (m *Monster) Grants() []string {
 //
 //	combat.Pay(creature, out.Definition.Cost)
 //
-// A creature with no kit, and a grant the kit does not have, are refused by name.
+// A creature with no kit, and a grant the kit does not have, are refused by name,
+// and so is a description that puts a status on its user while it holds that
+// status ("already raging").
 func (m *Monster) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutput, error) {
 	if in == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "granted ability input is required")
@@ -61,6 +63,9 @@ func (m *Monster) GrantedAbility(in *GrantedAbilityInput) (*GrantedAbilityOutput
 	}
 	definition, err := describeGrant(m.name, m.ref, m.id, in.Grant, grant)
 	if err != nil {
+		return nil, err
+	}
+	if err := features.RefuseHeldStatus(&features.RefuseHeldStatusInput{Definition: definition, Holder: m}); err != nil {
 		return nil, err
 	}
 
