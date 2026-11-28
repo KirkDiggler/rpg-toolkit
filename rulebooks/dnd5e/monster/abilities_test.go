@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
@@ -17,7 +18,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/kits"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // storedSheet is the stored sheet of the human base with Second Wind at level
@@ -214,11 +214,15 @@ func TestNilIsRefused(t *testing.T) {
 // made up from its name.
 func TestAGrantWithNoWordIsRefusedByName(t *testing.T) {
 	sheet := storedSheet(t, func(d *monster.Data) {
-		d.Kit.Grants["rage"] = kits.Grant{Ability: *refs.Features.Rage(), Parameters: []byte(`{}`)}
+		d.Kit.Grants["no-such-ability"] = kits.Grant{
+			Ability:    core.Ref{Module: "dnd5e", Type: "features", ID: "no_such_ability"},
+			Parameters: []byte(`{}`),
+		}
 	})
 
 	_, err := monster.AbilitiesOf(&monster.AbilitiesOfInput{Sheet: sheet})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `stat block "Human" grant "rage"`)
+	assert.Contains(t, err.Error(), `stat block "Human" grant "no-such-ability"`)
+	assert.Contains(t, err.Error(), "which the rules have no word for")
 }

@@ -106,7 +106,7 @@ func TestEveryRefusalNamesTheThing(t *testing.T) {
 		}, "second wind level 0 must be at least 1"},
 		{"unknown ability", func(d *magicitems.Description) {
 			g := d.Grants["second-wind"]
-			g.Ability = core.Ref{Module: "dnd5e", Type: "features", ID: "rage"}
+			g.Ability = core.Ref{Module: "dnd5e", Type: "features", ID: "no_such_ability"}
 			d.Grants["second-wind"] = g
 		}, "no described ability"},
 		{"undeclared pool", func(d *magicitems.Description) {

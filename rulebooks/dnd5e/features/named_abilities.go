@@ -4,7 +4,9 @@
 package features
 
 import (
+	"bytes"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"slices"
 
@@ -30,7 +32,9 @@ type namedAbility struct {
 	// label is how a studio and a story name it: "Second Wind".
 	label string
 	// values are the words its `with` takes, for the studio's table, in order.
-	// Empty for an ability that takes none.
+	// Empty for an ability that takes none. The table is also what content is
+	// held to: [ValidateParameters] holds each value it names, when present,
+	// to a whole number within Min and Max.
 	values []AbilityValue
 	// check decodes and judges the giver's values, strictly. An ability that
 	// takes none refuses any.
@@ -66,6 +70,7 @@ type abilityTable struct {
 var namedAbilityTable = &abilityTable{entries: []*namedAbility{
 	&secondWindAbility,
 	&actionSurgeAbility,
+	&rageAbility,
 }}
 
 // add appends an entry and returns the function that takes it out again, for
@@ -142,12 +147,47 @@ func DescribeFromRef(in *DescribeFromRefInput) (*actions.Definition, error) {
 
 // ValidateParameters checks values with the same contract DescribeFromRef uses.
 // It refuses the ref and the parameters; the giver and pools are not its concern.
+// It is asked by content only (a kit, an item, a stat block), so after the
+// entry's check passes it also holds each value the entry's values table names,
+// when present, to a whole number of at least Min and, unless NoMax, at most
+// Max. An ability's own check may accept a form that only a class feature can
+// answer (Rage by barbarian level); content may not write it.
 func ValidateParameters(in *ValidateParametersInput) error {
 	if in == nil {
 		return fmt.Errorf("validating ability parameters requires input")
 	}
-	_, err := checkedEntry(in.Ref, in.Parameters)
-	return err
+	entry, err := checkedEntry(in.Ref, in.Parameters)
+	if err != nil {
+		return err
+	}
+	return checkValuesTable(entry, in.Parameters)
+}
+
+// checkValuesTable holds each value the entry's table names, when present, to a
+// whole number within the table's limits. It names no ability.
+func checkValuesTable(entry *namedAbility, raw json.RawMessage) error {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return nil // not an object: the entry's check has judged it
+	}
+	for _, value := range entry.values {
+		written, present := members[value.Word]
+		if !present {
+			continue
+		}
+		written = bytes.TrimSpace(written)
+		var amount int
+		ok := jsonv2.Unmarshal(written, &amount) == nil && amount >= value.Min && (value.NoMax || amount <= value.Max)
+		if ok {
+			continue
+		}
+		limits := fmt.Sprintf("at least %d", value.Min)
+		if !value.NoMax {
+			limits += fmt.Sprintf(" and at most %d", value.Max)
+		}
+		return fmt.Errorf("%s %s is %s; it is a whole number of %s", entry.word, value.Word, written, limits)
+	}
+	return nil
 }
 
 // checkedEntry finds the entry for a ref and has it judge the values.

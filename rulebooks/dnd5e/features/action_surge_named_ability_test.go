@@ -33,7 +33,7 @@ func TestActionSurgeIsFoundByAllFive(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, *refs.Features.ActionSurge(), ref)
 
-	assert.Equal(t, []string{"action surge", "second wind"}, features.NamedAbilities())
+	assert.Equal(t, []string{"action surge", "rage", "second wind"}, features.NamedAbilities())
 
 	for _, raw := range []json.RawMessage{nil, {}, json.RawMessage(`{}`)} {
 		assert.NoError(t, features.ValidateParameters(&features.ValidateParametersInput{Ref: ref, Parameters: raw}), "%q", raw)
@@ -43,9 +43,10 @@ func TestActionSurgeIsFoundByAllFive(t *testing.T) {
 	assert.Equal(t, "action surge takes no values", err.Error())
 
 	words := features.AbilityWords(&features.AbilityWordsInput{}).Words
-	require.Len(t, words, 2)
+	require.Len(t, words, 3)
 	assert.Equal(t, features.AbilityWord{Name: "action surge", Label: "Action Surge", Counted: true}, words[0], "no values, and it must be counted")
-	assert.Equal(t, "second wind", words[1].Name)
+	assert.Equal(t, "rage", words[1].Name)
+	assert.Equal(t, "second wind", words[2].Name)
 
 	giver := surgeGiver(t)
 	got, err := features.DescribeFromRef(&features.DescribeFromRefInput{
