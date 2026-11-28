@@ -109,7 +109,7 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().False(got.DeathSaveState.Stabilized)
 	s.Require().False(got.DeathSaveState.Dead)
 
-	s.Require().Len(got.Resources, 3)
+	s.Require().Len(got.Resources, 4, "hit dice, the rest pool, second wind and action surge")
 	s.Require().Equal(3, got.Resources[resources.HitDice].Current,
 		"one spent die plus half of four recovers to three")
 	s.Require().Equal(4, got.Resources[resources.HitDice].Maximum)
@@ -122,15 +122,14 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	}
 	s.Contains(refilled, "dnd5e:resources:fighter-rest-pool")
 	s.Contains(refilled, "dnd5e:features:second_wind", "the root's answer is carried through")
+	s.Contains(refilled, "dnd5e:features:action_surge", "her action surge is named by its feature, the pool it spends is the shared one")
 
 	s.Require().Len(got.Features, 2)
 	s.Require().Equal(1, got.Resources[resources.SecondWind].Current, "second wind's uses are the shared pool's")
 	s.Require().Equal(1, got.Resources[resources.SecondWind].Maximum)
 
-	var actionSurge features.ActionSurgeData
-	s.Require().NoError(json.Unmarshal(featureWithRef(s.T(), got.Features, refs.Features.ActionSurge()), &actionSurge))
-	s.Require().Equal(1, actionSurge.Uses)
-	s.Require().Equal(1, actionSurge.MaxUses)
+	s.Require().Equal(1, got.Resources[resources.ActionSurge].Current, "action surge's uses are the shared pool's")
+	s.Require().Equal(1, got.Resources[resources.ActionSurge].Maximum)
 
 	s.Require().Len(got.Conditions, 1)
 	var opportunity conditions.OpportunityAttackConditionData
@@ -300,7 +299,7 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 	s.Require().NoError(err)
 	actionSurge, err := json.Marshal(features.ActionSurgeData{
 		Ref: refs.Features.ActionSurge(), ID: "fighter-action-surge", Name: "Action Surge",
-		CharacterID: longRestFighterID, Uses: 0, MaxUses: 1,
+		CharacterID: longRestFighterID,
 	})
 	s.Require().NoError(err)
 	opportunity, err := (&conditions.OpportunityAttackCondition{
@@ -327,9 +326,10 @@ func (s *LongRestTestSuite) fighter() *character.Data {
 		},
 		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: "longsword"},
 		Resources: map[coreResources.ResourceKey]character.RecoverableResourceData{
-			resources.HitDice:    {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
-			fighterRestPool:      {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
-			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
+			resources.HitDice:     {Current: 1, Maximum: 4, ResetType: coreResources.ResetLongRest},
+			fighterRestPool:       {Current: 0, Maximum: 2, ResetType: coreResources.ResetShortRest},
+			resources.SecondWind:  {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
+			resources.ActionSurge: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
 		},
 		Features:   []json.RawMessage{secondWind, actionSurge},
 		Conditions: []json.RawMessage{opportunity, prone},
@@ -390,15 +390,6 @@ func (s *LongRestTestSuite) assertNoUnarmoredDefense(bus events.EventBus) {
 
 func TestLongRestSuite(t *testing.T) {
 	suite.Run(t, new(LongRestTestSuite))
-}
-
-func featureWithRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
-	t.Helper()
-	if got := effectWithRefOrNil(t, blobs, want); got != nil {
-		return got
-	}
-	t.Fatalf("feature %s not found", want.String())
-	return nil
 }
 
 func conditionWithRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
