@@ -738,6 +738,8 @@ type AtlasStructuralWall struct {
 
 	// MaterialOverrides are the same captured choices as the permitted wall.
 	MaterialOverrides []MaterialOverride `json:"material_overrides,omitempty"`
+	// MaterialChannels is detached captured intent on this permitted wall.
+	MaterialChannels []MaterialChannelAdjustment `json:"material_channels,omitempty"`
 	// FaceFinishes are detached explicit choices on the same permitted wall.
 	FaceFinishes []WallFaceFinish `json:"face_finishes,omitempty"`
 	// Sections follow this wall's captured disclosure, never opening-only patches.
@@ -1567,6 +1569,9 @@ type PublicMember struct {
 	// default, not the current animation phase or a live-member lookup.
 	// Empty means no explicit captured override, including legacy observations.
 	DefaultActivityRef string `json:"default_activity_ref,omitempty"`
+
+	// MaterialChannels is this observer's captured intent, never a live lookup.
+	MaterialChannels []MaterialChannelAdjustment `json:"material_channels,omitempty"`
 
 	// Customization is the player's exact cosmetic selection, or an empty
 	// customization for monsters.

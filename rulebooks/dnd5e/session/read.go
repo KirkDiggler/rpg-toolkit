@@ -155,6 +155,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 	type observedIdentity struct {
 		appearanceRef      string
 		defaultActivityRef string
+		materialChannels   []MaterialChannelAdjustment
 	}
 	observedPresentation := make(map[string]observedIdentity)
 	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
@@ -170,6 +171,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			known[string(holding.Subject)] = true
 			observedPresentation[string(holding.Subject)] = observedIdentity{
 				appearanceRef: testimony.AppearanceRef, defaultActivityRef: testimony.DefaultActivityRef,
+				materialChannels: projectMaterialChannels(testimony.MaterialChannels),
 			}
 		}
 	}
@@ -208,6 +210,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			observed := observedPresentation[id]
 			projected.AppearanceRef = observed.appearanceRef
 			projected.DefaultActivityRef = observed.defaultActivityRef
+			projected.MaterialChannels = observed.materialChannels
 			members = append(members, projected)
 
 		case encounter.KindWorld:

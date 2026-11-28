@@ -233,6 +233,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		}
 		join.AppearanceRef = monster.placement.AppearanceRef
 		join.DefaultActivityRef = monster.placement.DefaultActivityRef
+		join.MaterialChannels = monster.placement.MaterialChannels
 		// Physical bindings name states on the designated behavior instance,
 		// never an unrelated role's private progress. Carry the compiled names.
 		join.BlockingStates = monster.placement.BlockingStates

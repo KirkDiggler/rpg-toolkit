@@ -110,6 +110,7 @@ func rosterWorld(t *testing.T) *encounter.EncounterData {
 type rosterPresentation struct {
 	appearanceRef      string
 	defaultActivityRef string
+	materialChannels   []encounter.MaterialChannelAdjustment
 }
 
 func rosterWorldWithAppearance(t *testing.T, appearanceRef string, sight encounter.Sight) *encounter.EncounterData {
@@ -127,7 +128,7 @@ func rosterWorldWithPresentation(t *testing.T, presentation rosterPresentation, 
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Name: "Authored Alice", Position: spatial.Position{X: 0, Y: 0}},
 			{ID: "bob", Kind: encounter.KindPlayer, Name: "Authored Bob", Position: spatial.Position{X: 1, Y: 0}},
-			{ID: "skel-1", Kind: encounter.KindMonster, Name: "Authored Skeleton", Position: spatial.Position{X: 2, Y: 0}, AppearanceRef: presentation.appearanceRef, DefaultActivityRef: presentation.defaultActivityRef},
+			{ID: "skel-1", Kind: encounter.KindMonster, Name: "Authored Skeleton", Position: spatial.Position{X: 2, Y: 0}, AppearanceRef: presentation.appearanceRef, DefaultActivityRef: presentation.defaultActivityRef, MaterialChannels: presentation.materialChannels},
 			{ID: "vendor-1", Kind: encounter.KindWorld, Name: "Vendor", Position: spatial.Position{X: 3, Y: 0}},
 		},
 		Endings:   []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -515,7 +516,7 @@ func TestRosterOutputHasNoPrivateSheetOrPlacementFields(t *testing.T) {
 		// it on the TURN lane beside Participant.Active, where the proto that
 		// carries it lives; this row is identity and side, and a per-turn
 		// state on it would be the second place a client could read one thing.
-		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "AppearanceRef", "DefaultActivityRef", "Customization", "Faction"},
+		[]string{"ID", "Kind", "Name", "ClassRef", "RaceRef", "MonsterRef", "AppearanceRef", "DefaultActivityRef", "MaterialChannels", "Customization", "Faction"},
 		rosterFieldNames(session.PublicMember{}),
 	)
 }
