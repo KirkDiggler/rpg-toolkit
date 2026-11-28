@@ -98,6 +98,8 @@ func TestAWearerRagingFromAnItemIsNotOfferedRageAgain(t *testing.T) {
 	row := rageRowOf(c, false)
 	assert.False(t, row.CanUse)
 	assert.Equal(t, "already raging", row.Reason)
+	assert.Equal(t, 1, row.ResourceCurrent, "the row still shows the item's count while she rages")
+	assert.Equal(t, 2, row.ResourceMax)
 
 	err := useRageFromTheItem(ctx, t, c)
 	require.Error(t, err)
@@ -141,6 +143,7 @@ func (s *NobodyRagesTwiceSuite) TestABarbarianRagingFromHerOwnRageIsRefusedTheIt
 	row := rageRowOf(char, false)
 	s.False(row.CanUse)
 	s.Equal("already raging", row.Reason)
+	s.Equal(rageRowOf(char, true).Reason, row.Reason, "bonus action left: both rows read the same sentence")
 	_, err := char.GrantedAbility(&GrantedAbilityInput{ItemID: "rage-cloak", Grant: "rage"})
 	s.Require().Error(err)
 	s.Equal("already raging", err.Error())
@@ -168,7 +171,7 @@ func (s *NobodyRagesTwiceSuite) TestTheTwoRowsWhenRagingAndNoBonusActionLeft() {
 	s.T().Logf("own row reason: %q; item row reason: %q", own.Reason, item.Reason)
 	s.False(own.CanUse)
 	s.False(item.CanUse)
-	s.Equal("already raging", item.Reason, "the held status wins over the slot's reason")
-	s.Equal("no bonus action remaining", own.Reason,
-		"the barbarian's own row still names the slot first: the two rows differ, reported on the PR")
+	s.Equal("no bonus action remaining", own.Reason)
+	s.Equal(own.Reason, item.Reason, "the slot's reason comes first on both rows")
+	s.Equal(2, item.ResourceCurrent, "and the count is still shown")
 }

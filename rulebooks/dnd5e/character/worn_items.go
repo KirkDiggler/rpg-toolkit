@@ -181,22 +181,24 @@ func (c *Character) grantedEntry(item magicitems.Data, grantName string) Availab
 	entry.ActionType = slot
 	entry.EconomySlot = economySlotForActionType(slot)
 
-	// A status she already holds is true whatever she has left, so it wins
-	// over the slot's and the count's reasons.
-	if err := features.RefuseHeldStatus(&features.RefuseHeldStatusInput{Definition: definition, Holder: c}); err != nil {
-		entry.Reason = err.Error()
-		return entry
-	}
-
+	// The reasons keep the barbarian's own row's order, so a player never
+	// reads one fact told two ways: the slot's, then a status she already
+	// holds, then the item's count. The count is shown whatever the reason is.
 	canUse := c.canUseAbilityByActionType(slot)
 	reason := c.actionTypeExhaustedReason(slot)
 	if grant.Pool != "" {
 		entry.ResourceCurrent = item.Left[grant.Pool]
 		entry.ResourceMax = item.Description.Pools[grant.Pool].Maximum
-		if canUse && entry.ResourceCurrent < grant.Uses {
+	}
+	if canUse {
+		if err := features.RefuseHeldStatus(&features.RefuseHeldStatusInput{Definition: definition, Holder: c}); err != nil {
 			canUse = false
-			reason = "the " + item.Description.Name + " has no " + grant.Pool + " left"
+			reason = err.Error()
 		}
+	}
+	if canUse && grant.Pool != "" && entry.ResourceCurrent < grant.Uses {
+		canUse = false
+		reason = "the " + item.Description.Name + " has no " + grant.Pool + " left"
 	}
 	entry.CanUse = canUse
 	entry.Reason = c.actionReason(canUse, reason)
