@@ -159,6 +159,7 @@ func wallsShape(gp *yaml.Node, add errSink) {
 		}
 		if appearance := requireMapping(w, "appearance", p, add); appearance != nil {
 			readMaterialOverrides(appearance, p+".appearance", add)
+			readMaterialChannels(appearance, p+".appearance", add)
 			wallSectionsShape(appearance, p+".appearance", add)
 			requireString(appearance, "assetRef", p+".appearance", add)
 			for _, k := range [...]string{"height", "thickness", "elevation"} {
@@ -244,6 +245,7 @@ func wallValues(gp *RoomGameplaySource, rootVersion int, read roomRead, add errS
 	for i := range gp.Walls {
 		wall := &gp.Walls[i]
 		p := fmt.Sprintf("room.room.walls[%d]", i)
+		materialChannelValues(wall.Appearance.MaterialChannels, p+".appearance.materialChannels", add)
 		wallBlockerValues(wall, p, add)
 		length, lineOK := wallLineValues(wall.Line, p, add)
 		for j := range wall.Openings {
@@ -928,6 +930,7 @@ func canonicalStructuralWalls(key string, walls []RoomWall, finishes map[string]
 			Thickness:         wall.Appearance.Thickness * k,
 			Elevation:         wall.Appearance.Elevation * k,
 			MaterialOverrides: materialOverridesOf(wall.Appearance.MaterialOverrides),
+			MaterialChannels:  materialChannelsOf(wall.Appearance.MaterialChannels),
 			FaceFinishes:      append([]encounter.WallFaceFinish(nil), finishes[wall.ID]...),
 		}
 		for _, section := range wall.Appearance.Sections {

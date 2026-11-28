@@ -75,6 +75,7 @@ var acknowledged = map[string][]string{
 	"root":               {"scenarios", "tables"},
 	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},
+	"monsterDeclaration": {"materialChannels"},
 	"faction":            {"behaviors", "behaviorState", "blockingStates", "posts", "table", "on", "states"},
 	"behaviorDefinition": {"ref", "parameters", "end", "body"},
 	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "activate", "away", "search", "use", "with", "as"},
@@ -111,6 +112,19 @@ func keysOf(t reflect.Type) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func (s *NotYetSuite) TestMaterialChannelsRemainExplicitlyUnsaidRatherThanSilentlyClaimed() {
+	doc := newDocument([]byte("room:\n  room:\n    monsterDeclarations:\n      - id: example\n        materialChannels: [{targetId: body, normal: {mode: off}}]\n"))
+	b := builder{doc: doc}
+	found := false
+	for _, item := range b.notYetSaid() {
+		if item.Path == "room.room.monsterDeclarations[0].materialChannels" {
+			s.Equal("monsterDeclaration.materialChannels", item.Kind)
+			found = true
+		}
+	}
+	s.True(found, "channel rendering/capture does not claim a natural-language read-back")
 }
 
 // TestEveryKeyIsClassified: a spec struct that gains a key fails here until

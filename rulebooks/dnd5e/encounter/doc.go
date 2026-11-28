@@ -268,6 +268,13 @@
 // location testimony still carries no facts. This module validates reference
 // structure only, never asset-catalog membership or a model path.
 //
+// MaterialChannels follows that same observed ownership. Each opaque target
+// carries optional normal/emissive intent: absent is default, Off is explicit,
+// and Scale has a finite positive dimensionless multiplier. Explicit one stays
+// explicit. The composition checks shape and copies nested values, never loads
+// material resources or derives illumination. Unknown testimony carries none;
+// a remembered member never acquires newer live channel values on reload.
+//
 // DefaultActivityRef follows the same authored/persisted/captured path,
 // independently of AppearanceRef. It names an opaque presentation default,
 // not a current animation phase or gameplay behavior. Missing legacy values
@@ -304,6 +311,11 @@
 // is detached. They persist in the site's FieldData and follow that wall's
 // existing projection; opening-only replacements never change them. This
 // module neither resolves material resources nor infers regional wall charts.
+// MaterialChannels travel with those existing static/observed owners as detached
+// typed intent. Fixed door-frame channels are independently captured without a
+// parent wall identity; opening-only replacement does not rewrite wall channels.
+// Persisted presence is checked: a present null channel or an Off carrying a
+// multiplier is not default. Empty legacy lists preserve persisted site identity.
 //
 // WallSection captures a once-placed visual replacement owned by a structural
 // wall: an opaque ref and wall-local identity, centre and width in canonical

@@ -80,7 +80,7 @@ func decodePropObservation(payload []byte) (propObservation, error) {
 		if out.ObservedEmpty || out.Presentation.ID != out.id() {
 			return out, fmt.Errorf("prop testimony has conflicting presentation: %w", ErrInvalidData)
 		}
-		if err := validatePropPresentation(propPresentationFromData(*out.Presentation)); err != nil {
+		if _, err := propPresentationFromData(*out.Presentation); err != nil {
 			return out, fmt.Errorf("prop testimony has invalid presentation: %w", ErrInvalidData)
 		}
 	}
@@ -105,7 +105,10 @@ func (e *Encounter) PropSightings(in *ViewInput) ([]PropSighting, error) {
 		}
 		var presentation *PropPresentation
 		if p.Presentation != nil {
-			value := propPresentationFromData(*p.Presentation)
+			value, err := propPresentationFromData(*p.Presentation)
+			if err != nil {
+				return nil, fmt.Errorf("prop testimony: %w: %w", ErrInvalidData, err)
+			}
 			presentation = &value
 		}
 		out = append(out, PropSighting{Prop: p.Prop, Placed: p.Placed, ObservedEmpty: p.ObservedEmpty, Presentation: presentation, CurrentVia: h.CurrentVia, At: h.Observed})

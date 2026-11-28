@@ -225,6 +225,8 @@ type AtlasStructuralWall struct {
 
 	// MaterialOverrides are detached captured choices for this permitted wall.
 	MaterialOverrides []MaterialOverride
+	// MaterialChannels is detached captured channel intent for this wall.
+	MaterialChannels []MaterialChannelAdjustment
 	// FaceFinishes are detached explicit choices on this permitted wall's faces.
 	FaceFinishes []WallFaceFinish
 
@@ -705,10 +707,11 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		wall := AtlasStructuralWall{
 			ID: w.id, Ref: w.ref, From: w.from, To: w.to,
 			Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
-			FootprintCells: footprint,
-			Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
-			FaceFinishes:   cloneWallFaceFinishes(w.faceFinishes),
-			Sections:       cloneWallSections(w.sections),
+			FootprintCells:   footprint,
+			Openings:         make([]AtlasStructuralOpening, 0, len(w.openings)),
+			FaceFinishes:     cloneWallFaceFinishes(w.faceFinishes),
+			MaterialChannels: cloneMaterialChannels(w.materialChannels),
+			Sections:         cloneWallSections(w.sections),
 		}
 		for j := range w.openings {
 			o := &w.openings[j]

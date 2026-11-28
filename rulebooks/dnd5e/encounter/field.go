@@ -946,6 +946,10 @@ type MemberInput struct {
 	// with sight. It is not the current animation phase and decides no rule.
 	DefaultActivityRef string
 
+	// MaterialChannels is optional authored channel intent, captured with sight.
+	// It carries no source resources, illumination or rule meaning.
+	MaterialChannels []MaterialChannelAdjustment
+
 	// Position is the member's starting cell: an ABSOLUTE authored offset
 	// [col,row] pair, which must be floor — a cell some region owns
 	// (ErrBadPlacement otherwise).
@@ -1205,6 +1209,7 @@ type memberFacts struct {
 	ID                 MemberID
 	AppearanceRef      string
 	DefaultActivityRef string
+	MaterialChannels   []MaterialChannelAdjustment
 	Facing             *float64
 	Options            []Option
 	Table              Table
@@ -1225,6 +1230,9 @@ func validateMemberFacts(in memberFacts) error {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if err := validateDefaultActivityRef(in.DefaultActivityRef); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validateMaterialChannels(in.MaterialChannels); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if err := validateFacing(in.Facing); err != nil {
@@ -1696,6 +1704,7 @@ type memberRecord struct {
 	Name               string
 	AppearanceRef      string
 	DefaultActivityRef string
+	MaterialChannels   []MaterialChannelAdjustment
 	Options            []Option
 	Table              Table
 	Temper             Temper
@@ -2014,6 +2023,9 @@ type JoinInput struct {
 
 	// DefaultActivityRef carries MemberInput's optional presentation default.
 	DefaultActivityRef string
+
+	// MaterialChannels carries MemberInput's optional captured visual intent.
+	MaterialChannels []MaterialChannelAdjustment
 
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.

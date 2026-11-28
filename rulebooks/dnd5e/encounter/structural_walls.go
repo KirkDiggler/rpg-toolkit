@@ -71,6 +71,9 @@ type StructuralWallInput struct {
 	// MaterialOverrides are captured opaque visual choices, never blocker facts.
 	MaterialOverrides []MaterialOverride
 
+	// MaterialChannels is captured channel intent for declared visual targets.
+	MaterialChannels []MaterialChannelAdjustment
+
 	// FaceFinishes are explicit wall-local face choices, not regional ownership.
 	FaceFinishes []WallFaceFinish
 
@@ -167,6 +170,7 @@ type structuralWall struct {
 	elevation         float64
 	openings          []structuralOpening
 	materialOverrides []MaterialOverride
+	materialChannels  []MaterialChannelAdjustment
 	faceFinishes      []WallFaceFinish
 	sections          []WallSection
 }
@@ -260,6 +264,9 @@ func structuralWallsFrom(f *field, in []StructuralWallInput, doors []DoorInput) 
 		if err := validateMaterialOverrides(w.MaterialOverrides); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
+		if err := validateMaterialChannels(w.MaterialChannels); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 		if err := validateWallFaceFinishes(w.FaceFinishes); err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
@@ -273,6 +280,7 @@ func structuralWallsFrom(f *field, in []StructuralWallInput, doors []DoorInput) 
 			elevation:         w.Elevation,
 			openings:          openings,
 			materialOverrides: cloneMaterialOverrides(w.MaterialOverrides),
+			materialChannels:  cloneMaterialChannels(w.MaterialChannels),
 			faceFinishes:      cloneWallFaceFinishes(w.FaceFinishes),
 			sections:          cloneWallSections(w.Sections),
 		}

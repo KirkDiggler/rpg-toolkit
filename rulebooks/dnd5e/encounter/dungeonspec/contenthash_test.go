@@ -16,10 +16,11 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-// The combined compiled shape includes StructuralWallInput.Sections, even nil.
+// The combined compiled shape includes structural sections and material-channel
+// fields, even nil. Channel intent is compiled content; it is not lighting logic.
 // This pin must be recomputed after a base merge, not taken from either side.
 // ContentHash is engine-version-local; legacy persisted SiteHash is separate.
-const castleContentHash = "f00dabc819ced6196f919d536eda051caeeca39a7b920f5202d80a4002cc099d"
+const castleContentHash = "4bcaf68f2ab7eaba85181e0f5ec28e793a938924f46e65c76cc38fe51791f836"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()

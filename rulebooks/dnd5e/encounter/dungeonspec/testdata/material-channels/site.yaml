@@ -1,0 +1,50 @@
+# Opaque appearance facts for compiler/custody tests, not a published asset proof.
+version: 5
+key: material-channels
+play: {void: transparent, lighting: bright, standing: centre-covered}
+room:
+  version: 3
+  id: channels-room
+  name: Material channels
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: channels-scene
+    name: Material channels
+    items:
+      - id: lamp
+        kind: prop
+        assetRef: 'dnd5e:props:dark-fantasy:lantern_01'
+        transform: {x: 1, y: 0, z: 0, rotationY: 0}
+        materialChannels: [{targetId: glow, emissive: {mode: off}}]
+    groups: []
+  room:
+    implicitRegionId: channels-region
+    regions:
+      - id: channels-region
+        name: Material channels
+        lighting: {intensity: 1}
+        cells: [{r: 0, q: [[0, 4]]}]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsterDeclarations:
+      - id: guard
+        ref: 'dnd5e:monsters:guard'
+        startingCell: {location: {q: 2, r: 0}}
+        materialChannels: [{targetId: body, normal: {mode: scale, multiplier: 1}}]
+    walls:
+      - id: wall
+        label: Wall
+        line: {start: {x: 0, z: 3}, end: {x: 20, z: 3}}
+        appearance:
+          assetRef: 'dnd5e:env:fantasy-kingdom:castle_wall_01'
+          height: 3
+          thickness: 0.3
+          elevation: 0
+          materialChannels: [{targetId: masonry, normal: {mode: scale, multiplier: 0.5}}]
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 20, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings: []
