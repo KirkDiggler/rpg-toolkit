@@ -135,8 +135,11 @@ func CloneSpendProfile(in *combat.SpendProfile) *combat.SpendProfile {
 		Slots:    cloneMap(in.Slots),
 		Capacity: cloneMap(in.Capacity),
 		Grants:   cloneMap(in.Grants),
-		Pools:    cloneMap(in.Pools),
-		Requires: cloneMap(in.Requires),
+		// GrantSlots is a map like the rest; a copy that shared it would let
+		// one definition's edit change another's price.
+		GrantSlots: cloneMap(in.GrantSlots),
+		Pools:      cloneMap(in.Pools),
+		Requires:   cloneMap(in.Requires),
 	}
 }
 

@@ -160,3 +160,6 @@ func (l *sheetLedger) SpendPool(coreResources.ResourceKey, int) {}
 
 // BankCapacity does nothing: this ledger is read.
 func (l *sheetLedger) BankCapacity(combat.CapacityType, int) {}
+
+// GrantSlots does nothing: this ledger is read.
+func (l *sheetLedger) GrantSlots(coreCombat.ActionType, int) {}

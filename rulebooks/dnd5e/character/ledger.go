@@ -219,3 +219,30 @@ func (c *Character) SpendPool(key coreResources.ResourceKey, n int) {
 	}
 	_ = c.UseResource(key, n)
 }
+
+// GrantSlots adds per-turn slots and marks the sheet.
+//
+// It writes the slot the way [Character.SpendSlots] does, onto the sheet's own
+// economy, and does nothing when the sheet is not in combat.
+//
+// Implements [combat.Ledger].
+func (c *Character) GrantSlots(slot coreCombat.ActionType, n int) {
+	if c.actionEconomy == nil {
+		return
+	}
+
+	switch slot {
+	case coreCombat.ActionStandard:
+		c.actionEconomy.ActionsRemaining += n
+	case coreCombat.ActionBonus:
+		c.actionEconomy.BonusActionsRemaining += n
+	case coreCombat.ActionReaction:
+		c.actionEconomy.ReactionsRemaining += n
+	case coreCombat.ActionFree, coreCombat.ActionMovement:
+		return
+	default:
+		return
+	}
+
+	c.economyChanged()
+}

@@ -84,6 +84,8 @@ func (l *castLedger) SpendPool(key coreResources.ResourceKey, amount int) {
 }
 func (l *castLedger) BankCapacity(combat.CapacityType, int) {}
 
+func (l *castLedger) GrantSlots(coreCombat.ActionType, int) {}
+
 func TestCastProfileSuite(t *testing.T) {
 	suite.Run(t, new(CastProfileSuite))
 }

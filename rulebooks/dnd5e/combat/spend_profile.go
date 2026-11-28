@@ -55,6 +55,15 @@ import (
 // question 8, deliberately left open. It arrives with the caller that forces
 // it, the way every other shape in this package did.
 //
+// # What a price can give
+//
+// [SpendProfile.Grants] banks keyed capacity; [SpendProfile.GrantSlots] gives
+// one of the turn's three slots. Action Surge is the second: a spent use buys
+// one more action this turn. Both ADD, both land at the gate after every
+// charge and in the same step as the charge, so a gift is never made for a
+// price that was refused. The words for what a price gives are
+// [GrantedWords].
+//
 // A nil *SpendProfile is a free action. So is an empty one.
 type SpendProfile struct {
 	// Slots is the per-turn cost in action, bonus action or reaction — the
@@ -74,6 +83,13 @@ type SpendProfile struct {
 	// one turn (Action Surge) buys more swings rather than resetting the bank
 	// to the same number.
 	Grants map[CapacityType]int `json:"grants,omitempty"`
+
+	// GrantSlots is the turn's slots this action GIVES: Action Surge gives one
+	// more action (rpg-project#1131). It ADDS to what the turn holds, for
+	// [Grants]' reason, and it lands with Grants, after every charge. A slot
+	// given is spent like any other and is gone when the turn's slots are next
+	// reset.
+	GrantSlots map[coreCombat.ActionType]int `json:"grant_slots,omitempty"`
 
 	// Pools is the cost in keyed resource points: ki, sorcery points, a
 	// feature's charges. Expressible and unexercised in v1 — see the type doc.
@@ -120,6 +136,17 @@ func (p *SpendProfile) Validate() error {
 		if amount <= 0 {
 			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
 				"slot cost of %d for %q is not a cost", amount, slot)
+		}
+	}
+
+	for slot, amount := range p.GrantSlots {
+		if !isTurnSlot(slot) {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"slot grant keyed to %q, which is not one of the turn's three slots", slot)
+		}
+		if amount <= 0 {
+			return rpgerr.Newf(rpgerr.CodeInvalidArgument,
+				"slot grant of %d for %q is not a gift", amount, slot)
 		}
 	}
 
@@ -171,6 +198,7 @@ func (p *SpendProfile) movesNothing() bool {
 	return len(p.Slots) == 0 &&
 		len(p.Capacity) == 0 &&
 		len(p.Grants) == 0 &&
+		len(p.GrantSlots) == 0 &&
 		len(p.Pools) == 0 &&
 		len(p.Requires) == 0
 }
