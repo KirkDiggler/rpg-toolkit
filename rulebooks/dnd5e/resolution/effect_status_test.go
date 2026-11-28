@@ -243,16 +243,46 @@ func (s *ActivationTestSuite) TestAStatusOnItsUserNamesNobodyElse() {
 	}
 }
 
-// TEST 8. A user who already holds the status. This records what the door
-// does; the rule that Rage is refused while raging belongs to the description's
-// giver (the next slice), not to this door.
-//
-// OBSERVED: the door does not refuse. It charges a second time, replaces the
-// instance she holds (the one-instance-per-address rule every delivery obeys)
-// and says so: a condition-removed fact with reason "replaced", then the
-// condition-applied fact. She holds ONE raging afterwards, not two.
-func (s *ActivationTestSuite) TestAUserWhoAlreadyHoldsTheStatusIsGivenItAgainAtTheDoor() {
+// TEST 8. A user who already holds the status is refused at the door, before
+// anything is charged: nothing is replaced, nothing is published, her sheet is
+// what it was. (It recorded the opposite until slice 8c: the door charged
+// again and replaced the instance. The rule belongs to the door because the
+// door is the one place every description is run, whoever handed it out.)
+func (s *ActivationTestSuite) TestAUserWhoAlreadyHoldsTheStatusIsRefusedAtTheDoor() {
 	definition := s.rageAtTheDoorDescription()
+	saved := s.aBarbarianWhoRagedLastTurn(definition)
+	before := savedConditions(saved)
+	bus := events.NewEventBus()
+	applied := s.appliedOn(bus)
+	removed := s.removedOn(bus)
+
+	out, err := s.ragesAtTheDoor(bus, saved, definition, 2)
+
+	s.Require().ErrorIs(err, ErrActivationRefused)
+	s.Contains(err.Error(), "already raging", "the rules' own words")
+	s.Nil(out)
+	s.Equal(1, saved.Resources[resources.RageCharges].Current, "no charge was taken")
+	s.Equal(1, saved.ActionEconomy.BonusActionsRemaining, "no bonus action was taken")
+	s.Equal(before, savedConditions(saved), "she holds the one raging she held, the same instance")
+	s.Equal([]string{refs.Conditions.Raging().String()}, conditionRefs(saved))
+	s.Empty(*applied, "no condition-applied fact")
+	s.Zero(*removed, "no condition-removed fact: nothing was replaced")
+}
+
+// savedConditions is the saved condition blobs as strings, so an instance
+// compares by what it carries.
+func savedConditions(data *character.Data) []string {
+	out := make([]string, 0, len(data.Conditions))
+	for _, raw := range data.Conditions {
+		out = append(out, string(raw))
+	}
+
+	return out
+}
+
+// aBarbarianWhoRagedLastTurn is the barbarian after her first Rage, her bonus
+// action given back for a next turn with a charge left.
+func (s *ActivationTestSuite) aBarbarianWhoRagedLastTurn(definition *combatActions.Definition) *character.Data {
 	first, err := s.ragesAtTheDoor(events.NewEventBus(), s.barbarian(2), definition, 1)
 	s.Require().NoError(err)
 	saved := dirty(first, heroID)
@@ -260,15 +290,5 @@ func (s *ActivationTestSuite) TestAUserWhoAlreadyHoldsTheStatusIsGivenItAgainAtT
 	saved.ActionEconomy.BonusActionsRemaining = 1
 	s.Require().Equal(1, saved.Resources[resources.RageCharges].Current, "a charge is left")
 
-	second, err := s.ragesAtTheDoor(events.NewEventBus(), saved, definition, 2)
-
-	s.Require().NoError(err, "the door does not refuse a user who already holds it")
-	again := dirty(second, heroID)
-	s.Equal([]string{refs.Conditions.Raging().String()}, conditionRefs(again), "one instance, not two")
-	s.Zero(again.Resources[resources.RageCharges].Current, "and she was charged again")
-	effects := second.Outcome.(ActivationOutcome).Effects
-	s.Require().Len(effects, 2)
-	s.Equal(EffectConditionRemoved, effects[0].Kind)
-	s.Equal("replaced", effects[0].Reason)
-	s.Equal(EffectConditionApplied, effects[1].Kind)
+	return saved
 }
