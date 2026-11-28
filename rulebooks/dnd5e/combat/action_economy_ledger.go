@@ -170,8 +170,8 @@ func (ae *ActionEconomy) SpendPool(_ coreResources.ResourceKey, _ int) {
 
 // GrantSlots adds per-turn slots: the given slot's remaining count goes up by
 // n. It adds rather than assigns, so a slot given twice in a turn is given
-// twice. [ActionEconomy.GrantExtraAction] and its sibling are left as they
-// were; the old Action Surge feature still calls them.
+// twice. It is the one way a turn slot is given: the fighter's Action Surge
+// gives its action here, through its price.
 func (ae *ActionEconomy) GrantSlots(slot coreCombat.ActionType, n int) {
 	if ae == nil {
 		return

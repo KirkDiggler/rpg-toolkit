@@ -5,7 +5,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 )
 
 // Type is the content type for features within the dnd5e module
@@ -26,9 +25,6 @@ type Grant struct {
 type FeatureInput struct {
 	// Bus is provided by the character/owner during activation
 	Bus events.EventBus `json:"-"`
-
-	// ActionEconomy is provided for features that grant extra actions (e.g., Action Surge)
-	ActionEconomy *combat.ActionEconomy `json:"-"`
 
 	// Action is provided for features with action choices (e.g., Step of the Wind: "disengage" or "dash")
 	Action string `json:"action,omitempty"`

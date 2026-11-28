@@ -3,6 +3,8 @@ package combat
 import (
 	"testing"
 
+	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
+
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/stretchr/testify/suite"
 )
@@ -205,8 +207,8 @@ func (s *ActionEconomyTestSuite) TestReset() {
 	})
 
 	s.Run("resets from extra actions granted", func() {
-		s.economy.GrantExtraAction()
-		s.economy.GrantExtraBonusAction()
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1)
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1)
 		s.Equal(2, s.economy.ActionsRemaining)
 		s.Equal(2, s.economy.BonusActionsRemaining)
 
@@ -218,25 +220,25 @@ func (s *ActionEconomyTestSuite) TestReset() {
 }
 
 //nolint:dupl // Intentional duplication - testing same pattern for different action types
-func (s *ActionEconomyTestSuite) TestGrantExtraAction() {
+func (s *ActionEconomyTestSuite) TestGrantSlotsStandard() {
 	s.Run("grants additional action", func() {
 		s.Equal(1, s.economy.ActionsRemaining)
 
-		s.economy.GrantExtraAction()
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1)
 
 		s.Equal(2, s.economy.ActionsRemaining)
 		s.True(s.economy.CanUseAction())
 	})
 
 	s.Run("can grant multiple extra actions", func() {
-		s.economy.GrantExtraAction()
-		s.economy.GrantExtraAction()
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1)
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1)
 
 		s.Equal(3, s.economy.ActionsRemaining)
 	})
 
 	s.Run("can use all granted actions", func() {
-		s.economy.GrantExtraAction() // Now have 2 actions
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1) // Now have 2 actions
 
 		err := s.economy.UseAction()
 		s.Require().NoError(err)
@@ -255,7 +257,7 @@ func (s *ActionEconomyTestSuite) TestGrantExtraAction() {
 		_ = s.economy.UseAction() // Consume the default action
 		s.Equal(0, s.economy.ActionsRemaining)
 
-		s.economy.GrantExtraAction() // Grant action surge
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1) // Grant action surge
 
 		s.Equal(1, s.economy.ActionsRemaining)
 		s.True(s.economy.CanUseAction())
@@ -263,25 +265,25 @@ func (s *ActionEconomyTestSuite) TestGrantExtraAction() {
 }
 
 //nolint:dupl // Intentional duplication - testing same pattern for different action types
-func (s *ActionEconomyTestSuite) TestGrantExtraBonusAction() {
+func (s *ActionEconomyTestSuite) TestGrantSlotsBonus() {
 	s.Run("grants additional bonus action", func() {
 		s.Equal(1, s.economy.BonusActionsRemaining)
 
-		s.economy.GrantExtraBonusAction()
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1)
 
 		s.Equal(2, s.economy.BonusActionsRemaining)
 		s.True(s.economy.CanUseBonusAction())
 	})
 
 	s.Run("can grant multiple extra bonus actions", func() {
-		s.economy.GrantExtraBonusAction()
-		s.economy.GrantExtraBonusAction()
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1)
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1)
 
 		s.Equal(3, s.economy.BonusActionsRemaining)
 	})
 
 	s.Run("can use all granted bonus actions", func() {
-		s.economy.GrantExtraBonusAction() // Now have 2 bonus actions
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1) // Now have 2 bonus actions
 
 		err := s.economy.UseBonusAction()
 		s.Require().NoError(err)
@@ -300,7 +302,7 @@ func (s *ActionEconomyTestSuite) TestGrantExtraBonusAction() {
 		_ = s.economy.UseBonusAction() // Consume the default bonus action
 		s.Equal(0, s.economy.BonusActionsRemaining)
 
-		s.economy.GrantExtraBonusAction()
+		s.economy.GrantSlots(coreCombat.ActionBonus, 1)
 
 		s.Equal(1, s.economy.BonusActionsRemaining)
 		s.True(s.economy.CanUseBonusAction())
@@ -318,7 +320,7 @@ func (s *ActionEconomyTestSuite) TestActionSurgeScenario() {
 		s.Equal(0, s.economy.ActionsRemaining)
 
 		// Fighter uses Action Surge feature
-		s.economy.GrantExtraAction()
+		s.economy.GrantSlots(coreCombat.ActionStandard, 1)
 		s.Equal(1, s.economy.ActionsRemaining)
 
 		// Fighter takes second Attack action
