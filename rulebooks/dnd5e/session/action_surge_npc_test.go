@@ -145,25 +145,67 @@ func TestTheLieutenantDoesNotSurgeBeforeHeHasAnEnemyInReach(t *testing.T) {
 	})
 }
 
-// Test 4. Whichever way the roll lands. The die says its top face, which lands
-// on the LAST candidate. In reach the candidates are the surge row and the
-// swing row, so the last is the swing: he swings once and the turn is over (the
-// swing spends his one action and nothing is left to ask for), and the surge
-// never comes while the pick keeps landing on the swing. This is what rows
-// being weighed means: the surge is not a promise, and he does not surge
-// between swings.
-func TestTheLieutenantWhosePickLandsOnTheLastCandidateSwingsOnceAndKeepsHisUse(t *testing.T) {
+// Test 4. Whichever way the roll lands. "Enemy in reach" holds only while he
+// can still attack, so the surge row is off once he has swung. The die says its
+// top face, which lands on the LAST candidate: in reach the candidates are the
+// surge row (9 shares) and the swing row (1), so the last is the swing. He swings
+// once and does not surge that turn. On his next turn with the pick on the
+// FIRST candidate he surges and swings twice.
+func TestTheLieutenantWhosePickLandsOnTheSwingSwingsOnceAndSurgesALaterTurn(t *testing.T) {
 	dice := &faceDice{face: 10}
 	s := newSurgeSceneOn(t, surgeSite(t), dice)
 	dice.face = 1000
-	s.play(3)
-	for i, turn := range s.rounds {
-		t.Logf("last candidate, turn %d: %v", i+1, beatNames(turn))
-	}
+	s.play(1)
+	t.Logf("pick on the last candidate: %v", beatNames(s.rounds[0]))
 
-	require.Empty(t, by(s.all(), "lieutenant", encounter.BeatActivated), "the pick never lands on the surge row")
+	require.Empty(t, by(s.rounds[0], "lieutenant", encounter.BeatActivated), "no surge: he swung first and the row is off")
 	require.Len(t, swings(s.rounds[0]), 1, "one action, one swing")
 	require.Equal(t, 1, s.sheet("lieutenant").Left["action-surge"], "his use is still his")
+
+	dice.face = 10
+	s.play(1)
+	t.Logf("next turn, pick on the first candidate: %v", beatNames(s.rounds[1]))
+	require.Len(t, by(s.rounds[1], "lieutenant", encounter.BeatActivated), 1, "he surges")
+	require.Len(t, swings(s.rounds[1]), 2, "and swings twice")
+	require.Equal(t, 0, s.sheet("lieutenant").Left["action-surge"])
+}
+
+// Test 4b. The weight is in the pick's record. On the turn he has her in reach
+// and his use left, the `answered` beat that chose `activate` lists two
+// candidates: the surge row with weight 9 and the swing row with weight 1, as
+// `loaded` 900 and 100 of `of` 1000 (the pick is a die over the loaded sum), so
+// nine in ten. The die said 10, inside the first candidate's 900.
+func TestThePicksRecordShowsTheSurgeRowWithNineSharesInTen(t *testing.T) {
+	s := newUsesScene(t, compileSite(t, surgeSite(t)))
+	s.play(1)
+
+	var picks []witnessed
+	for _, b := range beatsNamed(s.rounds[0], encounter.BeatAnswered) {
+		if b.Fields["creature"] == "lieutenant" && b.Fields["word"] == "activate" {
+			picks = append(picks, b)
+		}
+	}
+	require.Len(t, picks, 1, "one pick chose the surge")
+	var answered struct {
+		Of         int `json:"of"`
+		Roll       int `json:"roll"`
+		Entry      int `json:"entry"`
+		Candidates []struct {
+			Entry  int `json:"entry"`
+			Weight int `json:"weight"`
+			Loaded int `json:"loaded"`
+		} `json:"candidates"`
+	}
+	picks[0].decode(t, &answered)
+	t.Logf("the pick's record: %+v", answered)
+	require.Equal(t, 1000, answered.Of)
+	require.Len(t, answered.Candidates, 2)
+	require.Equal(t, 0, answered.Candidates[0].Entry, "the surge row")
+	require.Equal(t, 9, answered.Candidates[0].Weight)
+	require.Equal(t, 900, answered.Candidates[0].Loaded, "900 of 1000")
+	require.Equal(t, 1, answered.Candidates[1].Weight, "the swing row")
+	require.Equal(t, 100, answered.Candidates[1].Loaded)
+	require.LessOrEqual(t, answered.Roll, answered.Candidates[0].Loaded, "the die fell inside the surge's share")
 }
 
 // Test 5. The player is told his surge as a player's own activation is told.
@@ -217,7 +259,7 @@ func TestTheContentCheckAndTheLaunchJudgeActionSurge(t *testing.T) {
 		}
 	})
 	t.Run("a misspelt word", func(t *testing.T) {
-		out := check(surgeVariant(t, "{ when: { enemy: reach }, activate: action surge }", "{ when: { enemy: reach }, activate: actoin surge }"))
+		out := check(surgeVariant(t, "activate: action surge, weight: 9 }", "activate: actoin surge, weight: 9 }"))
 		require.Equal(t, []session.ActivationRefusal{{Word: "actoin surge", Message: refusalMessage("actoin surge", t)}}, out.Activations)
 		require.Contains(t, out.Activations[0].Message, "one of action surge, second wind")
 		t.Logf("refusal: %s", out.Activations[0].Message)

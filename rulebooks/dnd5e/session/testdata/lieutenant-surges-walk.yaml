@@ -10,8 +10,15 @@
 #   2. On every later turn the row is not on his table (his sheet cannot pay for
 #      it) and he swings once.
 #   3. Nothing gives the use back in a run (a rest does).
-#   4. Rows are weighed, not ranked: the surge may come before or between his
-#      swings, and he may walk first and surge once she is in reach.
+#   4. Rows are weighed, and "enemy in reach" is a statement about striking: the
+#      encounter's facts say it only while he can still attack. So once he has
+#      swung on a turn the surge row is off his table for the rest of that turn,
+#      and a surge that did not come before his first swing waits for a later
+#      turn. That is why the surge row writes `weight: 9`: against the swing row's
+#      1 it is nine in ten to be picked first on a turn he has an enemy in reach
+#      and his use left. The weight is the author's choice, not an engine rule.
+#   5. He walks first when she is a few cells off, and surges on arrival in the
+#      same turn: the row is true as soon as she is in reach.
 # Issue: https://github.com/KirkDiggler/rpg-project/issues/1261
 version: 5
 key: lieutenant-surges-walk
@@ -45,7 +52,7 @@ behaviorDefinitions:
             - { on: turn, do: [{ pick: time }] }
     table:
       time:
-        - { when: { enemy: reach }, activate: action surge }
+        - { when: { enemy: reach }, activate: action surge, weight: 9 }
         - { when: { enemy: walk }, toward: enemy }
         - { when: { enemy: reach }, attack: enemy }
 
