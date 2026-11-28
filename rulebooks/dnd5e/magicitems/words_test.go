@@ -164,6 +164,19 @@ func objectFor(t *testing.T, place magicitems.Place) map[string]any {
 	return obj
 }
 
+// writeUse makes obj the entry that uses the value v, as the table says it is
+// written: the required words of its `with`, and, when withCount, the required
+// words of `uses` (a value whose NeedsCount is true is not written without).
+func writeUse(t *testing.T, obj map[string]any, v magicitems.Value, withCount bool) {
+	t.Helper()
+	obj["use"] = v.Word
+	obj["with"] = withFor(t, v.Word)
+	delete(obj, "uses")
+	if withCount {
+		obj["uses"] = valueFor(t, find(t, magicitems.PlaceLetsEntry, "uses"))
+	}
+}
+
 // uncountedUse is the first value of `use` that needs no count: the smallest
 // entry an author can write uses an ability that is paid for by its own slot.
 func uncountedUse(t *testing.T, w magicitems.Word) string {
@@ -274,8 +287,7 @@ func TestEveryClosedValueCompilesAndOneOutsideTheTableDoesNot(t *testing.T) {
 	require.NotEmpty(t, use.Values)
 	for _, v := range use.Values {
 		d := mustCompile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) {
-			obj["use"] = v.Word
-			obj["with"] = withFor(t, v.Word)
+			writeUse(t, obj, v, v.NeedsCount)
 		}))
 		assert.Len(t, d.Grants, 1, v.Word)
 	}
@@ -363,7 +375,7 @@ func TestRequiredWordsAreTheOnesTheCompilerNeeds(t *testing.T) {
 			needed = needed || w.Required
 		}
 		_, err := compile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) {
-			obj["use"] = v.Word
+			writeUse(t, obj, v, v.NeedsCount)
 			delete(obj, "with")
 		}))
 		assert.Equal(t, needed, err != nil, "an item using %q without `with` is refused exactly when a value of its `with` is required", v.Word)
@@ -431,17 +443,9 @@ func TestWordsAreInTheOrderTheRefusalsOfferThem(t *testing.T) {
 // ability needs a count, compiles. Without `uses` a counted ability is
 // refused, and with `uses` and a `cost` both it is refused by the existing rule.
 func TestEveryValueOfUseCompilesAsTheTableSaysAndACountedOneIsRefusedWithoutItsCount(t *testing.T) {
-	uses := find(t, magicitems.PlaceLetsEntry, "uses")
 	var counted, uncounted int
 	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
-		entry := func(obj map[string]any, withUses bool) {
-			obj["use"] = v.Word
-			obj["with"] = withFor(t, v.Word)
-			delete(obj, "uses")
-			if withUses {
-				obj["uses"] = valueFor(t, uses)
-			}
-		}
+		entry := func(obj map[string]any, withUses bool) { writeUse(t, obj, v, withUses) }
 		if !v.NeedsCount {
 			uncounted++
 			_ = mustCompile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) { entry(obj, false) }))
