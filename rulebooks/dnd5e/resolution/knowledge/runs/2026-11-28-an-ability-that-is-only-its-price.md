@@ -6,7 +6,7 @@ Slice [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258)
 
 - The gift machine (`gift.go`): `NewAction` returns it for a description that is `OnlyItsPrice`; its step lands nothing and reports `GrantedCapacity` and one `capacity-granted` effect naming the actor — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
 - `Input.validateOnlyItsPrice` in `resolve.go` refuses a payment that is not the description's own gift, as `ErrBadAction`, before anything loads — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
-- Ten tests through `Resolve` in `gift_test.go` (a monster, a character, all or none, the six refused payments, a free gift, Test 5's three refusals, a profile still winning, naming nobody else, given once per payment) — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
+- Nine tests through `Resolve` in `gift_test.go` (a monster, a character, all or none, the six refused payments, a free gift, Test 5's three refusals, a profile still winning, naming nobody else, given once per payment) — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
 - Two pins of `rulebooks/dnd5e`, v0.243.0 to v0.245.0 and then to v0.246.0; `go mod tidy` moved only that line and its two go.sum lines each time — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
 - ARCHITECTURE.md and AGENTS.md say what "only its price" means, why its payment is mandatory and what it reports — [rpg-project#1258](https://github.com/KirkDiggler/rpg-project/issues/1258).
 
