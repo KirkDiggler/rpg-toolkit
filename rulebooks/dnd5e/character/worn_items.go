@@ -162,13 +162,17 @@ func (c *Character) grantedEntry(item magicitems.Data, grantName string) Availab
 	entry.Name = definition.Name
 	entry.Description = definition.Description
 
-	var slot coreCombat.ActionType
-	if definition.Cost == nil || len(definition.Cost.Slots) != 1 {
-		return fail(rpgerr.Newf(rpgerr.CodeInvalidState,
-			"item %q (%s) grant %q must cost exactly one slot", item.ID, item.Description.Name, grantName))
-	}
-	for s := range definition.Cost.Slots {
-		slot = s
+	// The cost decides the row: no slot charged is a free action, one slot is
+	// that slot's action, more than one is not an action a row can name.
+	slot := coreCombat.ActionFree
+	if definition.Cost != nil {
+		if len(definition.Cost.Slots) > 1 {
+			return fail(rpgerr.Newf(rpgerr.CodeInvalidState,
+				"item %q (%s) grant %q must cost at most one slot", item.ID, item.Description.Name, grantName))
+		}
+		for s := range definition.Cost.Slots {
+			slot = s
+		}
 	}
 	entry.ActionType = slot
 	entry.EconomySlot = economySlotForActionType(slot)
