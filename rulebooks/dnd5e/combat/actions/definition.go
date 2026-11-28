@@ -10,7 +10,9 @@ import (
 )
 
 // Definition identifies an action, its optional price, and the profile a
-// resolution machine interprets. Exactly one profile must be populated.
+// resolution machine interprets. Exactly one profile must be populated, with
+// one exception: a description may carry no profile when it is only its price
+// ([Definition.OnlyItsPrice]), which is how Action Surge is said.
 //
 // The profile is how content chooses a sequence without naming one. A second
 // arm is not a second kind of definition: it is a second thing content can
@@ -38,8 +40,21 @@ type Definition struct {
 	Sequence *SequenceProfile `json:"sequence,omitempty"`
 }
 
+// OnlyItsPrice reports whether this description is nothing but its price: it
+// carries no profile, and its cost gives at least one of a turn's slots. Action
+// Surge is the first: spend a use, take one more action. Whoever runs a
+// description asks here, so the rule is stated once.
+func (d Definition) OnlyItsPrice() bool {
+	return d.Attack == nil && d.Cast == nil && d.Sequence == nil && d.Effect == nil &&
+		d.Cost != nil && len(d.Cost.GrantSlots) > 0
+}
+
 // Validate reports whether the definition has complete identity, a valid
-// optional price, and exactly one valid profile.
+// optional price, and exactly one valid profile, or no profile when the
+// description is only its price ([Definition.OnlyItsPrice]). Two or more
+// profiles are always refused. The profile rule runs before the cost's own
+// check, and a slot gift counts toward it, so a malformed gift is refused by
+// the cost's sentence rather than as a missing profile.
 func (d Definition) Validate() error {
 	if err := d.Ref.IsValid(); err != nil {
 		return fmt.Errorf("action ref is invalid: %w", err)
@@ -60,8 +75,11 @@ func (d Definition) Validate() error {
 	if d.Effect != nil {
 		populated++
 	}
-	if populated != 1 {
+	if populated > 1 {
 		return fmt.Errorf("action must populate exactly one profile")
+	}
+	if populated == 0 && !d.OnlyItsPrice() {
+		return fmt.Errorf("action must populate exactly one profile, or give a turn slot as its price")
 	}
 	if d.Cost != nil {
 		if err := d.Cost.Validate(); err != nil {
