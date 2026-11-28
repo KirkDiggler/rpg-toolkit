@@ -148,6 +148,9 @@ func (k Kit) validateGrant(holder Holder, name string, grant Grant) error {
 		if grant.Uses != 0 {
 			return fmt.Errorf("%s grant %q has uses %d but names no pool to pay from", holder.Named, name, grant.Uses)
 		}
+		if features.MustBeCounted(grant.Ability) {
+			return fmt.Errorf("%s grant %q is %s, which must be paid from a pool", holder.Named, name, abilityWord(grant.Ability))
+		}
 		return nil
 	}
 	if _, ok := k.Pools[grant.Pool]; !ok {
@@ -171,4 +174,15 @@ func validName(name string) bool {
 		}
 	}
 	return true
+}
+
+// abilityWord is the word an author writes for a named ability, or the ref
+// itself when no entry has one.
+func abilityWord(ref core.Ref) string {
+	for _, word := range features.NamedAbilities() {
+		if named, ok := features.NamedAbility(word); ok && named == ref {
+			return word
+		}
+	}
+	return ref.String()
 }

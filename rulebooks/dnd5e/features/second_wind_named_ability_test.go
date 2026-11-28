@@ -187,14 +187,14 @@ func TestNamedAbility(t *testing.T) {
 		}
 	}
 	names := NamedAbilities()
-	if len(names) != 1 || names[0] != "second wind" {
+	if len(names) != 2 || names[0] != "action surge" || names[1] != "second wind" {
 		t.Fatalf("NamedAbilities = %v", names)
 	}
 }
 
 // Every listed name is an ability the rulebook can describe.
 func TestNamedAbilitiesAreDescribable(t *testing.T) {
-	valid := map[string]string{"second wind": `{"level":1}`}
+	valid := map[string]string{"second wind": `{"level":1}`, "action surge": `{}`}
 	for _, name := range NamedAbilities() {
 		ref, ok := NamedAbility(name)
 		if !ok {

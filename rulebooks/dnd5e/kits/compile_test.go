@@ -87,7 +87,7 @@ func TestEveryRefusalReadsUnderTheHoldersNameWithTheItemsSentence(t *testing.T) 
 		{"unknown lets word", ``, `[{"use": "second wind", "with": {"level": 1}, "when": 1}]`, "lets[0]: unknown word `when`; it is one of use, with, cost, uses"},
 		{"unknown cost word", `{"max": 2}`, `[{"use": "second wind", "with": {"level": 1}, "cost": {"gold": 1}}]`, "lets[0] `cost`: unknown word `gold`; it is one of charges"},
 		{"bad rest", `{"max": 1, "refills": {"on": ["dawn"]}}`, ``, "`refills.on` has \"dawn\"; it is one of short rest, long rest"},
-		{"bad use", ``, `[{"use": "fireball"}]`, "lets[0]: `use` is \"fireball\"; it is one of second wind"},
+		{"bad use", ``, `[{"use": "fireball"}]`, "lets[0]: `use` is \"fireball\"; it is one of action surge, second wind"},
 		{"max zero", `{"max": 0}`, ``, "`charges.max` is 0; it is a whole number from 1 to 1000"},
 		{"max over", `{"max": 1001}`, ``, "`charges.max` is 1001; it is a whole number from 1 to 1000"},
 		{"cost over max", `{"max": 2}`, `[{"use": "second wind", "with": {"level": 1}, "cost": {"charges": 3}}]`, "lets[0] cost.charges is 3; the item holds at most 2"},

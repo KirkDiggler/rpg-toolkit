@@ -295,5 +295,8 @@ func (c *compiler) entry(raw json.RawMessage, where string, held int) (string, G
 		grant.Pool = chargesPool
 		grant.Uses = uses
 	}
+	if grant.Pool == "" && features.MustBeCounted(ref) {
+		return "", Grant{}, nil, c.refuse("%s: `use` is %q, which gives its user something for its count alone; write `uses` or a `cost`", where, use)
+	}
 	return name, grant, own, nil
 }

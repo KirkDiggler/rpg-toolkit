@@ -57,7 +57,7 @@ func testGiver() dnd5eEvents.RollSource {
 // Test 1: a second entry, added in one place, is found by all five.
 func TestASecondEntryIsFoundByAllFive(t *testing.T) {
 	before := NamedAbilities()
-	require.Equal(t, []string{"second wind"}, before)
+	require.Equal(t, []string{"action surge", "second wind"}, before)
 
 	remove := namedAbilityTable.add(testSurge())
 	removed := false
@@ -71,7 +71,7 @@ func TestASecondEntryIsFoundByAllFive(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, testSurgeRef, ref)
 
-	assert.Equal(t, []string{"second wind", "test surge"}, NamedAbilities(), "both, sorted")
+	assert.Equal(t, []string{"action surge", "second wind", "test surge"}, NamedAbilities(), "all, sorted")
 
 	require.NoError(t, ValidateParameters(&ValidateParametersInput{Ref: testSurgeRef}))
 	err := ValidateParameters(&ValidateParametersInput{Ref: testSurgeRef, Parameters: json.RawMessage(`{"level": 1}`)})
@@ -83,11 +83,12 @@ func TestASecondEntryIsFoundByAllFive(t *testing.T) {
 	assert.Equal(t, &actions.Definition{Ref: testSurgeRef, Name: "Test Surge", Cost: &dnd5eCombat.SpendProfile{}}, definition)
 
 	words := AbilityWords(&AbilityWordsInput{}).Words
-	require.Len(t, words, 2)
-	assert.Equal(t, "second wind", words[0].Name)
-	assert.Equal(t, "test surge", words[1].Name)
-	assert.Equal(t, "Test Surge", words[1].Label)
-	assert.Empty(t, words[1].Values)
+	require.Len(t, words, 3)
+	assert.Equal(t, "action surge", words[0].Name)
+	assert.Equal(t, "second wind", words[1].Name)
+	assert.Equal(t, "test surge", words[2].Name)
+	assert.Equal(t, "Test Surge", words[2].Label)
+	assert.Empty(t, words[2].Values)
 
 	remove()
 	removed = true
@@ -95,7 +96,7 @@ func TestASecondEntryIsFoundByAllFive(t *testing.T) {
 	_, ok = NamedAbility("test surge")
 	assert.False(t, ok)
 	assert.Error(t, ValidateParameters(&ValidateParametersInput{Ref: testSurgeRef}))
-	assert.Len(t, AbilityWords(&AbilityWordsInput{}).Words, 1)
+	assert.Len(t, AbilityWords(&AbilityWordsInput{}).Words, 2)
 }
 
 // Test 2: the shared refusals name the ability by its word.
