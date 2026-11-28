@@ -157,8 +157,23 @@ func objectFor(t *testing.T, place magicitems.Place) map[string]any {
 	}
 	if place == magicitems.PlaceLetsEntry {
 		obj["with"] = withFor(t, obj["use"].(string))
+		if needsCount(t, obj["use"].(string)) {
+			obj["uses"] = valueFor(t, find(t, magicitems.PlaceLetsEntry, "uses"))
+		}
 	}
 	return obj
+}
+
+// needsCount is whether the table says an entry using the ability must also
+// write `uses` or a `cost`.
+func needsCount(t *testing.T, ability string) bool {
+	t.Helper()
+	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
+		if v.Word == ability {
+			return v.NeedsCount
+		}
+	}
+	return false
 }
 
 // withFor writes the required words of an ability's `with`, or nothing.

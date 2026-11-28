@@ -68,8 +68,16 @@ func TestAbilityWordsHandsOutItsOwnCopy(t *testing.T) {
 	first := features.AbilityWords(&features.AbilityWordsInput{})
 	before, err := json.Marshal(first)
 	require.NoError(t, err)
-	first.Words[0].Values[0].Min = -7
-	first.Words[0].Name = "changed"
+	withValues := -1
+	for i, w := range first.Words {
+		if len(w.Values) > 0 {
+			withValues = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, withValues, 0, "some ability takes values")
+	first.Words[withValues].Values[0].Min = -7
+	first.Words[withValues].Name = "changed"
 	after, err := json.Marshal(features.AbilityWords(&features.AbilityWordsInput{}))
 	require.NoError(t, err)
 	assert.JSONEq(t, string(before), string(after))

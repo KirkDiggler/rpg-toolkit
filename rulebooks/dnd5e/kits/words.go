@@ -73,6 +73,10 @@ type Value struct {
 	// With is, for a value of `use`, the words its `with` takes, in order;
 	// nil for every other value.
 	With []Word
+	// NeedsCount is, for a value of `use`, whether an entry that uses it must
+	// also write `uses` or a `cost`; false for every other value. A form that
+	// draws the entry offers and requires one of the two when it is true.
+	NeedsCount bool
 }
 
 // Word is one word an author may write.
@@ -142,6 +146,8 @@ type value struct {
 	label string
 	reset coreResources.ResetType
 	with  []Word
+	// needsCount is [Value.NeedsCount].
+	needsCount bool
 }
 
 func (e entry) public() Word {
@@ -154,7 +160,7 @@ func (e entry) public() Word {
 		w.Bounds = &b
 	}
 	for _, v := range e.values {
-		w.Values = append(w.Values, Value{Word: v.word, Label: v.label, With: cloneWords(v.with)})
+		w.Values = append(w.Values, Value{Word: v.word, Label: v.label, With: cloneWords(v.with), NeedsCount: v.needsCount})
 	}
 	return w
 }
@@ -203,7 +209,7 @@ var table = []entry{
 func abilityValues() []value {
 	var out []value
 	for _, ability := range features.AbilityWords(&features.AbilityWordsInput{}).Words {
-		v := value{word: ability.Name, label: ability.Label}
+		v := value{word: ability.Name, label: ability.Label, needsCount: ability.Counted}
 		for _, av := range ability.Values {
 			v.with = append(v.with, Word{
 				Word: av.Word, Place: PlaceWith, Shape: ShapeWholeNumber, Required: av.Required,

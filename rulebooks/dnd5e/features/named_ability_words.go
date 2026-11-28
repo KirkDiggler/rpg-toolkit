@@ -30,6 +30,9 @@ type AbilityWord struct {
 	Label string
 	// Values are the words its `with` takes, in order.
 	Values []AbilityValue
+	// Counted is true when an entry that uses this ability must also write
+	// `uses` or a `cost`: it charges no slot, so its count is its whole price.
+	Counted bool
 }
 
 // AbilityWordsInput asks for the named abilities and their values. It has no
@@ -52,9 +55,10 @@ func AbilityWords(_ *AbilityWordsInput) *AbilityWordsOutput {
 			continue
 		}
 		out.Words = append(out.Words, AbilityWord{
-			Name:   entry.word,
-			Label:  entry.label,
-			Values: append([]AbilityValue(nil), entry.values...),
+			Name:    entry.word,
+			Label:   entry.label,
+			Values:  append([]AbilityValue(nil), entry.values...),
+			Counted: entry.counted,
 		})
 	}
 	return out

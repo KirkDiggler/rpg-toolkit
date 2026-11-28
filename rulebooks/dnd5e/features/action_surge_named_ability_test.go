@@ -44,7 +44,7 @@ func TestActionSurgeIsFoundByAllFive(t *testing.T) {
 
 	words := features.AbilityWords(&features.AbilityWordsInput{}).Words
 	require.Len(t, words, 2)
-	assert.Equal(t, features.AbilityWord{Name: "action surge", Label: "Action Surge"}, words[0], "no values")
+	assert.Equal(t, features.AbilityWord{Name: "action surge", Label: "Action Surge", Counted: true}, words[0], "no values, and it must be counted")
 	assert.Equal(t, "second wind", words[1].Name)
 
 	giver := surgeGiver(t)
