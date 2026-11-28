@@ -153,7 +153,7 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"frame, which carries different numbers for the same spot",
 	)
 	s.Equal(
-		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "FaceFinishes", "Sections", "FootprintCells", "Openings"},
+		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "MaterialChannels", "FaceFinishes", "Sections", "FootprintCells", "Openings"},
 		fieldsOf(session.AtlasStructuralWall{}),
 		"a structural wall is its stable presence id, an opaque ref, its line in feet, its "+
 			"assembled dimensions, captured material selections, the hexes its footprint overlaps (fog-of-war R9), and its "+
@@ -174,7 +174,7 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"and no state",
 	)
 	s.Equal([]string{"Before", "After"}, fieldsOf(session.WallFrameSpan{}), "visual extent contains no parent identity or passage rule")
-	s.Equal([]string{"Span", "FaceFinishes"}, fieldsOf(session.DoorFramePresentation{}), "a captured frame has no parent lookup or mutable state")
+	s.Equal([]string{"Span", "FaceFinishes", "MaterialChannels"}, fieldsOf(session.DoorFramePresentation{}), "a captured frame has no parent lookup or mutable state")
 	s.Equal([]string{"Side", "MaterialRef", "PhaseU"}, fieldsOf(session.DoorFrameFaceFinish{}), "wrapped phase carries no full distance to a hidden wall origin")
 }
 

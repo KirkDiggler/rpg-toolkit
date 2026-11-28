@@ -27,8 +27,9 @@ type DoorFrameFaceFinish struct {
 // DoorFramePresentation is independently permitted immutable door appearance.
 // Present values require Span; an empty face list preserves authored materials.
 type DoorFramePresentation struct {
-	Span         *WallFrameSpan        `json:"span"`
-	FaceFinishes []DoorFrameFaceFinish `json:"face_finishes,omitempty"`
+	Span             *WallFrameSpan              `json:"span"`
+	FaceFinishes     []DoorFrameFaceFinish       `json:"face_finishes,omitempty"`
+	MaterialChannels []MaterialChannelAdjustment `json:"material_channels,omitempty"`
 }
 
 func projectWallFrameSpan(span *encounter.WallFrameSpan) *WallFrameSpan {
@@ -42,7 +43,7 @@ func projectDoorFramePresentation(frame *encounter.DoorFramePresentation) *DoorF
 	if frame == nil {
 		return nil
 	}
-	out := &DoorFramePresentation{Span: projectWallFrameSpan(frame.Span)}
+	out := &DoorFramePresentation{Span: projectWallFrameSpan(frame.Span), MaterialChannels: projectMaterialChannels(frame.MaterialChannels)}
 	for _, face := range frame.FaceFinishes {
 		phase := face.PhaseU
 		out.FaceFinishes = append(out.FaceFinishes, DoorFrameFaceFinish{Side: string(face.Side), MaterialRef: face.MaterialRef, PhaseU: &phase})
@@ -66,7 +67,7 @@ func validDoorFramePresentation(frame *DoorFramePresentation, width float64) boo
 	if frame == nil {
 		return true
 	}
-	if frame.Span == nil || !validWallFrameSpan(frame.Span, width) {
+	if frame.Span == nil || !validWallFrameSpan(frame.Span, width) || !validMaterialChannels(frame.MaterialChannels) {
 		return false
 	}
 	faces := make([]WallFaceFinish, len(frame.FaceFinishes))

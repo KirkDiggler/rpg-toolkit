@@ -254,6 +254,13 @@
 // Empty preserves legacy model resolution. This seam does not resolve an asset
 // catalog or derive a model path. Knowledge uses the same roster projection.
 //
+// MaterialChannels follows the same launch and observed-identity path. The host
+// owns detached target/channel DTOs, not aliases of encounter internals. Default
+// remains absent, Off has no multiplier, and Scale retains its explicit positive
+// multiplier, including one. Roster reads never enrich remembered/legacy channel
+// values from current member content; no resource catalog or illumination rule
+// is consulted.
+//
 // DefaultActivityRef follows the same launch and captured-identity projection.
 // It is the authored presentation default, not a current animation phase or
 // gameplay command. PublicMember.DefaultActivityRef remains empty for legacy
@@ -311,6 +318,12 @@
 // without resource lookup or regional mapping. Their lists are detached; reveal
 // decoding refuses unknown/duplicate sides and blank refs as one whole body.
 // Missing legacy lists stay absent. Opening-only replacements never change them.
+//
+// MaterialChannels also follows each permitted wall, prop and independent fixed
+// frame. Snapshot/live projections agree and detach nested values. Canonical JSON
+// presence validation remains with its owner; host reveal decoding refuses an
+// invalid channel or duplicate target atomically. Opening-only replacements do
+// not change wall channel intent, and frame values need no hidden-parent lookup.
 //
 // Optional frame spans and door FramePresentation copy the composition's
 // independent captured appearance into seam-owned types. Spans, face lists and
