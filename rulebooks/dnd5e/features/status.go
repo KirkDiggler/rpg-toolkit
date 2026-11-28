@@ -23,10 +23,9 @@ type ResourceReader interface {
 }
 
 // StatusInput carries the owner a feature asks about a shared resource. The
-// owner is optional for features that own their resource privately
-// ([SecondWind], [ActionSurge]) and required for features that share a
-// character-owned pool (Rage, Flurry of Blows, Patient Defense, Step of the
-// Wind).
+// owner is required for every feature that reports a character-owned pool
+// (Second Wind, Action Surge, Rage, Flurry of Blows, Patient Defense, Step of
+// the Wind); no feature keeps a pool of its own any more.
 type StatusInput struct {
 	// Owner reads the shared resource pools the feature consumes from but
 	// does not store. Nil is valid only for features with no shared resource.
