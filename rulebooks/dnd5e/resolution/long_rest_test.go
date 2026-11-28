@@ -392,15 +392,6 @@ func TestLongRestSuite(t *testing.T) {
 	suite.Run(t, new(LongRestTestSuite))
 }
 
-func featureWithRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
-	t.Helper()
-	if got := effectWithRefOrNil(t, blobs, want); got != nil {
-		return got
-	}
-	t.Fatalf("feature %s not found", want.String())
-	return nil
-}
-
 func conditionWithRef(t *testing.T, blobs []json.RawMessage, want *core.Ref) json.RawMessage {
 	t.Helper()
 	if got := effectWithRefOrNil(t, blobs, want); got != nil {
