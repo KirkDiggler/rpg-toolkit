@@ -52,6 +52,7 @@ flowchart TB
 | character equipment/ability derivation | `character.AssembleAttack` |
 | opaque action projection for behavior | active `encounter.ActionView` |
 | profile dispatch | `resolution.NewAction` |
+| a description that is only its price (no profile, a cost that gives a turn slot) | `Definition.OnlyItsPrice`; `NewAction` returns the gift machine ([`gift.go`](./gift.go)) |
 | delivery/range, attack roll, ordered damage | Strike |
 | step order, per-step modifiers, when a script stops | Sequence |
 | save request | Contest / Save |
@@ -215,6 +216,23 @@ comes back in `Output.DirtyMonsters`. Nothing in resolution changed to allow
 this: the slice proves it. The driven arm stays for what a monster's driver
 decides and carries out itself (Disengage, Dash), and a declared activation of a
 monster is still refused. No caller sends it yet (rpg-project#1131).
+
+### What changed on 2026-11-28 (rpg-project#1258, slice 5b-2)
+
+The action door runs an ability that is only its price. A description with no
+profile whose cost gives a turn slot (`Definition.OnlyItsPrice`, rules
+`v0.246.0`; Action Surge is the first) goes to `NewAction`, which returns the
+gift machine in `gift.go`. The charge and the gift both happen at the door, in
+one `combat.Pay`, after `Start` and before the machine's step, so they land
+together or not at all; the step lands nothing and publishes nothing. The
+payment is not optional: the gift IS the cost, so `Input.Validate` refuses a
+call with no cost, a cost that charges nothing, another payer, or a gift that
+differs from the description's, as `ErrBadAction`, before anything loads. The
+outcome is the shape a feature that banks something reports: an
+`ActivationOutcome` whose `GrantedCapacity` is the rules' words
+(`combat.GrantedWords`, "1 action") and whose one effect is
+`capacity-granted` naming the actor. A description with a profile is still run
+by its profile, whatever its cost gives. No caller sends one yet.
 
 ## Extension rule
 

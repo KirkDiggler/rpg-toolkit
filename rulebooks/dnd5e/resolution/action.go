@@ -155,6 +155,9 @@ func NewAction(in *ActionInput) (Machine, error) {
 	if in.Definition.Effect != nil {
 		return newEffect(in, targetIDs)
 	}
+	if in.Definition.OnlyItsPrice() {
+		return newGift(in, targetIDs)
+	}
 	return nil, fmt.Errorf("%w: definition %q has no supported profile", ErrBadAction, in.Definition.Ref.String())
 }
 
