@@ -220,7 +220,9 @@ mirrors the view and is a later step.
 **A creature uses what its stat block lets it (rpg-project#1131, 2026-11-28,
 rpg-project#1240; rpg-toolkit ADR-0051).** `sheetSeam.readFacts` fills
 `SheetFacts.Abilities` from `monster.AbilitiesOf` of the stored sheet (word,
-name, whether the sheet can pay now); a character states none. When a table row
+name, whether it can be asked right now: the sheet can pay and nothing it holds
+refuses it, so a creature already raging is not asked to rage); a character
+states none. When a table row
 says `activate`, the encounter asks `strikerSeam.Activate`
 ([`activate_npc.go`](./activate_npc.go)), written the way `Dash` is: one
 `Resolve` of `resolution.NewAction` over the rules' own description on the live

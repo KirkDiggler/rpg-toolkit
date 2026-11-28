@@ -261,7 +261,7 @@ func TestTheContentCheckAndTheLaunchJudgeActionSurge(t *testing.T) {
 	t.Run("a misspelt word", func(t *testing.T) {
 		out := check(surgeVariant(t, "activate: action surge, weight: 9 }", "activate: actoin surge, weight: 9 }"))
 		require.Equal(t, []session.ActivationRefusal{{Word: "actoin surge", Message: refusalMessage("actoin surge", t)}}, out.Activations)
-		require.Contains(t, out.Activations[0].Message, "one of action surge, second wind")
+		require.Contains(t, out.Activations[0].Message, "one of action surge, rage, second wind")
 		t.Logf("refusal: %s", out.Activations[0].Message)
 	})
 	t.Run("a stat block with no count is refused by the rules, at the check and at the launch", func(t *testing.T) {
