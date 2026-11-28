@@ -34,7 +34,7 @@ func TestTheStudioIsOfferedActionSurgeWithNoWithWords(t *testing.T) {
 				assert.Empty(t, v.With, "it takes no values")
 			}
 		}
-		assert.Equal(t, []string{"action surge", "second wind"}, names)
+		assert.Equal(t, []string{"action surge", "rage", "second wind"}, names)
 		return
 	}
 	t.Fatal("no `use` word")
