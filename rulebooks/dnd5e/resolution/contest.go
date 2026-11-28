@@ -367,6 +367,18 @@ func supportedSaveAbility(ability abilities.Ability) bool {
 func prepareCondition(
 	application combatActions.ConditionApplication, targetID, sourceRef string,
 ) (preparedCondition, error) {
+	return prepareConditionFrom(application, targetID, sourceRef, nil)
+}
+
+// prepareConditionFrom is prepareCondition's sibling for a status an ability
+// puts on its user: the same body, and the condition is built with an ORIGIN,
+// the ability and its user, as the feature path builds Rage's. It is a sibling
+// and not an optional argument so that the six callers of prepareCondition do
+// not change a character. A nil origin is prepareCondition exactly.
+func prepareConditionFrom(
+	application combatActions.ConditionApplication, targetID, sourceRef string,
+	origin *dnd5eEvents.ConditionOrigin,
+) (preparedCondition, error) {
 	if err := application.Validate(); err != nil {
 		return preparedCondition{}, fmt.Errorf("%w: %w", ErrBadAction, err)
 	}
@@ -375,6 +387,7 @@ func prepareCondition(
 		Config:    application.Parameters,
 		MemberID:  targetID,
 		SourceRef: sourceRef,
+		Origin:    origin,
 	})
 	if err != nil {
 		return preparedCondition{}, fmt.Errorf("build condition %s for %q: %w", application.Ref.ID, targetID, err)
