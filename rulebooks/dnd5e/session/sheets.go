@@ -450,8 +450,9 @@ func (s sheetSeam) sheetOf(id encounter.MemberID) (heldSheet, error) {
 
 // abilityFactsOf is what a stored sheet's kit lets its creature use, as the
 // encounter is told it: the rules' own reading ([monster.AbilitiesOf]), the
-// word, the story's name and whether the sheet can pay the whole price now.
-// A creature with no kit has none. The rules' error returns as it is.
+// word, the story's name and whether it can be asked right now: the sheet can
+// pay the whole price and nothing the creature holds refuses it (a creature
+// already raging is not asked to rage). A creature with no kit has none. The rules' error returns as it is.
 func abilityFactsOf(sheet *monster.Data) ([]encounter.AbilityFacts, error) {
 	read, err := monster.AbilitiesOf(&monster.AbilitiesOfInput{Sheet: sheet})
 	if err != nil {
@@ -462,7 +463,7 @@ func abilityFactsOf(sheet *monster.Data) ([]encounter.AbilityFacts, error) {
 	}
 	facts := make([]encounter.AbilityFacts, 0, len(read.Abilities))
 	for _, a := range read.Abilities {
-		facts = append(facts, encounter.AbilityFacts{Word: a.Word, Name: a.Name, Payable: a.Payable})
+		facts = append(facts, encounter.AbilityFacts{Word: a.Word, Name: a.Name, Payable: a.Payable && a.Refused == ""})
 	}
 	return facts, nil
 }
