@@ -231,6 +231,9 @@ func asOnePayment(action, strike *combat.SpendProfile) *combat.SpendProfile {
 		Slots:    sum(action.Slots, strike.Slots),
 		Pools:    sum(action.Pools, strike.Pools),
 		Requires: larger(action.Requires, strike.Requires),
+		// What either gives, the one payment gives: a merge that dropped it
+		// would be a price that charged and never gave.
+		GrantSlots: sum(action.GrantSlots, strike.GrantSlots),
 	}
 
 	for key, want := range wants {

@@ -194,3 +194,11 @@ func cloneKit(kit *kits.Kit) *kits.Kit {
 
 	return &copied
 }
+
+// GrantSlots adds per-turn slots, creating the account on first write and
+// marking the sheet.
+//
+// Implements [combat.Ledger].
+func (m *Monster) GrantSlots(slot coreCombat.ActionType, n int) {
+	m.writable().GrantSlots(slot, n)
+}
