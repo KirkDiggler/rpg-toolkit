@@ -55,6 +55,8 @@ func (l *descriptionLedger) SpendPool(key coreResources.ResourceKey, n int) {
 
 func (l *descriptionLedger) BankCapacity(_ dnd5eCombat.CapacityType, _ int) {}
 
+func (l *descriptionLedger) GrantSlots(_ coreCombat.ActionType, _ int) {}
+
 var _ dnd5eCombat.Ledger = (*descriptionLedger)(nil)
 
 // useSecondWindFromItsDescription uses Second Wind the one way left: it builds

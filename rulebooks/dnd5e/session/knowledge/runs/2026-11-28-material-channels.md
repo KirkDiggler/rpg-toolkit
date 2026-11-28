@@ -14,8 +14,12 @@ Slice [rpg-project#1192](https://github.com/KirkDiggler/rpg-project/issues/1192)
 
 ## Found
 
-- The full race run took590.142s with GOMAXPROCS4 on the shared host, close to the default package timeout; it passed without raising timeouts or weakening tests, but the measured margin is small — [slice](https://github.com/KirkDiggler/rpg-project/issues/1192).
+- Race runs took590.142s before catch-up and611.658s after it; both passed without changing test limits. TestMain builds substantial castle fixtures before m.Run, so package elapsed time is not the timeout margin — [slice](https://github.com/KirkDiggler/rpg-project/issues/1192).
+
+- Normal main catch-up preserves rulebook0.248.0/resolution0.86.0 plus the feature Encounter pin; only go.mod/go.sum conflicted, and normal Go tooling regenerated the resolved pins/checksums — [Session#2623](https://github.com/KirkDiggler/rpg-toolkit/pull/2623).
 
 ## Mistaken
+
+- The earlier report treated590s package elapsed as a small margin to600s; inspecting TestMain corrected that inference because fixture preparation precedes m.Run — [Session#2623](https://github.com/KirkDiggler/rpg-toolkit/pull/2623).
 
 - The first full run exposed exact public-field whitelist expectations for walls/frames; adding only MaterialChannels preserves the guards against private state/parent identity rather than loosening them — [slice](https://github.com/KirkDiggler/rpg-project/issues/1192).

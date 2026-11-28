@@ -224,54 +224,55 @@ func (s *AttachRollbackTestSuite) TestLenientAttachStillDropsAndContinues() {
 	s.Require().NotEmpty(char.subscriptionIDs, "the sheet is attached")
 }
 
-func (s *AttachRollbackTestSuite) fighterFeatureSheet() *Data {
-	secondWind, err := json.Marshal(features.SecondWindData{
-		Ref: refs.Features.SecondWind(), ID: "rollback-second-wind", Name: "Second Wind",
-		CharacterID: "rollback-fighter",
+// clericFeatureSheet is a Light cleric's sheet carrying two features that go on
+// the bus: Warding Flare, which subscribes to the attack chain, first, and
+// Wrath of the Storm after it. The count is the shared pool on the sheet, as
+// every pool is.
+func (s *AttachRollbackTestSuite) clericFeatureSheet() *Data {
+	wardingFlare, err := json.Marshal(features.WardingFlareData{
+		Ref: refs.Features.WardingFlare(), ID: "rollback-warding-flare", Name: "Warding Flare",
+		CharacterID: "rollback-cleric",
 	})
 	s.Require().NoError(err)
-	actionSurge, err := json.Marshal(features.ActionSurgeData{
-		Ref: refs.Features.ActionSurge(), ID: "rollback-action-surge", Name: "Action Surge",
-		CharacterID: "rollback-fighter", Uses: 0, MaxUses: 1,
+	wrath, err := json.Marshal(features.WrathOfTheStormData{
+		Ref: refs.Features.WrathOfTheStorm(), ID: "rollback-wrath", Name: "Wrath of the Storm",
+		CharacterID: "rollback-cleric",
 	})
 	s.Require().NoError(err)
 
 	return &Data{RaceID: "human", Level: 1,
-		ID:      "rollback-fighter",
-		ClassID: classes.Fighter,
-		// Action Surge first: it is the one feature that still subscribes,
-		// and Second Wind's count is the shared pool on the sheet.
+		ID:      "rollback-cleric",
+		ClassID: classes.Cleric,
+		// Warding Flare first: it is the first feature that subscribes, and the
+		// pool it reports is on the sheet.
 		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
-			resources.SecondWind: {Current: 0, Maximum: 1, ResetType: coreResources.ResetShortRest},
+			resources.WardingFlare:    {Current: 0, Maximum: 1, ResetType: coreResources.ResetLongRest},
+			resources.WrathOfTheStorm: {Current: 0, Maximum: 1, ResetType: coreResources.ResetLongRest},
 		},
-		Features: []json.RawMessage{actionSurge, secondWind},
+		Features: []json.RawMessage{wardingFlare, wrath},
 	}
-}
-
-func (s *AttachRollbackTestSuite) featureUses(char *Character, ref string) int {
-	for _, raw := range mustToData(s.T(), char).Features {
-		var envelope struct {
-			Ref  string `json:"ref"`
-			Uses int    `json:"uses"`
-		}
-		s.Require().NoError(json.Unmarshal(raw, &envelope))
-		if envelope.Ref == ref {
-			return envelope.Uses
-		}
-	}
-	s.FailNow("feature not found", ref)
-	return -1
 }
 
 // Features are applied after the keeper in persisted order. If a later feature
 // cannot subscribe, the keeper comes back off; the
 // strict sheet remains byte-identical and can be attached again.
 func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedFeature() {
-	char, err := Load(s.ctx, s.fighterFeatureSheet())
+	// Counted, not guessed: the keeper's hooks land before the first feature's,
+	// so the feature's first subscription is the one after them.
+	counter := newFailingBus(0)
+	onlyFlare := s.clericFeatureSheet()
+	onlyFlare.Features = onlyFlare.Features[:1]
+	warmup, err := Load(s.ctx, onlyFlare)
+	s.Require().NoError(err)
+	s.Require().NoError(Attach(s.ctx, warmup, counter))
+	firstFeatureSubscription := counter.calls
+	s.Require().Equal(6, firstFeatureSubscription, "five keeper hooks, then Warding Flare")
+
+	char, err := Load(s.ctx, s.clericFeatureSheet())
 	s.Require().NoError(err)
 	before := marshalData(&s.Suite, mustToData(s.T(), char))
 
-	bus := newFailingBus(6) // five keeper hooks, then Action Surge
+	bus := newFailingBus(firstFeatureSubscription)
 	err = Attach(s.ctx, char, bus)
 
 	s.Require().Error(err)
@@ -283,37 +284,34 @@ func (s *AttachRollbackTestSuite) TestAttachRollsBackAFailedFeature() {
 	s.Require().NoError(dnd5eEvents.RestTopic.On(bus).Publish(s.ctx, dnd5eEvents.RestEvent{
 		RestType: coreResources.ResetLongRest, CharacterID: char.GetID(),
 	}))
-	s.Zero(s.featureUses(char, refs.Features.ActionSurge().String()),
-		"the keeper is not left listening after rollback")
-	s.Zero(mustToData(s.T(), char).Resources[resources.SecondWind].Current,
+	s.Zero(mustToData(s.T(), char).Resources[resources.WardingFlare].Current,
 		"nothing refills the shared pool after rollback")
 
 	good := events.NewEventBus()
 	s.Require().NoError(Attach(s.ctx, char, good))
 	_, err = char.LongRest(s.ctx)
 	s.Require().NoError(err)
-	s.Equal(1, mustToData(s.T(), char).Resources[resources.SecondWind].Current,
-		"the keeper refills the shared Second Wind pool")
-	s.Equal(1, s.featureUses(char, refs.Features.ActionSurge().String()))
+	s.Equal(1, mustToData(s.T(), char).Resources[resources.WardingFlare].Current,
+		"the keeper refills the shared Warding Flare pool")
 }
 
 // A lenient load drops only the attachable feature whose Apply fails and keeps
 // attaching later features, matching its existing per-blob drop policy.
 func (s *AttachRollbackTestSuite) TestLenientAttachDropsFailedFeatureAndContinues() {
-	bus := newFailingBus(6) // Action Surge, the first feature to subscribe after the five keeper hooks
+	bus := newFailingBus(6) // Warding Flare, the first feature to subscribe after the five keeper hooks
 
-	char, err := LoadFromData(s.ctx, s.fighterFeatureSheet(), bus)
+	char, err := LoadFromData(s.ctx, s.clericFeatureSheet(), bus)
 
 	s.Require().NoError(err)
 	var featureRefs []string
 	for _, feature := range char.GetFeatures() {
 		featureRefs = append(featureRefs, feature.Ref().String())
 	}
-	s.Require().NotContains(featureRefs, refs.Features.ActionSurge().String(), "the failed feature is dropped")
-	s.Require().Contains(featureRefs, refs.Features.SecondWind().String(), "the later feature still loads")
+	s.Require().NotContains(featureRefs, refs.Features.WardingFlare().String(), "the failed feature is dropped")
+	s.Require().Contains(featureRefs, refs.Features.WrathOfTheStorm().String(), "the later feature still loads")
 	_, err = char.LongRest(s.ctx)
 	s.Require().NoError(err)
-	s.Equal(1, mustToData(s.T(), char).Resources[resources.SecondWind].Current,
+	s.Equal(1, mustToData(s.T(), char).Resources[resources.WardingFlare].Current,
 		"the sheet is still attached and refills the shared pool")
 }
 

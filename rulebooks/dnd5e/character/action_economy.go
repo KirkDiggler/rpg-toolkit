@@ -596,9 +596,9 @@ func (c *Character) consumeActionType(actionType coreCombat.ActionType) {
 		//
 		// The two free features that ship say the same thing from the other
 		// side: Reckless Attack's change to the sheet is a condition, and the
-		// condition site marks it, while Action Surge cannot reach its spend
-		// through this path at all — its CanActivate demands an ActionEconomy
-		// that activateFeature does not supply.
+		// condition site marks it, while Action Surge is used from its
+		// description and activateFeature refuses it before the turn is
+		// touched.
 		return
 	}
 
@@ -659,6 +659,9 @@ func (c *Character) featureResourceInfo(f features.Feature) (current, max int) {
 		return r.Current(), r.Maximum()
 	case refs.Features.SecondWind().ID:
 		r := c.GetResource(resources.SecondWind)
+		return r.Current(), r.Maximum()
+	case refs.Features.ActionSurge().ID:
+		r := c.GetResource(resources.ActionSurge)
 		return r.Current(), r.Maximum()
 	case refs.Features.FlurryOfBlows().ID, refs.Features.PatientDefense().ID, refs.Features.StepOfTheWind().ID:
 		r := c.GetResource(resources.Ki)

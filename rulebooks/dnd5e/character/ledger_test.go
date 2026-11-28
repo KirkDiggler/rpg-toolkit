@@ -435,3 +435,50 @@ func (s *SheetLedgerTestSuite) TestAnAbsentPoolIsEmptyRatherThanFree() {
 		Pools: map[coreResources.ResourceKey]int{"sorcery_points": 1},
 	}))
 }
+
+// A price that gives a slot lands it on the sheet's own economy, marks the
+// sheet, and the gift is gone when the next turn starts.
+func (s *SheetLedgerTestSuite) TestAGivenSlotLandsOnTheSheetAndEndsWithTheTurn() {
+	char := s.loaded()
+	gives := &combat.SpendProfile{GrantSlots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}
+
+	s.True(combat.CanPay(char, gives))
+	s.False(char.IsDirty(), "asking marks nothing")
+
+	s.Require().NoError(combat.Pay(char, gives))
+	s.Equal(2, char.SlotsLeft(coreCombat.ActionStandard))
+	s.True(char.IsDirty())
+	s.Equal(2, mustToData(s.T(), char).ActionEconomy.ActionsRemaining)
+
+	_, err := char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 2, Speed: 30})
+	s.Require().NoError(err)
+	s.Equal(1, char.SlotsLeft(coreCombat.ActionStandard), "the gift ends with the turn")
+}
+
+// A sheet that is not in combat refuses a price that only gives, and nothing
+// on it changes.
+func (s *SheetLedgerTestSuite) TestASlotGrantOutOfCombatIsRefusedAndChangesNothing() {
+	char, err := LoadFromData(s.ctx, s.monk(), s.bus)
+	s.Require().NoError(err)
+	markSaved(char)
+
+	gives := &combat.SpendProfile{GrantSlots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}
+	s.False(combat.CanPay(char, gives))
+	s.Error(combat.Pay(char, gives))
+	s.False(char.IsDirty())
+	s.Nil(char.GetActionEconomy())
+}
+
+// The merge of an action's price and a strike's carries what either gives.
+func (s *SheetLedgerTestSuite) TestAMergedPriceKeepsTheSlotsEitherGives() {
+	action := &combat.SpendProfile{GrantSlots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}
+	strike := &combat.SpendProfile{GrantSlots: map[coreCombat.ActionType]int{
+		coreCombat.ActionStandard: 1, coreCombat.ActionBonus: 1,
+	}}
+
+	merged := asOnePayment(action, strike)
+	s.Equal(map[coreCombat.ActionType]int{
+		coreCombat.ActionStandard: 2, coreCombat.ActionBonus: 1,
+	}, merged.GrantSlots)
+	s.Nil(asOnePayment(&combat.SpendProfile{}, &combat.SpendProfile{}).GrantSlots)
+}

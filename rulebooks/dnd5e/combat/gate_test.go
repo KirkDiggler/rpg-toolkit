@@ -23,6 +23,7 @@ type spyLedger struct {
 	pools    map[coreResources.ResourceKey]int
 
 	writes int
+	order  []string
 }
 
 func newSpyLedger() *spyLedger {
@@ -54,12 +55,19 @@ func (l *spyLedger) SpendCapacity(key combat.CapacityType, n int) {
 
 func (l *spyLedger) SpendPool(key coreResources.ResourceKey, n int) {
 	l.writes++
+	l.order = append(l.order, "pool:"+string(key))
 	l.pools[key] -= n
 }
 
 func (l *spyLedger) BankCapacity(key combat.CapacityType, n int) {
 	l.writes++
 	l.capacity[key] += n
+}
+
+func (l *spyLedger) GrantSlots(slot coreCombat.ActionType, n int) {
+	l.writes++
+	l.slots[slot] += n
+	l.order = append(l.order, "grant:"+string(slot))
 }
 
 // GateTestSuite pins the gate's two pure functions: what they read, what they

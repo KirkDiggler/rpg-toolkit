@@ -38,7 +38,7 @@ import (
 // TestStatusViewProjectsFighterWithoutPersistenceJSON confirms the fighter
 // StatusView is built from the live sheet and feature Status reports — never
 // from persistence JSON. A level-3 fighter carries Second Wind (level 1) and
-// Action Surge (level 2), both feature-private resources, plus Hit Dice.
+// Action Surge (level 2), both pools on the character, plus Hit Dice.
 func TestStatusViewProjectsFighterWithoutPersistenceJSON(t *testing.T) {
 	fighter := newLevel3Fighter(t)
 
@@ -54,8 +54,8 @@ func TestStatusViewProjectsFighterWithoutPersistenceJSON(t *testing.T) {
 	require.Equal(t, fighter.GetSpeed(), view.BaseSpeedFeet)
 
 	keys := resourceKeys(view.Resources)
-	require.Contains(t, keys, resources.SecondWind, "Second Wind is feature-private and must appear")
-	require.Contains(t, keys, resources.ActionSurge, "Action Surge is feature-private and must appear")
+	require.Contains(t, keys, resources.SecondWind, "Second Wind is a pool of the character and must appear")
+	require.Contains(t, keys, resources.ActionSurge, "Action Surge is a pool of the character and must appear")
 	require.Contains(t, keys, resources.HitDice, "Hit Dice is owner-owned and must appear")
 
 	// Exactly one row per key — no duplicates.

@@ -404,52 +404,6 @@ func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedOwnerResourcesWithoutNo
 	}
 }
 
-func (s *PureLoadTestSuite) TestStrictLoadRejectsFeaturePrivateResourceBoundsBeforeStatusView() {
-	tests := []struct {
-		name string
-		blob func() json.RawMessage
-	}{
-		{
-			name: "action surge uses above maximum",
-			blob: func() json.RawMessage {
-				raw, err := json.Marshal(features.ActionSurgeData{
-					Ref: refs.Features.ActionSurge(), ID: "action_surge", Name: "Action Surge",
-					CharacterID: "fighter-private", Uses: 2, MaxUses: 1,
-				})
-				s.Require().NoError(err)
-				return raw
-			},
-		},
-	}
-	for _, tc := range tests {
-		s.Run(tc.name, func() {
-			data := &Data{RaceID: "human", Level: 1, ID: "fighter-private", ClassID: classes.Fighter, Features: []json.RawMessage{tc.blob()}}
-			loaded, err := Load(s.ctx, data)
-			s.Require().Error(err)
-			s.Nil(loaded, "strict load must reject before malformed private uses reach StatusView")
-		})
-	}
-}
-
-func (s *PureLoadTestSuite) TestLenientLoadDropsMalformedFeaturePrivateResource() {
-	raw, err := json.Marshal(features.ActionSurgeData{
-		Ref: refs.Features.ActionSurge(), ID: "action_surge", Name: "Action Surge",
-		CharacterID: "fighter-private-lenient", Uses: 2, MaxUses: 1,
-	})
-	s.Require().NoError(err)
-	loaded, err := LoadFromData(s.ctx, &Data{RaceID: "human", Level: 1,
-		ID: "fighter-private-lenient", ClassID: classes.Fighter, Features: []json.RawMessage{raw},
-	}, events.NewEventBus())
-	s.Require().NoError(err)
-
-	out, err := loaded.StatusView(&StatusViewInput{})
-	s.Require().NoError(err)
-	s.Require().NotNil(out)
-	s.Empty(out.View.Features)
-	s.Empty(out.View.Resources)
-	s.Empty(mustToData(s.T(), loaded).Features, "existing lenient policy drops the malformed feature blob")
-}
-
 func (s *PureLoadTestSuite) TestStrictLoadPreservesCharacterMetadata() {
 	data := fullSheet(&s.Suite)
 	data.BackgroundID = backgrounds.Soldier
@@ -578,22 +532,22 @@ func (s *PureLoadTestSuite) TestAttachScopesEachConditionToItsRef() {
 // names itself directly, so Attach scopes its lifecycle with Feature.Ref and
 // does not infer identity from its persistence bytes.
 func (s *PureLoadTestSuite) TestAttachScopesAttachableFeatureToItsRef() {
-	secondWind, err := json.Marshal(features.ActionSurgeData{
-		Ref: refs.Features.ActionSurge(), ID: "scoped-action-surge", Name: "Action Surge",
-		CharacterID: "scoped-fighter", Uses: 0, MaxUses: 1,
+	wardingFlare, err := json.Marshal(features.WardingFlareData{
+		Ref: refs.Features.WardingFlare(), ID: "scoped-warding-flare", Name: "Warding Flare",
+		CharacterID: "scoped-cleric",
 	})
 	s.Require().NoError(err)
 	bus := newRecordingBus()
 
 	char, err := Load(s.ctx, &Data{RaceID: "human", Level: 1,
-		ID: "scoped-fighter", ClassID: classes.Fighter, Features: []json.RawMessage{secondWind},
+		ID: "scoped-cleric", ClassID: classes.Cleric, Features: []json.RawMessage{wardingFlare},
 	})
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, char, bus))
 
-	s.Require().Equal([]core.Ref{*refs.Features.ActionSurge()}, bus.record.asked,
+	s.Require().Equal([]core.Ref{*refs.Features.WardingFlare()}, bus.record.asked,
 		"the feature attaches, and no reaction the sheet does not store")
-	s.Require().Contains(bus.record.byRef[*refs.Features.ActionSurge()], events.Topic("dnd5e.rest"))
+	s.Require().Contains(bus.record.byRef[*refs.Features.WardingFlare()], events.Topic("dnd5e.combat.attack.chain"))
 }
 
 // The sheet keeper's own hooks are not laundered into an effect's name: they

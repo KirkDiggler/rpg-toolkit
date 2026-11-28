@@ -244,3 +244,31 @@ func TestAnOldBlobWithTheRemovedFieldLoadsAsAFullTurn(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, m.CanReact())
 }
+
+func givesAnAction() *combat.SpendProfile {
+	return &combat.SpendProfile{GrantSlots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}}
+}
+
+// A price that gives a slot makes the account on first write, marks the sheet,
+// saves, and the gift is gone when the creature's own turn starts. Asking does
+// none of that.
+func TestAGivenSlotCreatesTheAccountAndEndsWithTheTurn(t *testing.T) {
+	ctx := context.Background()
+	bus := events.NewEventBus()
+	m := freshWolf(t)
+	require.NoError(t, m.SheetKeeper().Apply(ctx, bus))
+
+	require.True(t, combat.CanPay(m, givesAnAction()))
+	require.False(t, m.IsDirty())
+	require.False(t, economyKey(t, m))
+
+	require.NoError(t, combat.Pay(m, givesAnAction()))
+	require.Equal(t, 2, m.SlotsLeft(coreCombat.ActionStandard))
+	require.True(t, m.IsDirty())
+	require.NotNil(t, m.ToData().Economy)
+	require.Equal(t, 2, m.ToData().Economy.ActionsRemaining)
+
+	require.NoError(t, dnd5eEvents.TurnStartTopic.On(bus).Publish(ctx,
+		dnd5eEvents.TurnStartEvent{SubjectID: m.GetID(), Round: 2}))
+	require.Equal(t, 1, m.SlotsLeft(coreCombat.ActionStandard))
+}

@@ -1,0 +1,126 @@
+# THE LIEUTENANT SURGES (rpg-project#1131, #1261): a small walk site, copied from
+# lieutenant-uses-second-wind-walk.yaml (the same hall, gate and placement), with
+# what is authored changed in two places: his stat block lets him use Action
+# Surge, and his table's first row says `activate: action surge` when an enemy
+# is in his reach. One open hall, a fighter at one end, ONE hostile creature, the
+# Lieutenant, 3 cells from her start:
+#   1. He has Action Surge and ONE use. The first turn he has an enemy in reach
+#      he uses it. It costs his one use and no action, and it gives him one more
+#      action, so he has two actions that turn and swings twice.
+#   2. On every later turn the row is not on his table (his sheet cannot pay for
+#      it) and he swings once.
+#   3. Nothing gives the use back in a run (a rest does).
+#   4. Rows are weighed, and "enemy in reach" is a statement about striking: the
+#      encounter's facts say it only while he can still attack. So once he has
+#      swung on a turn the surge row is off his table for the rest of that turn,
+#      and a surge that did not come before his first swing waits for a later
+#      turn. That is why the surge row writes `weight: 9`: against the swing row's
+#      1 it is nine in ten to be picked first on a turn he has an enemy in reach
+#      and his use left. The weight is the author's choice, not an engine rule.
+#   5. He walks first when she is a few cells off, and surges on arrival in the
+#      same turn: the row is true as soon as she is in reach.
+# Issue: https://github.com/KirkDiggler/rpg-project/issues/1261
+version: 5
+key: lieutenant-surges-walk
+play: { void: transparent, lighting: bright, standing: centre-covered }
+
+templates:
+  gate-lieutenant:
+    base: dnd5e:monsters:human
+    name: Lieutenant
+    hitDice: 4d8
+    actions: [dnd5e:weapons:longsword]
+    lets:
+      - use: action surge
+        uses: { max: 1, refills: { on: [short rest, long rest] } }
+
+factions:
+  - id: garrison
+
+dispositions:
+  - { between: [garrison, party], stance: hostile }
+
+behaviorDefinitions:
+  lieutenant-policy:
+    recipe:
+      ref: site:behaviors:lieutenant-policy
+      initial: fighting
+      states:
+        fighting:
+          transitions:
+            - { on: time, do: [{ pick: time }] }
+            - { on: turn, do: [{ pick: time }] }
+    table:
+      time:
+        - { when: { enemy: reach }, activate: action surge, weight: 9 }
+        - { when: { enemy: walk }, toward: enemy }
+        - { when: { enemy: reach }, attack: enemy }
+
+room:
+  version: 3
+  id: room-1
+  name: The Lieutenant Surges
+  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz }
+  scene:
+    version: 1
+    id: scene-1
+    name: The Lieutenant Surges
+    items: []
+    groups: []
+  room:
+    implicitRegionId: hall
+    walls:
+      - id: gate-wall
+        label: gate-wall
+        line: { start: { x: -9.5, z: 9.75 }, end: { x: 9.5, z: 9.75 } }
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: { width: 19, depth: 0.5, offsetX: 0, offsetZ: 0 }
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door:
+              id: gate-wall-door
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
+    regions:
+      - id: hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 3, q: [[-10, 4]] }
+          - { r: 4, q: [[-11, 3]] }
+          - { r: 5, q: [[-11, 3]] }
+          - { r: 6, q: [[-12, 2]] }
+      - id: yard
+        name: Yard
+        lighting: { intensity: 1 }
+        cells:
+          - { r: 7, q: [[-7, 0]] }
+          - { r: 8, q: [[-8, 0]] }
+          - { r: 9, q: [[-8, -1]] }
+          - { r: 10, q: [[-9, -1]] }
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: { q: -8, r: 4 }
+    monsterDeclarations:
+      - id: lieutenant
+        ref: dnd5e:monsters:gate-lieutenant
+        startingCell: { location: { q: -5, r: 4 }, facing: w }
+    doorBindings:
+      gate-wall-door: {}
+    monsterBindings:
+      lieutenant:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: lieutenant-policy
+        behaviorState: policy

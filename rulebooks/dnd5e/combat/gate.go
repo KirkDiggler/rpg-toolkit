@@ -66,6 +66,11 @@ type Ledger interface {
 	// BankCapacity ADDS keyed capacity rather than assigning it, so an action
 	// taken twice in one turn banks twice.
 	BankCapacity(key CapacityType, n int)
+
+	// GrantSlots ADDS per-turn slots, under the same contract as
+	// [Ledger.BankCapacity]. Only the three slots a turn holds can be given;
+	// the gate has already refused any other.
+	GrantSlots(slot coreCombat.ActionType, n int)
 }
 
 // CanPay reports whether this ledger could pay this profile right now, without
@@ -95,6 +100,10 @@ func CanPay(l Ledger, p *SpendProfile) bool {
 // a character's sheet that includes the dirty flag: nothing moved, so there is
 // nothing to save, and the sheet stays exactly as clean as it was found.
 //
+// What a profile GIVES — banked capacity and turn slots — lands after every
+// charge, in the same step. A profile which charges a slot and gives the same
+// slot is charged first (an action spent to surge needs an action to spend).
+//
 // What Pay does NOT do is decide whether the action should happen. It charges a
 // price. Whether there was a target, whether the machine can run, whether the
 // swing hits — all of that is somebody else's, and all of it happens after.
@@ -122,6 +131,13 @@ func Pay(l Ledger, p *SpendProfile) error {
 	// way whichever order the maps happen to iterate in.
 	for key, amount := range p.Grants {
 		l.BankCapacity(key, amount)
+	}
+
+	// Slots given land with them, and for the same reason: a profile that
+	// charges a slot and gives the same slot is charged first, so the gift
+	// never pays for the price that bought it.
+	for slot, amount := range p.GrantSlots {
+		l.GrantSlots(slot, amount)
 	}
 
 	return nil

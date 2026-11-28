@@ -39,11 +39,10 @@ const (
 	// Recovered on short rest. Used by: Second Wind.
 	SecondWind coreResources.ResourceKey = "second_wind"
 
-	// ActionSurge is the fighter's Action Surge feature pool, owned privately by
-	// the ActionSurge feature object rather than by Character.resources. The
-	// feature reports it through its non-mutating Status surface so a projection
-	// never has to serialize the feature's persistence JSON to read uses.
-	// Recovered on short rest. Used by: Action Surge.
+	// ActionSurge is the fighter's Action Surge pool, owned by the character in
+	// Character.resources like Second Wind's. Action Surge's description is paid
+	// from it at the gate, and the feature reports it through its non-mutating
+	// Status surface. Recovered on short rest. Used by: Action Surge.
 	ActionSurge coreResources.ResourceKey = "action_surge"
 
 	// Inspiration is the bard's Bardic Inspiration uses, equal to their

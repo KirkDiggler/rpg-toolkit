@@ -30,6 +30,9 @@ type AbilityWord struct {
 	Label string
 	// Values are the words its `with` takes, in order.
 	Values []AbilityValue
+	// Counted is true when an entry that uses this ability must also write
+	// `uses` or a `cost`: it charges no slot, so its count is its whole price.
+	Counted bool
 }
 
 // AbilityWordsInput asks for the named abilities and their values. It has no
@@ -42,32 +45,21 @@ type AbilityWordsOutput struct {
 	Words []AbilityWord
 }
 
-// abilityWordTable holds what an author may write for each named ability. It
-// is written beside the decode it describes: a bound here that decodeParameters
-// also enforces is the same constant.
-var abilityWordTable = map[string]AbilityWord{
-	"second wind": {
-		Name:  "second wind",
-		Label: "Second Wind",
-		Values: []AbilityValue{{
-			Word:     "level",
-			Required: true,
-			Min:      secondWindMinLevel,
-			NoMax:    true,
-			Label:    "regains 1d10 hit points plus {value}",
-		}},
-	},
-}
-
 // AbilityWords returns every named ability with the values its `with` takes,
 // in the order [NamedAbilities] lists them. Each call returns its own copy.
 func AbilityWords(_ *AbilityWordsInput) *AbilityWordsOutput {
 	out := &AbilityWordsOutput{}
 	for _, name := range NamedAbilities() {
-		word := abilityWordTable[name]
-		word.Name = name
-		word.Values = append([]AbilityValue(nil), word.Values...)
-		out.Words = append(out.Words, word)
+		entry, ok := namedAbilityTable.byWord(name)
+		if !ok {
+			continue
+		}
+		out.Words = append(out.Words, AbilityWord{
+			Name:    entry.word,
+			Label:   entry.label,
+			Values:  append([]AbilityValue(nil), entry.values...),
+			Counted: entry.counted,
+		})
 	}
 	return out
 }

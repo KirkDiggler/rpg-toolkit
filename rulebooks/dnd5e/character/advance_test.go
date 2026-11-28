@@ -177,27 +177,22 @@ func (s *AdvanceTestSuite) TestActionSurgeArrivesUsableAndIsSpendable() {
 	surge := char.GetFeature(refs.Features.ActionSurge().ID)
 	s.Require().NotNil(surge, "the feature is on the sheet by its own id")
 
-	status, err := surge.Status(&features.StatusInput{})
+	status, err := surge.Status(&features.StatusInput{Owner: char})
 	s.Require().NoError(err)
 	s.Require().NotNil(status.Status.Resource)
 	s.Equal(1, status.Status.Resource.Current, "one use, unspent")
 	s.Equal(1, status.Status.Resource.Maximum)
 
-	// Spend it: a turn is seeded, the feature grants the extra action, and the
-	// use is gone.
+	// Spend it: a turn is seeded, her description is paid at the gate, and the
+	// use is gone from the shared pool and the turn has its second action.
 	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
 
-	economy := char.toToolkitActionEconomy()
-	s.Require().NoError(surge.Activate(s.ctx, char, features.FeatureInput{
-		Bus:           s.bus,
-		ActionEconomy: economy,
-	}))
-	s.Equal(2, economy.ActionsRemaining, "Action Surge grants a second action")
+	s.Require().NoError(useActionSurgeFromItsDescription(s.T(), char))
+	s.Equal(2, char.actionEconomy.ActionsRemaining, "Action Surge grants a second action")
 
-	spent, err := surge.Status(&features.StatusInput{})
-	s.Require().NoError(err)
-	s.Equal(0, spent.Status.Resource.Current, "the use was spent")
+	current, _, _ := char.ResourceStatus(resources.ActionSurge)
+	s.Equal(0, current, "the use was spent")
 }
 
 // --- Design §9.1: the record persists and round-trips ---
@@ -247,12 +242,7 @@ func (s *AdvanceTestSuite) TestASpentActionSurgeReloadsSpent() {
 
 	_, err = char.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	surge := char.GetFeature(refs.Features.ActionSurge().ID)
-	s.Require().NotNil(surge)
-	s.Require().NoError(surge.Activate(s.ctx, char, features.FeatureInput{
-		Bus:           s.bus,
-		ActionEconomy: char.toToolkitActionEconomy(),
-	}))
+	s.Require().NoError(useActionSurgeFromItsDescription(s.T(), char))
 
 	raw, err := json.Marshal(mustToData(s.T(), char))
 	s.Require().NoError(err)
@@ -264,7 +254,7 @@ func (s *AdvanceTestSuite) TestASpentActionSurgeReloadsSpent() {
 
 	reloaded := loaded.GetFeature(refs.Features.ActionSurge().ID)
 	s.Require().NotNil(reloaded)
-	status, err := reloaded.Status(&features.StatusInput{})
+	status, err := reloaded.Status(&features.StatusInput{Owner: loaded})
 	s.Require().NoError(err)
 	s.Equal(0, status.Status.Resource.Current, "the spend persisted")
 	s.Equal(1, status.Status.Resource.Maximum)
@@ -665,7 +655,7 @@ func (s *AdvanceTestSuite) TestALoadedSheetWithNoBusCanStillAdvance() {
 
 	surge := inert.GetFeature(refs.Features.ActionSurge().ID)
 	s.Require().NotNil(surge)
-	status, err := surge.Status(&features.StatusInput{})
+	status, err := surge.Status(&features.StatusInput{Owner: inert})
 	s.Require().NoError(err)
 	s.Equal(1, status.Status.Resource.Current)
 }

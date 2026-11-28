@@ -2023,9 +2023,21 @@ func buildClassResources(
 	case classes.Fighter:
 		// Second Wind uses - the number the class grant carries, recovered on
 		// a short rest like Ki. The Second Wind feature spends from this pool.
-		if uses := secondWindGrantUses(level); uses > 0 {
+		if uses := fighterGrantUses(level, refs.Features.SecondWind()); uses > 0 {
 			built[resources.SecondWind] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
 				ID:          string(resources.SecondWind),
+				Maximum:     uses,
+				CharacterID: char.id,
+				ResetType:   coreResources.ResetShortRest,
+			})
+		}
+
+		// Action Surge uses - the number its class grant carries (level 2 and
+		// after), recovered on a short rest. A level-1 fighter has no such
+		// pool. The Action Surge description is paid from it at the gate.
+		if uses := fighterGrantUses(level, refs.Features.ActionSurge()); uses > 0 {
+			built[resources.ActionSurge] = combat.NewRecoverableResource(combat.RecoverableResourceConfig{
+				ID:          string(resources.ActionSurge),
 				Maximum:     uses,
 				CharacterID: char.id,
 				ResetType:   coreResources.ResetShortRest,
@@ -2093,13 +2105,13 @@ func buildClassResources(
 	return built
 }
 
-// secondWindGrantUses reads the uses the fighter's Second Wind grant carries
+// fighterGrantUses reads the uses the fighter's grant of this feature carries
 // at this class level, zero when the class level holds no such grant. A grant
-// whose config names no uses means one, as the feature's factory always did.
-func secondWindGrantUses(classLevel int) int {
+// whose config names no uses means one, as the features' factories always did.
+func fighterGrantUses(classLevel int, feature *core.Ref) int {
 	for _, grant := range classes.GetGrantsForLevel(classes.Fighter, classLevel) {
 		for _, ref := range grant.Features {
-			if ref.Ref != refs.Features.SecondWind().String() {
+			if ref.Ref != feature.String() {
 				continue
 			}
 			var cfg struct {

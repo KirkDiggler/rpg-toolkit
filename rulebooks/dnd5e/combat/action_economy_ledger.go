@@ -167,3 +167,24 @@ func (ae *ActionEconomy) PoolLeft(_ coreResources.ResourceKey) int {
 // pools grows them here rather than growing an error path.
 func (ae *ActionEconomy) SpendPool(_ coreResources.ResourceKey, _ int) {
 }
+
+// GrantSlots adds per-turn slots: the given slot's remaining count goes up by
+// n. It adds rather than assigns, so a slot given twice in a turn is given
+// twice. [ActionEconomy.GrantExtraAction] and its sibling are left as they
+// were; the old Action Surge feature still calls them.
+func (ae *ActionEconomy) GrantSlots(slot coreCombat.ActionType, n int) {
+	if ae == nil {
+		return
+	}
+
+	switch slot {
+	case coreCombat.ActionStandard:
+		ae.ActionsRemaining += n
+	case coreCombat.ActionBonus:
+		ae.BonusActionsRemaining += n
+	case coreCombat.ActionReaction:
+		ae.ReactionsRemaining += n
+	case coreCombat.ActionFree, coreCombat.ActionMovement:
+	default:
+	}
+}
