@@ -20,6 +20,10 @@ One line per entry. Every line ends with a link.
 - Before the change, tests 1 to 4 failed on real assertions (ActionType "" not "free", CanUse false, reason "must cost exactly one slot"); tests 5 and 7 passed as expected — [rpg-project#1263](https://github.com/KirkDiggler/rpg-project/issues/1263).
 - Suite before (build, vet, `go test ./...`) passed at `17d3acbd` — [rpg-project#1263 first comment](https://github.com/KirkDiggler/rpg-project/issues/1263#issuecomment-7231445290).
 
+- Proof (a), the old refusal restored (any cost other than exactly one slot refused): the four tests for offered-free, needs-no-action, needs-the-count and paying all failed — [rpg-project#1263](https://github.com/KirkDiggler/rpg-project/issues/1263).
+- Proof (b), a free row given the standard action's check: the offered-free test failed (`expected "free" actual "action"`) and the needs-neither-action test failed (`Should be true`) — [rpg-project#1263](https://github.com/KirkDiggler/rpg-project/issues/1263).
+- Suite at the final head: build, vet, `go test ./... -count=1 -timeout 20m` and `golangci-lint run ./...` all pass — [rpg-project#1263](https://github.com/KirkDiggler/rpg-project/issues/1263).
+
 ## Mistaken
 
 - none observed — [rpg-project#1263](https://github.com/KirkDiggler/rpg-project/issues/1263).
