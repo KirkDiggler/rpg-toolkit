@@ -62,7 +62,7 @@ func decodeRageParameters(raw json.RawMessage) (conditions.RagingBindings, error
 	}
 	var params RageParameters
 	if err := jsonv2.Unmarshal(raw, &params, jsonv2.RejectUnknownMembers(true)); err != nil {
-		return none, fmt.Errorf("rage parameters: %w", err)
+		return none, fmt.Errorf("rage takes only damage_bonus: %w", err)
 	}
 	written := bytes.TrimSpace(params.DamageBonus)
 	if len(written) == 0 {
