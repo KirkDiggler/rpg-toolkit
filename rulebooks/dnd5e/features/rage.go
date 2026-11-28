@@ -102,7 +102,7 @@ func (r *Rage) GetType() core.EntityType {
 // does not ask for a charge: that is the gate's, and the row's CanActivate.
 func (r *Rage) refuseOwner(owner core.Entity) (int, error) {
 	if err := refuseWhileHolding(&refuseWhileHoldingInput{
-		Owner: owner, Ref: refs.Conditions.Raging(), Reason: "already raging",
+		Owner: owner, Ref: refs.Conditions.Raging(), Reason: heldStatusReason(*refs.Conditions.Raging()),
 	}); err != nil {
 		return 0, err
 	}

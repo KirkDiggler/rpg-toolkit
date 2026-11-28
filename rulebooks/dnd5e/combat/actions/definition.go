@@ -50,6 +50,17 @@ func (d Definition) OnlyItsPrice() bool {
 		d.Cost != nil && len(d.Cost.GrantSlots) > 0
 }
 
+// StatusOnUser returns the status this description puts on its user, and
+// whether it puts one: its effect lands on its user and is a status. Whoever
+// asks "does she already hold it" asks here for which status, so that is
+// stated once.
+func (d Definition) StatusOnUser() (core.Ref, bool) {
+	if d.Effect == nil || d.Effect.To != EffectSelf || d.Effect.Condition == nil {
+		return core.Ref{}, false
+	}
+	return d.Effect.Condition.Ref, true
+}
+
 // Validate reports whether the definition has complete identity, a valid
 // optional price, and exactly one valid profile, or no profile when the
 // description is only its price ([Definition.OnlyItsPrice]). Two or more
