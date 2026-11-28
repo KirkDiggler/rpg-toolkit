@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -33,7 +32,9 @@ func ragingForTest(t testing.TB, member string) dndevents.ConditionBehavior {
 // not a test publishing the legacy instruction-like DamageReceived event.
 func (s *ActivationTestSuite) TestNativeDamageSustainsRagingAcrossReload() {
 	wolf := monsters.NewWolf(wolfID).ToData()
-	activated, err := s.run(&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()}, actionWorld(s.T(), 2), []Participant{{Character: s.barbarian(2)}, {Monster: wolf}})
+	data := s.barbarian(2)
+	activated, err := s.ragesAtTheDoorIn(events.NewEventBus(), actionWorld(s.T(), 2),
+		[]Participant{{Character: data}, {Monster: wolf}}, s.herRageDescription(data), 1)
 	s.Require().NoError(err)
 	boundary, err := NewBoundary(&BoundaryInput{Crossed: []encounter.Boundary{{Kind: encounter.TurnEnded, Subject: heroID, Round: 4}}})
 	s.Require().NoError(err)
@@ -78,7 +79,7 @@ func (s *ActivationTestSuite) TestNativeDamageSustainsRagingAcrossReload() {
 }
 
 func (s *ActivationTestSuite) TestRagingCompositionSurvivesInteractionReload() {
-	activated, err := s.run(&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()}, s.world(), []Participant{{Character: s.barbarian(2)}})
+	activated, err := s.ragesFromHerSheet(s.barbarian(2))
 	s.Require().NoError(err)
 	sheet := dirty(activated, heroID)
 	s.Require().NotNil(sheet)
