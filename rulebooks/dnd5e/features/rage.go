@@ -11,8 +11,9 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -91,22 +92,77 @@ func (r *Rage) GetType() core.EntityType {
 	return EntityTypeFeature
 }
 
-// CanActivate implements core.Action[FeatureInput]. It refuses a barbarian
-// who is already raging — a second Rage would put a second Raging condition on
-// the sheet and spend a charge on nothing — and one with no charges left. It
-// runs on every Afford with an empty FeatureInput, so its refusal is also the
-// reason the Rage row reads unavailable. An owner whose conditions cannot be
-// read is refused: not knowing is not "not raging". So is an owner that cannot
-// answer its barbarian level, or holds none: whether rages are unlimited is
-// asked of the owner, never assumed.
-func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+// refuseOwner refuses what Rage asks about WHO the owner is and WHAT she
+// holds, and returns her barbarian level: a barbarian already raging is refused
+// (a second Rage would put a second Raging condition on the sheet), and so is
+// an owner whose conditions cannot be read, since not knowing is not "not
+// raging". So is an owner that cannot answer its barbarian level, or holds
+// none: whether rages are unlimited is asked of the owner, never assumed. Both
+// [Rage.CanActivate] and [Rage.Definition] ask it, so the two never differ. It
+// does not ask for a charge: that is the gate's, and the row's CanActivate.
+func (r *Rage) refuseOwner(owner core.Entity) (int, error) {
 	if err := refuseWhileHolding(&refuseWhileHoldingInput{
 		Owner: owner, Ref: refs.Conditions.Raging(), Reason: "already raging",
 	}); err != nil {
-		return err
+		return 0, err
 	}
+	return ownerClassLevel(owner, classes.Barbarian, "rage")
+}
 
-	level, err := ownerClassLevel(owner, classes.Barbarian, "rage")
+// Definition describes Rage as data, with this owner's numbers: a bonus action
+// and one rage charge (none at barbarian 20, whose rages are unlimited), to put
+// the raging status on its user. The status's damage bonus is read from her
+// barbarian level when she strikes, so no number is written here. This is the
+// one way to use it: the resolver builds the status, pays the cost at the gate
+// and publishes the status, and [Rage.Activate] refuses. A barbarian already
+// raging, and an owner with no barbarian level, are refused as
+// [Rage.CanActivate] refuses them; an empty pool is not refused here, the gate
+// refuses that payment.
+func (r *Rage) Definition(owner core.Entity) (*actions.Definition, error) {
+	level, err := r.refuseOwner(owner)
+	if err != nil {
+		return nil, err
+	}
+	parameters, err := json.Marshal(conditions.RagingBindings{
+		DamageBonus: conditions.RagingDamageBonus{BarbarianLevel: true},
+	})
+	if err != nil {
+		return nil, rpgerr.Wrapf(err, "failed to encode Rage bindings")
+	}
+	cost := &dnd5eCombat.SpendProfile{Slots: map[combat.ActionType]int{combat.ActionBonus: 1}}
+	if level < unlimitedRageLevel {
+		cost.Pools = map[coreResources.ResourceKey]int{resources.RageCharges: 1}
+	}
+	name := r.name
+	if name == "" {
+		name = "Rage"
+	}
+	definition := &actions.Definition{
+		Ref:         *refs.Features.Rage(),
+		Name:        name,
+		Description: r.Description(),
+		Cost:        cost,
+		Effect: &actions.EffectProfile{
+			To: actions.EffectSelf,
+			Condition: &actions.ConditionApplication{
+				Ref:        *refs.Conditions.Raging(),
+				Parameters: parameters,
+			},
+		},
+	}
+	if err := definition.Validate(); err != nil {
+		return nil, rpgerr.Wrapf(err, "rage description is invalid")
+	}
+	return definition, nil
+}
+
+// CanActivate implements core.Action[FeatureInput]. It refuses what
+// [Rage.Definition] refuses (a barbarian already raging, an owner with no
+// barbarian level) and, for a barbarian below level 20, one with no charges
+// left. It runs on every Afford with an empty FeatureInput, so its refusal is
+// also the reason the Rage row reads unavailable.
+func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+	level, err := r.refuseOwner(owner)
 	if err != nil {
 		return err
 	}
@@ -129,56 +185,12 @@ func (r *Rage) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput)
 	return nil
 }
 
-// Activate implements core.Action[FeatureInput]
-func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-	// Check if we can activate
-	if err := r.CanActivate(ctx, owner, input); err != nil {
-		return err
-	}
-
-	level, err := ownerClassLevel(owner, classes.Barbarian, "rage")
-	if err != nil {
-		return err
-	}
-	// Prepare through the shared rulebook creator before any construction
-	// refusal can spend a class-owned charge. Delivery retains its existing boundary.
-	config, err := json.Marshal(conditions.RagingBindings{DamageBonus: conditions.RagingDamageBonus{BarbarianLevel: true}})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to encode Rage bindings")
-	}
-	prepared, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
-		Ref: refs.Conditions.Raging().String(), MemberID: owner.GetID(), Config: config,
-		Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: owner.GetID()},
-	})
-	if err != nil {
-		return rpgerr.Wrapf(err, "failed to prepare Raging")
-	}
-
-	// Consume a use (unless level 20)
-	if level < unlimitedRageLevel {
-		accessor, ok := owner.(coreResources.ResourceAccessor)
-		if !ok {
-			return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
-		}
-		if err := accessor.UseResource(resources.RageCharges, 1); err != nil {
-			return rpgerr.Wrapf(err, "failed to use rage")
-		}
-	}
-
-	// Publish condition applied event with the actual condition
-	if input.Bus != nil {
-		topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
-		err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
-			Target:    owner,
-			Source:    dnd5eEvents.ConditionSourceFeature,
-			Condition: prepared.Condition,
-		})
-		if err != nil {
-			return rpgerr.Wrapf(err, "failed to publish rage condition")
-		}
-	}
-
-	return nil
+// Activate implements core.Action[FeatureInput] by refusing: Rage is used from
+// its description. Build the action with [Rage.Definition]; the resolver builds
+// the status and pays its cost at the gate. Nothing here builds, spends or
+// publishes.
+func (r *Rage) Activate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+	return rpgerr.Wrapf(ErrUsedFromItsDescription, "rage")
 }
 
 // loadJSON loads rage state from JSON
