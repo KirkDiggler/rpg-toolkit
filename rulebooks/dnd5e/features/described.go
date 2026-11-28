@@ -25,3 +25,4 @@ var ErrUsedFromItsDescription = errors.New(
 
 var _ Described = (*SecondWind)(nil)
 var _ Described = (*ActionSurge)(nil)
+var _ Described = (*Rage)(nil)

@@ -18,12 +18,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
-// RageWhileRagingSuite activates Rage through a loaded barbarian's own door,
+// RageWhileRagingSuite uses Rage from its description on a loaded barbarian,
 // the path session's Activate drives, and reads availability the way Afford
 // does.
 type RageWhileRagingSuite struct {
 	suite.Suite
 	ctx context.Context
+	bus events.EventBus
 }
 
 func TestRageWhileRagingSuite(t *testing.T) { suite.Run(t, new(RageWhileRagingSuite)) }
@@ -36,7 +37,8 @@ func (s *RageWhileRagingSuite) barbarian() *Character {
 	data := fullSheet(&s.Suite)
 	data.Conditions = nil
 	data.ActionEconomy.BonusActionsRemaining = 2
-	char, err := LoadFromData(s.ctx, data, events.NewEventBus())
+	s.bus = events.NewEventBus()
+	char, err := LoadFromData(s.ctx, data, s.bus)
 	s.Require().NoError(err)
 	return char
 }
@@ -64,18 +66,15 @@ func (s *RageWhileRagingSuite) rageAvailability(char *Character) AvailableAbilit
 func (s *RageWhileRagingSuite) TestActivatingRageWhileRagingIsRefused() {
 	char := s.barbarian()
 
-	first, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
-	s.Require().NoError(err)
-	s.Require().True(first.Success, first.Error)
+	s.Require().NoError(useRageFromItsDescription(s.ctx, s.T(), char, s.bus))
 	s.Require().Equal(1, s.ragingCount(char))
 	charges := char.GetResource(resources.RageCharges).Current()
 	bonus := char.GetActionEconomy().BonusActionsRemaining
 
-	second, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
+	second := useRageFromItsDescription(s.ctx, s.T(), char, s.bus)
 
-	s.Require().NoError(err)
-	s.False(second.Success)
-	s.Contains(second.Error, "already raging")
+	s.Require().Error(second)
+	s.Contains(second.Error(), "already raging")
 	s.Equal(1, s.ragingCount(char), "one Raging condition on the sheet")
 	s.Equal(charges, char.GetResource(resources.RageCharges).Current(), "no charge spent")
 	s.Equal(bonus, char.GetActionEconomy().BonusActionsRemaining, "no bonus action spent")
@@ -84,9 +83,7 @@ func (s *RageWhileRagingSuite) TestActivatingRageWhileRagingIsRefused() {
 func (s *RageWhileRagingSuite) TestNativeFirstTurnIsSavedThroughTheSharedCreator() {
 	char := s.barbarian()
 	before := char.GetResource(resources.RageCharges).Current()
-	activated, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
-	s.Require().NoError(err)
-	s.Require().True(activated.Success, activated.Error)
+	s.Require().NoError(useRageFromItsDescription(s.ctx, s.T(), char, s.bus))
 	s.Equal(before-1, char.GetResource(resources.RageCharges).Current())
 	data, err := char.ToData()
 	s.Require().NoError(err)
@@ -123,9 +120,7 @@ func (s *RageWhileRagingSuite) TestRageReadsUnavailableWhileRaging() {
 	char := s.barbarian()
 	s.True(s.rageAvailability(char).CanUse, "a barbarian not raging may rage")
 
-	out, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
-	s.Require().NoError(err)
-	s.Require().True(out.Success, out.Error)
+	s.Require().NoError(useRageFromItsDescription(s.ctx, s.T(), char, s.bus))
 
 	rage := s.rageAvailability(char)
 	s.False(rage.CanUse, "Rage is not offered while raging")

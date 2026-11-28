@@ -99,9 +99,9 @@ func (s *RageTestSuite) TestCanActivate() {
 	err := s.rage.CanActivate(s.ctx, owner, FeatureInput{})
 	s.NoError(err)
 
-	// Use up all rages
+	// Use up all rages, each from its description
 	for i := 0; i < 3; i++ {
-		err = s.rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+		_, err = useRageFromItsDescription(s.ctx, s.T(), s.rage, owner, s.bus)
 		s.NoError(err)
 	}
 
@@ -109,45 +109,6 @@ func (s *RageTestSuite) TestCanActivate() {
 	err = s.rage.CanActivate(s.ctx, owner, FeatureInput{})
 	s.Error(err)
 	s.Contains(err.Error(), "no rage uses remaining")
-}
-
-func (s *RageTestSuite) TestActivatePublishesCondition() {
-	owner := newStubEntityWithRage("barbarian-1", 3)
-
-	// Track if condition was published
-	var receivedEvent *dnd5eEvents.ConditionAppliedEvent
-	topic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
-	_, err := topic.Subscribe(s.ctx, func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-		receivedEvent = &event
-		return nil
-	})
-	s.NoError(err)
-
-	// Activate rage
-	err = s.rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
-	s.NoError(err)
-
-	// Check that event was published
-	s.NotNil(receivedEvent)
-	s.Equal(owner, receivedEvent.Target)
-	s.Equal(refs.Conditions.Raging(), receivedEvent.Condition.Ref())
-	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
-
-	// Check condition was created properly
-	ragingCond, ok := receivedEvent.Condition.(*conditions.ComposedCondition)
-	s.Require().True(ok, "native Rage must use the shared composed creator")
-	raw, err := ragingCond.ToJSON()
-	s.Require().NoError(err)
-	var data conditions.ComposedData
-	s.Require().NoError(json.Unmarshal(raw, &data))
-	s.Equal("barbarian-1", data.MemberID)
-	s.Require().NotNil(data.Origin)
-	s.Equal(*refs.Features.Rage(), data.Origin.Ref)
-	s.Equal("barbarian-1", data.Origin.EntityID)
-	s.JSONEq(`{"damage_bonus":{"barbarian_level":true}}`, string(data.Bindings), "persist the strategy, never a cached class level or computed bonus")
-	s.Require().NotNil(data.Runtime)
-	s.NotContains(data.Runtime.Bag, "level")
-	s.NotContains(data.Runtime.Bag, "damage_bonus")
 }
 
 // TestRageRefusesAnOwnerWithNoBarbarianLevels: whether rages are unlimited
@@ -161,24 +122,24 @@ func (s *RageTestSuite) TestRageRefusesAnOwnerWithNoBarbarianLevels() {
 		owner := newStubEntityWithRage("barbarian-1", 3)
 		owner.levels = levels
 		s.Error(s.rage.CanActivate(s.ctx, owner, FeatureInput{}), name)
-		s.Error(s.rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}), name)
+		_, err := useRageFromItsDescription(s.ctx, s.T(), s.rage, owner, s.bus)
+		s.Error(err, name)
 		s.Equal(3, owner.resources[resources.RageCharges], "%s: no charge spent", name)
 	}
 }
 
+// TestUnlimitedRagesAtLevel20 asks the row, never the description's cost: a
+// level 20 barbarian with no pool at all is always offered Rage. What the cost
+// says at 20, and that she rages through it, live in RageDescribedSuite.
 func (s *RageTestSuite) TestUnlimitedRagesAtLevel20() {
-	// Level 20 barbarians have unlimited rages - no resources needed
 	owner := &StubEntity{id: "barbarian-1", levels: map[classes.Class]int{classes.Barbarian: 20}}
-	rage20 := newRageForTest("epic-rage")
 
-	// Should be able to activate many times without consuming resources
 	for i := 0; i < 10; i++ {
-		err := rage20.CanActivate(s.ctx, owner, FeatureInput{})
-		s.NoError(err, "Level 20 barbarian should have unlimited rages")
-
-		err = rage20.Activate(s.ctx, owner, FeatureInput{Bus: s.bus})
+		s.NoError(s.rage.CanActivate(s.ctx, owner, FeatureInput{}), "Level 20 barbarian should have unlimited rages")
+		_, err := useRageFromItsDescription(s.ctx, s.T(), s.rage, owner, s.bus)
 		s.NoError(err)
 	}
+	s.Nil(owner.resources, "no resource was needed")
 }
 
 func (s *RageTestSuite) TestLoadJSON() {
@@ -233,7 +194,9 @@ func (s *RageTestSuite) TestRageRefusedWhileAlreadyRaging() {
 		_, subErr := dnd5eEvents.ConditionAppliedTopic.On(s.bus).Subscribe(s.ctx,
 			func(context.Context, dnd5eEvents.ConditionAppliedEvent) error { published++; return nil })
 		s.Require().NoError(subErr)
-		s.Require().Error(rage.Activate(s.ctx, owner, FeatureInput{Bus: s.bus}))
+		_, useErr := useRageFromItsDescription(s.ctx, s.T(), rage, owner, s.bus)
+		s.Require().Error(useErr)
+		s.Contains(useErr.Error(), "already raging")
 		s.Equal(chargesBefore, owner.resources[resources.RageCharges], "a refused rage spends no charge")
 		s.Zero(published, "a refused rage applies no condition")
 	}

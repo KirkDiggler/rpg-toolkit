@@ -57,8 +57,9 @@ func Example() {
 		return
 	}
 
-	// Player activates rage - barbarian provides its bus
-	err = feature.Activate(ctx, barbarian, features.FeatureInput{Bus: bus})
+	// Player activates rage: it is used from its description, so the door
+	// builds the status, pays the cost and announces it on the barbarian's bus
+	err = rageFromItsDescription(ctx, feature, barbarian, bus)
 	if err != nil {
 		fmt.Printf("Failed to rage: %v\n", err)
 		return
