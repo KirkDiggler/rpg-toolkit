@@ -35,6 +35,12 @@ type namedAbility struct {
 	// check decodes and judges the giver's values, strictly. An ability that
 	// takes none refuses any.
 	check func(raw json.RawMessage) error
+	// counted is true for an ability that only gives: its price charges no
+	// slot, so with no count behind it the ability would be free without end.
+	// [DescribeFromRef] refuses a counted ability that is given no pools, and
+	// a kit refuses to write or load one with no pool to pay from. Second
+	// Wind is not counted: it charges a bonus action.
+	counted bool
 	// describe builds the description the gate runs. The giver and the pools
 	// have already been judged by the shared checks when it is called.
 	describe func(in *describeInput) (*actions.Definition, error)
@@ -59,6 +65,7 @@ type abilityTable struct {
 // here; every function that asks for an ability by word or by ref reads it.
 var namedAbilityTable = &abilityTable{entries: []*namedAbility{
 	&secondWindAbility,
+	&actionSurgeAbility,
 }}
 
 // add appends an entry and returns the function that takes it out again, for
@@ -90,10 +97,10 @@ func (t *abilityTable) byRef(ref core.Ref) (*namedAbility, bool) {
 
 // DescribeFromRefInput asks for a named ability with the values its giver supplies.
 type DescribeFromRefInput struct {
-	// Ref names the ability. Only refs.Features.SecondWind() is known in this version.
+	// Ref names the ability: one of the refs [NamedAbilities] lists by word.
 	Ref core.Ref
 	// Parameters are the ability's values as JSON, decoded strictly.
-	// Second Wind takes {"level": n}, n at least 1.
+	// Second Wind takes {"level": n}, n at least 1; Action Surge takes none.
 	Parameters json.RawMessage
 	// Giver is who supplies the values. It is named on the roll's modifier:
 	// a class ("Fighter level"), an item ("Ring level").
@@ -126,6 +133,9 @@ func DescribeFromRef(in *DescribeFromRefInput) (*actions.Definition, error) {
 	pools, err := copyPools(entry.word, in.Pools)
 	if err != nil {
 		return nil, err
+	}
+	if entry.counted && len(pools) == 0 {
+		return nil, fmt.Errorf("%s must be paid from a count: its giver gives it uses or a cost", entry.word)
 	}
 	return entry.describe(&describeInput{parameters: in.Parameters, giver: in.Giver, pools: pools})
 }
@@ -183,6 +193,13 @@ func copyPools(word string, in map[coreResources.ResourceKey]int) (map[coreResou
 		pools = nil
 	}
 	return pools, nil
+}
+
+// MustBeCounted reports whether the named ability charges no slot, so that its
+// giver must pay it from a count. It is false for a ref no entry knows.
+func MustBeCounted(ref core.Ref) bool {
+	entry, ok := namedAbilityTable.byRef(ref)
+	return ok && entry.counted
 }
 
 // NamedAbility returns the ref of a described ability by the plain name an

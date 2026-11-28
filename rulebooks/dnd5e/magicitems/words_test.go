@@ -64,7 +64,7 @@ var unchangedGolden = map[string]golden{
 	"bad slot":             {refused: true, want: "item \"it\": `slot` is \"gloves\"; it is one of cloak, amulet, ring, belt, helm, boots"},
 	"no slot":              {refused: true, want: "item \"it\": the item has no `slot`; it is one of cloak, amulet, ring, belt, helm, boots"},
 	"bad rest":             {refused: true, want: "item \"it\": `refills.on` has \"dawn\"; it is one of short rest, long rest"},
-	"bad use":              {refused: true, want: "item \"it\": lets[0]: `use` is \"fireball\"; it is one of second wind"},
+	"bad use":              {refused: true, want: "item \"it\": lets[0]: `use` is \"fireball\"; it is one of action surge, second wind"},
 	"bad unique":           {refused: true, want: "item \"it\": `unique` is true or false"},
 	"max zero":             {refused: true, want: "item \"it\": `charges.max` is 0; it is a whole number from 1 to 1000"},
 	"max over":             {refused: true, want: "item \"it\": `charges.max` is 1001; it is a whole number from 1 to 1000"},
