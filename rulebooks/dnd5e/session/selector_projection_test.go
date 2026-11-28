@@ -130,6 +130,7 @@ var selectorMechanicalFields = []string{
 	"combat.SpellCasting.Time",
 	"combat.SpendProfile.Capacity",
 	"combat.SpendProfile.Grants",
+	"combat.SpendProfile.GrantSlots",
 	"combat.SpendProfile.Pools",
 	"combat.SpendProfile.Requires",
 	"combat.SpendProfile.Slots",
