@@ -11,9 +11,8 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -124,32 +123,24 @@ func (r *Rage) Definition(owner core.Entity) (*actions.Definition, error) {
 	if err != nil {
 		return nil, err
 	}
-	parameters, err := json.Marshal(conditions.RagingBindings{
-		DamageBonus: conditions.RagingDamageBonus{BarbarianLevel: true},
+	var pools map[coreResources.ResourceKey]int
+	if level < unlimitedRageLevel {
+		pools = map[coreResources.ResourceKey]int{resources.RageCharges: 1}
+	}
+	definition, err := DescribeFromRef(&DescribeFromRefInput{
+		Ref:        *refs.Features.Rage(),
+		Parameters: json.RawMessage(`{"damage_bonus": "barbarian level"}`),
+		Giver: dnd5eEvents.RollSource{
+			Ref: refs.Classes.Barbarian(), Name: "Barbarian", Label: "Barbarian", SourceID: owner.GetID(),
+		},
+		Pools: pools,
 	})
 	if err != nil {
-		return nil, rpgerr.Wrapf(err, "failed to encode Rage bindings")
+		return nil, err
 	}
-	cost := &dnd5eCombat.SpendProfile{Slots: map[combat.ActionType]int{combat.ActionBonus: 1}}
-	if level < unlimitedRageLevel {
-		cost.Pools = map[coreResources.ResourceKey]int{resources.RageCharges: 1}
-	}
-	name := r.name
-	if name == "" {
-		name = "Rage"
-	}
-	definition := &actions.Definition{
-		Ref:         *refs.Features.Rage(),
-		Name:        name,
-		Description: r.Description(),
-		Cost:        cost,
-		Effect: &actions.EffectProfile{
-			To: actions.EffectSelf,
-			Condition: &actions.ConditionApplication{
-				Ref:        *refs.Conditions.Raging(),
-				Parameters: parameters,
-			},
-		},
+	definition.Description = r.Description()
+	if r.name != "" {
+		definition.Name = r.name
 	}
 	if err := definition.Validate(); err != nil {
 		return nil, rpgerr.Wrapf(err, "rage description is invalid")
