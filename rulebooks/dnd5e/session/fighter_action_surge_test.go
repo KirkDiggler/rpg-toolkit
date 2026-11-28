@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -137,7 +138,7 @@ func TestTheFighterArrivesWithHerActionSurgeAtLevelTwo(t *testing.T) {
 
 	alice := levelTwoFighter(t)
 	require.Equal(t, character.RecoverableResourceData{
-		Current: 1, Maximum: 1, ResetType: alice.Resources[resources.ActionSurge].ResetType,
+		Current: 1, Maximum: 1, ResetType: coreResources.ResetShortRest,
 	}, alice.Resources[resources.ActionSurge], "the level hands her the pool full: 1 of 1")
 	require.Len(t, alice.Features, 1, "and the feature")
 
