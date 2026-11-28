@@ -104,6 +104,8 @@ var allowedInterfaceFields = map[string]string{
 	"World.Reserve.Recipe.States.Transitions.Do.Set.Value":                                 "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":                                      "sealed in saves; same declarative DC as a direct attack rider",
 	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC":                                    "sealed in saves; same declarative DC as a direct attack rider",
+	"Actions.Effect.Condition.Save.DC":                                                     "sealed in saves; and always absent: an effect on its user is not saved against (actions.EffectProfile.Validate refuses a Save)",
+	"DirtyMonsters.Actions.Effect.Condition.Save.DC":                                       "sealed in saves; and always absent: an effect on its user is not saved against (actions.EffectProfile.Validate refuses a Save)",
 	// Preflight's refusal causes are prose — they exist to be read by a person
 	// deciding which offer row is dead and why. A sheet smuggled behind an
 	// error would have to survive the entry's own construction, and Preflight
