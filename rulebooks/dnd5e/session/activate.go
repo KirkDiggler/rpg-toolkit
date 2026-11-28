@@ -99,16 +99,16 @@ type ActivateOutput struct {
 //
 // # Which activations pay at the door
 //
-// An ability whose feature carries a description (the sheet answers
-// AbilityDefinition: Second Wind is the only one) is built with
+// A feature that carries a description (the sheet answers AbilityDefinition:
+// today Second Wind and the fighter's Action Surge) is built with
 // [resolution.NewAction] and resolved with the description's own cost, so it
-// is paid at the door like every other verb here. Every other feature (Rage,
-// Action Surge, the combat abilities) still goes through
-// [resolution.NewActivation] with [resolution.Input.Cost] nil, deliberately:
-// the ability spends its own slot, so a Cost passed alongside would charge the
-// same ledger twice and the second charge would look exactly like the first.
-// Those are the executing activations that do not pay at the door, and they
-// are not free — see [resolution.NewActivation].
+// is paid at the door like every other verb here. Every other feature (Rage
+// and the combat abilities) still goes through [resolution.NewActivation] with
+// [resolution.Input.Cost] nil, deliberately: the ability spends its own slot,
+// so a Cost passed alongside would charge the same ledger twice and the
+// second charge would look exactly like the first. Those are the executing
+// activations that do not pay at the door, and they are not free — see
+// [resolution.NewActivation].
 //
 // The row an offer shows is still the feature's, and it is compiled before the
 // door is reached, so a spent ability is refused as a stale selector first;
