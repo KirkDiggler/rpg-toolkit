@@ -30,7 +30,8 @@ type Definition struct {
 	Cast        *CastProfile         `json:"cast,omitempty"`
 
 	// Effect is the body of an action that does something to someone without
-	// a weapon and without a spell: Second Wind's healing of its user.
+	// a weapon and without a spell: Second Wind's healing of its user, or a
+	// named status put on its user, as Rage's raging.
 	Effect *EffectProfile `json:"effect,omitempty"`
 
 	// Sequence is the script arm: several component actions the same actor
