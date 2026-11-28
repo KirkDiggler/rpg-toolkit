@@ -10,7 +10,7 @@ Slice [rpg-project#1269](https://github.com/KirkDiggler/rpg-project/issues/1269)
 
 ## Decided
 
-- Test 10 (an older save) is dropped by [amendment 1](https://github.com/KirkDiggler/rpg-project/issues/1269): no test builds data in the old shape.
+- An older save is neither handled nor tested, by the operator's ruling of 2026-11-28 — [ruling](https://github.com/KirkDiggler/rpg-project/issues/1131#issuecomment-7232312437).
 
 - The giver (the Fighter) is passed to `DescribeFromRef` as the issue says; the built description carries no giver (Action Surge has no profile to name it on), so Test 4 asserts the price, the name and the prose and holds the giver only as "the build succeeded" — [design 2](https://github.com/KirkDiggler/rpg-project/issues/1269).
 - `TestEveryFeatureWithAPoolIsInBothCatalogsItBelongsIn` moved the Action Surge row to owner-owned (case a: it reads where the count lives) — [first comment](https://github.com/KirkDiggler/rpg-project/issues/1269#issuecomment-7232311414).
