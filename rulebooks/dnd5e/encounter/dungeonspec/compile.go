@@ -181,6 +181,9 @@ type MonsterPlacement struct {
 	// unread to sight capture. Legacy sources without this field leave it empty.
 	DefaultActivityRef string `json:"DefaultActivityRef,omitempty"`
 
+	// MaterialChannels carries detached visual intent; the host captures it at sight.
+	MaterialChannels []encounter.MaterialChannelAdjustment `json:"MaterialChannels,omitempty"`
+
 	// Region is the ID of the region whose floor it stands on — derived.
 	Region string
 

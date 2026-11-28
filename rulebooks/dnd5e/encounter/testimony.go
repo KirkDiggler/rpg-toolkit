@@ -82,6 +82,10 @@ type SightTestimony struct {
 	// Empty means no explicit default was captured, including legacy payloads.
 	DefaultActivityRef string
 
+	// MaterialChannels is the observed visual intent, never newer live settings.
+	// Absence retains authored defaults, including legacy testimony.
+	MaterialChannels []MaterialChannelAdjustment
+
 	// Down is whether the subject was seen off their feet. Nil means standing
 	// was not observed — which is not the same as "seen standing".
 	Down *bool
@@ -154,15 +158,16 @@ type handsWire struct {
 }
 
 type sightWire struct {
-	State              string     `json:"state,omitempty"`
-	AppearanceRef      string     `json:"appearance_ref,omitempty"`
-	DefaultActivityRef string     `json:"default_activity_ref,omitempty"`
-	X                  *float64   `json:"x,omitempty"`
-	Y                  *float64   `json:"y,omitempty"`
-	Down               *bool      `json:"down,omitempty"`
-	BlocksMovement     *bool      `json:"blocks_movement,omitempty"`
-	HoldsDoor          string     `json:"holds_door,omitempty"`
-	Equipment          *handsWire `json:"equipment,omitempty"`
+	State              string                          `json:"state,omitempty"`
+	AppearanceRef      string                          `json:"appearance_ref,omitempty"`
+	DefaultActivityRef string                          `json:"default_activity_ref,omitempty"`
+	MaterialChannels   []MaterialChannelAdjustmentData `json:"material_channels,omitempty"`
+	X                  *float64                        `json:"x,omitempty"`
+	Y                  *float64                        `json:"y,omitempty"`
+	Down               *bool                           `json:"down,omitempty"`
+	BlocksMovement     *bool                           `json:"blocks_movement,omitempty"`
+	HoldsDoor          string                          `json:"holds_door,omitempty"`
+	Equipment          *handsWire                      `json:"equipment,omitempty"`
 	// Conditions is a pointer to a slice so that nil (not observed) omits the
 	// key while an observed empty set encodes [].
 	Conditions *[]ConditionKey `json:"conditions,omitempty"`
@@ -187,6 +192,7 @@ const (
 	sightFieldHeading
 	sightFieldDefaultActivityRef
 	sightFieldHoldsDoor
+	sightFieldMaterialChannels
 )
 
 // sightFieldSet is the keys one payload carries.
@@ -205,6 +211,7 @@ var sightPayloadFields = map[string]sightField{
 	"conditions": sightFieldConditions, "appearance_ref": sightFieldAppearanceRef,
 	"facing": sightFieldFacing, "heading": sightFieldHeading,
 	"default_activity_ref": sightFieldDefaultActivityRef, "holds_door": sightFieldHoldsDoor,
+	"material_channels": sightFieldMaterialChannels,
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -218,6 +225,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	if err := validateDefaultActivityRef(testimony.DefaultActivityRef); err != nil {
 		return nil, err
 	}
+	if err := validateMaterialChannels(testimony.MaterialChannels); err != nil {
+		return nil, err
+	}
 	if err := validateFacing(testimony.Facing); err != nil {
 		return nil, asInvalidData(err)
 	}
@@ -228,7 +238,8 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	case LocationKnown, LocationLost:
 		x, y := testimony.Position.X, testimony.Position.Y
 		wire := sightWire{State: string(testimony.State), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing,
-			Heading: testimony.Heading, DefaultActivityRef: testimony.DefaultActivityRef, HoldsDoor: string(testimony.HoldsDoor)}
+			Heading: testimony.Heading, DefaultActivityRef: testimony.DefaultActivityRef, HoldsDoor: string(testimony.HoldsDoor),
+			MaterialChannels: materialChannelsData(testimony.MaterialChannels)}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -244,6 +255,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		return json.Marshal(wire)
 	case LocationUnknown:
+		if len(testimony.MaterialChannels) > 0 {
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry material channels"))
+		}
 		if testimony.AppearanceRef != "" {
 			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry appearance"))
 		}
@@ -384,6 +398,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	conditionsPresent := present.has(sightFieldConditions)
 	appearancePresent := present.has(sightFieldAppearanceRef)
 	activityPresent := present.has(sightFieldDefaultActivityRef)
+	channelsPresent := present.has(sightFieldMaterialChannels)
 	facingPresent := present.has(sightFieldFacing)
 	headingPresent := present.has(sightFieldHeading)
 	holdsPresent := present.has(sightFieldHoldsDoor)
@@ -406,6 +421,14 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		return SightTestimony{}, false
 	}
 	if activityPresent && (wire.DefaultActivityRef == "" || validateDefaultActivityRef(wire.DefaultActivityRef) != nil) {
+		return SightTestimony{}, false
+	}
+
+	if channelsPresent && wire.MaterialChannels == nil {
+		return SightTestimony{}, false
+	}
+	channels, err := materialChannelsFromData(wire.MaterialChannels)
+	if err != nil {
 		return SightTestimony{}, false
 	}
 
@@ -442,6 +465,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Conditions:         held,
 			AppearanceRef:      wire.AppearanceRef,
 			DefaultActivityRef: wire.DefaultActivityRef,
+			MaterialChannels:   cloneMaterialChannels(channels),
 			Facing:             wire.Facing,
 			Heading:            wire.Heading,
 		}, true
@@ -449,7 +473,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		// Nobody in view has a position, a standing, hands or conditions to
 		// observe.
 		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent ||
-			facingPresent || headingPresent || activityPresent || holdsPresent {
+			facingPresent || headingPresent || activityPresent || holdsPresent || channelsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

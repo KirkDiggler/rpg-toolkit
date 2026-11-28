@@ -551,8 +551,10 @@ type ReserveData struct {
 	// AppearanceRef retains the authored visual choice before arrival.
 	AppearanceRef string `json:"appearance_ref,omitempty"`
 	// DefaultActivityRef retains the authored default before arrival.
-	DefaultActivityRef string       `json:"default_activity_ref,omitempty"`
-	Cell               PositionData `json:"cell"`
+	DefaultActivityRef string `json:"default_activity_ref,omitempty"`
+	// MaterialChannels retains channel intent before arrival, not an observation.
+	MaterialChannels []MaterialChannelAdjustmentData `json:"material_channels,omitempty"`
+	Cell             PositionData                    `json:"cell"`
 
 	// Options, Table and Temper are [MemberData]'s own keys, kept for a
 	// member still waiting to arrive — its facts are the same facts, and
@@ -858,17 +860,18 @@ type AxialPointData struct {
 // with no elevation), so absence and zero have to be told apart by the shape.
 // Openings omit when there are none, which is the same fact as an absent list.
 type StructuralWallData struct {
-	ID                string                  `json:"id"`
-	Ref               string                  `json:"ref"`
-	From              PositionData            `json:"from"`
-	To                PositionData            `json:"to"`
-	Height            float64                 `json:"height"`
-	Thickness         float64                 `json:"thickness"`
-	Elevation         float64                 `json:"elevation"`
-	Openings          []StructuralOpeningData `json:"openings,omitempty"`
-	MaterialOverrides []MaterialOverrideData  `json:"material_overrides,omitempty"`
-	FaceFinishes      []WallFaceFinishData    `json:"face_finishes,omitempty"`
-	Sections          []WallSectionData       `json:"sections,omitempty"`
+	ID                string                          `json:"id"`
+	Ref               string                          `json:"ref"`
+	From              PositionData                    `json:"from"`
+	To                PositionData                    `json:"to"`
+	Height            float64                         `json:"height"`
+	Thickness         float64                         `json:"thickness"`
+	Elevation         float64                         `json:"elevation"`
+	Openings          []StructuralOpeningData         `json:"openings,omitempty"`
+	MaterialOverrides []MaterialOverrideData          `json:"material_overrides,omitempty"`
+	MaterialChannels  []MaterialChannelAdjustmentData `json:"material_channels,omitempty"`
+	FaceFinishes      []WallFaceFinishData            `json:"face_finishes,omitempty"`
+	Sections          []WallSectionData               `json:"sections,omitempty"`
 }
 
 // StructuralOpeningData is the persistent representation of a
@@ -2287,8 +2290,10 @@ type MemberData struct {
 	// AppearanceRef is authored content, not the observer's captured answer.
 	AppearanceRef string `json:"appearance_ref,omitempty"`
 	// DefaultActivityRef is authored content, separate from captured testimony.
-	DefaultActivityRef string        `json:"default_activity_ref,omitempty"`
-	Cell               *PositionData `json:"cell"`
+	DefaultActivityRef string `json:"default_activity_ref,omitempty"`
+	// MaterialChannels is authored intent; observers retain their own captured copy.
+	MaterialChannels []MaterialChannelAdjustmentData `json:"material_channels,omitempty"`
+	Cell             *PositionData                   `json:"cell"`
 
 	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
 	// They were copies of the member's sheet taken at Join; the sheet owns
@@ -2562,6 +2567,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Name:               m.Name,
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
+			MaterialChannels:   materialChannelsData(m.MaterialChannels),
 			Cell:               &PositionData{X: cell.X, Y: cell.Y},
 			Options:            optionsDataFrom(m.Options),
 			Table:              tableDataFrom(m.Table),
@@ -2669,6 +2675,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 			Name:               rm.record.Name,
 			AppearanceRef:      rm.record.AppearanceRef,
 			DefaultActivityRef: rm.record.DefaultActivityRef,
+			MaterialChannels:   materialChannelsData(rm.record.MaterialChannels),
 			Cell:               PositionData{X: rm.at.X, Y: rm.at.Y},
 			Options:            optionsDataFrom(rm.record.Options),
 			Table:              tableDataFrom(rm.record.Table),
@@ -2900,6 +2907,7 @@ func fieldDataFrom(f *field) FieldData {
 				Thickness:         w.thickness,
 				Elevation:         w.elevation,
 				MaterialOverrides: materialOverridesData(w.materialOverrides),
+				MaterialChannels:  materialChannelsData(w.materialChannels),
 				FaceFinishes:      wallFaceFinishesData(w.faceFinishes),
 				Sections:          wallSectionsData(w.sections),
 			}
@@ -3203,6 +3211,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Validate members: no duplicates, cells present, integral and floor
 	seenIDs := make(map[MemberID]bool)
 	memberOptions := make(map[MemberID][]Option, len(data.Members))
+	memberChannels := make(map[MemberID][]MaterialChannelAdjustment, len(data.Members))
 	for _, m := range data.Members {
 		// Empty member IDs are unreachable (Setup and Join both reject).
 		if m.ID == "" {
@@ -3276,6 +3285,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateDefaultActivityRef(m.DefaultActivityRef); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+		channels, err := materialChannelsFromData(m.MaterialChannels)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
+		memberChannels[m.ID] = channels
 
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
@@ -3308,6 +3322,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// refusals Setup and Join make for a member with an Arrives.
 	reserveTriggers := make([]Trigger, len(data.Reserve))
 	reserveOptions := make([][]Option, len(data.Reserve))
+	reserveChannels := make([][]MaterialChannelAdjustment, len(data.Reserve))
 	for i, r := range data.Reserve {
 		if r.ID == "" {
 			return nil, fmt.Errorf("load encounter: reserve %d has no id: %w: %w", i, ErrInvalidData, ErrNoMember)
@@ -3337,8 +3352,14 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf("load encounter: reserve %q cell [%g,%g] is covered by placed prop %q: %w: %w",
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
+		channels, err := materialChannelsFromData(r.MaterialChannels)
+		if err != nil {
+			return nil, fmt.Errorf("load encounter: reserve %q: %w: %w", r.ID, ErrInvalidData, err)
+		}
+		reserveChannels[i] = channels
 		if err := validateMemberFacts(memberFacts{
 			ID:                 r.ID,
+			MaterialChannels:   channels,
 			AppearanceRef:      r.AppearanceRef,
 			DefaultActivityRef: r.DefaultActivityRef,
 			Facing:             r.Facing,
@@ -3792,6 +3813,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Name:               m.Name,
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
+			MaterialChannels:   cloneMaterialChannels(memberChannels[m.ID]),
 			Options:            memberOptions[m.ID],
 			Table:              tableFromData(m.Table),
 			Temper:             temperFromData(m.Temper),
@@ -3853,6 +3875,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				Name:               r.Name,
 				AppearanceRef:      r.AppearanceRef,
 				DefaultActivityRef: r.DefaultActivityRef,
+				MaterialChannels:   cloneMaterialChannels(reserveChannels[i]),
 				Options:            reserveOptions[i],
 				Table:              tableFromData(r.Table),
 				Temper:             undealtTemperFromData(r.Temper),
@@ -4244,7 +4267,12 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, swd := range fd.StructuralWalls {
+		channels, err := materialChannelsFromData(swd.MaterialChannels)
+		if err != nil {
+			return FieldInput{}, fmt.Errorf("structural wall %q: %w", swd.ID, err)
+		}
 		w := StructuralWallInput{
+			MaterialChannels:  cloneMaterialChannels(channels),
 			ID:                swd.ID,
 			Ref:               swd.Ref,
 			From:              spatial.Point{X: swd.From.X, Y: swd.From.Y},
@@ -4282,7 +4310,11 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 	}
 
 	for _, p := range fd.PropPresentations {
-		in.PropPresentations = append(in.PropPresentations, propPresentationFromData(p))
+		presentation, err := propPresentationFromData(p)
+		if err != nil {
+			return FieldInput{}, fmt.Errorf("prop presentation %q: %w", p.ID, err)
+		}
+		in.PropPresentations = append(in.PropPresentations, presentation)
 	}
 	for _, pd := range fd.Props {
 		// REQUIRED at load, both of them, by name. A persisted prop that

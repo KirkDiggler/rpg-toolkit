@@ -456,6 +456,9 @@ type RoomMonsterSource struct {
 	// of appearance, rules and faction. It is not a current animation phase.
 	DefaultActivityRef string `yaml:"defaultActivityRef,omitempty" json:"defaultActivityRef,omitempty"`
 
+	// MaterialChannels is authored visual intent, captured with observed appearance.
+	MaterialChannels []RoomMaterialChannelAdjustment `yaml:"materialChannels,omitempty" json:"materialChannels,omitempty"`
+
 	// StartingCell is where the monster stands and which way it faces when
 	// it arrives. See [RoomStartingCell].
 	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`
@@ -956,10 +959,12 @@ type RoomWallDoor struct {
 type RoomWallAppearance struct {
 	Sections          []RoomWallSection      `yaml:"sections,omitempty" json:"sections,omitempty"`
 	MaterialOverrides []RoomMaterialOverride `yaml:"materialOverrides,omitempty" json:"materialOverrides,omitempty"`
-	AssetRef          string                 `yaml:"assetRef" json:"assetRef"`
-	Height            float64                `yaml:"height" json:"height"`
-	Thickness         float64                `yaml:"thickness" json:"thickness"`
-	Elevation         float64                `yaml:"elevation" json:"elevation"`
+	// MaterialChannels is wall-body appearance, never blocker or opening data.
+	MaterialChannels []RoomMaterialChannelAdjustment `yaml:"materialChannels,omitempty" json:"materialChannels,omitempty"`
+	AssetRef         string                          `yaml:"assetRef" json:"assetRef"`
+	Height           float64                         `yaml:"height" json:"height"`
+	Thickness        float64                         `yaml:"thickness" json:"thickness"`
+	Elevation        float64                         `yaml:"elevation" json:"elevation"`
 }
 
 // RoomWallSection is a once-placed visual feature owned by its wall. Position

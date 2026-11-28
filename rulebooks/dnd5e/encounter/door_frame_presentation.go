@@ -32,6 +32,8 @@ type DoorFrameFaceFinish struct {
 type DoorFramePresentation struct {
 	Span         *WallFrameSpan
 	FaceFinishes []DoorFrameFaceFinish
+	// MaterialChannels is fixed-frame intent, independent of a hidden parent.
+	MaterialChannels []MaterialChannelAdjustment
 }
 
 // WallFrameSpanData persists canonical-feet visual extents, never a blocker.
@@ -50,15 +52,16 @@ type DoorFrameFaceFinishData struct {
 
 // DoorFramePresentationData is the detached immutable site representation.
 type DoorFramePresentationData struct {
-	Span         *WallFrameSpanData        `json:"span"`
-	FaceFinishes []DoorFrameFaceFinishData `json:"face_finishes,omitempty"`
+	Span             *WallFrameSpanData              `json:"span"`
+	FaceFinishes     []DoorFrameFaceFinishData       `json:"face_finishes,omitempty"`
+	MaterialChannels []MaterialChannelAdjustmentData `json:"material_channels,omitempty"`
 }
 
 func doorFramePresentationData(frame *DoorFramePresentation) *DoorFramePresentationData {
 	if frame == nil {
 		return nil
 	}
-	out := &DoorFramePresentationData{}
+	out := &DoorFramePresentationData{MaterialChannels: materialChannelsData(frame.MaterialChannels)}
 	if frame.Span != nil {
 		span := WallFrameSpanData(*frame.Span)
 		out.Span = &span
@@ -71,7 +74,11 @@ func doorFramePresentationData(frame *DoorFramePresentation) *DoorFramePresentat
 }
 
 func doorFramePresentationFromData(frame DoorFramePresentationData) (DoorFramePresentation, error) {
-	out := DoorFramePresentation{}
+	channels, err := materialChannelsFromData(frame.MaterialChannels)
+	if err != nil {
+		return DoorFramePresentation{}, err
+	}
+	out := DoorFramePresentation{MaterialChannels: cloneMaterialChannels(channels)}
 	if frame.Span != nil {
 		span := WallFrameSpan(*frame.Span)
 		out.Span = &span
@@ -91,6 +98,9 @@ func validateDoorFramePresentation(frame *DoorFramePresentation, width float64) 
 	}
 	if frame.Span == nil {
 		return fmt.Errorf("frame presentation requires span: %w", ErrNoField)
+	}
+	if err := validateMaterialChannels(frame.MaterialChannels); err != nil {
+		return err
 	}
 	for _, extent := range []float64{frame.Span.Before, frame.Span.After} {
 		if !structuralRepresentable(extent) || extent <= 0 || extent < width/2 {
@@ -119,7 +129,7 @@ func cloneDoorFramePresentation(frame *DoorFramePresentation) *DoorFramePresenta
 	if frame == nil {
 		return nil
 	}
-	return &DoorFramePresentation{Span: cloneWallFrameSpan(frame.Span), FaceFinishes: append([]DoorFrameFaceFinish(nil), frame.FaceFinishes...)}
+	return &DoorFramePresentation{Span: cloneWallFrameSpan(frame.Span), FaceFinishes: append([]DoorFrameFaceFinish(nil), frame.FaceFinishes...), MaterialChannels: cloneMaterialChannels(frame.MaterialChannels)}
 }
 
 func openingFrameSpan(opening structuralOpening) *WallFrameSpan {
@@ -140,7 +150,7 @@ func sameDoorFramePresentation(a, b *DoorFramePresentation) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	if !sameWallFrameSpan(a.Span, b.Span) || len(a.FaceFinishes) != len(b.FaceFinishes) {
+	if !sameWallFrameSpan(a.Span, b.Span) || len(a.FaceFinishes) != len(b.FaceFinishes) || !sameMaterialChannels(a.MaterialChannels, b.MaterialChannels) {
 		return false
 	}
 	for i := range a.FaceFinishes {
@@ -163,6 +173,9 @@ func frameSpanRow(span *WallFrameSpan) map[string]interface{} {
 
 func doorFramePresentationRow(frame *DoorFramePresentation) map[string]interface{} {
 	row := map[string]interface{}{"span": frameSpanRow(frame.Span)}
+	if len(frame.MaterialChannels) > 0 {
+		row["material_channels"] = materialChannelsData(frame.MaterialChannels)
+	}
 	if len(frame.FaceFinishes) > 0 {
 		faces := make([]map[string]interface{}, len(frame.FaceFinishes))
 		for i, face := range frame.FaceFinishes {

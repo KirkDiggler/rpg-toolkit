@@ -907,6 +907,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			ID:                 m.ID,
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
+			MaterialChannels:   m.MaterialChannels,
 			Facing:             m.Facing,
 			Options:            m.Options, Table: m.Table, Machine: m.Machine, Behaviors: m.Behaviors,
 			BlockingStates: m.BlockingStates, Posts: m.Posts, Outcomes: m.Outcomes,
@@ -1154,6 +1155,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			Name:               mi.Name,
 			AppearanceRef:      mi.AppearanceRef,
 			DefaultActivityRef: mi.DefaultActivityRef,
+			MaterialChannels:   cloneMaterialChannels(mi.MaterialChannels),
 			Facing:             seedFacing(mi.Facing),
 			Options:            cloneOptions(mi.Options),
 			Table:              cloneTable(mi.Table),
@@ -2492,6 +2494,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			HoldsDoor:          holdsDoor,
 			AppearanceRef:      e.members[subjectID].AppearanceRef,
 			DefaultActivityRef: e.members[subjectID].DefaultActivityRef,
+			MaterialChannels:   cloneMaterialChannels(e.members[subjectID].MaterialChannels),
 			// FACING IS SEEN, beside where (design R13): snapshotted into
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
@@ -2840,6 +2843,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		ID:                 in.Member,
 		AppearanceRef:      in.AppearanceRef,
 		DefaultActivityRef: in.DefaultActivityRef,
+		MaterialChannels:   in.MaterialChannels,
 		Facing:             in.Facing,
 		Options:            in.Options, Table: in.Table, Machine: in.Machine, Behaviors: in.Behaviors,
 		BlockingStates: in.BlockingStates, Posts: in.Posts, Outcomes: in.Outcomes,
@@ -2945,6 +2949,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Name:               in.Name,
 		AppearanceRef:      in.AppearanceRef,
 		DefaultActivityRef: in.DefaultActivityRef,
+		MaterialChannels:   cloneMaterialChannels(in.MaterialChannels),
 		Facing:             seedFacing(in.Facing),
 		Options:            cloneOptions(in.Options),
 		Table:              cloneTable(in.Table),

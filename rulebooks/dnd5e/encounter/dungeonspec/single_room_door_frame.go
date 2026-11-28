@@ -29,8 +29,9 @@ type RoomDoorFrameFaceFinish struct {
 // RoomDoorFramePresentation is optional typed appearance on an attached door,
 // not a second pose or mechanical declaration. Present values require Span.
 type RoomDoorFramePresentation struct {
-	Span         *RoomWallFrameSpan        `yaml:"span" json:"span"`
-	FaceFinishes []RoomDoorFrameFaceFinish `yaml:"faceFinishes,omitempty" json:"faceFinishes,omitempty"`
+	Span             *RoomWallFrameSpan              `yaml:"span" json:"span"`
+	FaceFinishes     []RoomDoorFrameFaceFinish       `yaml:"faceFinishes,omitempty" json:"faceFinishes,omitempty"`
+	MaterialChannels []RoomMaterialChannelAdjustment `yaml:"materialChannels,omitempty" json:"materialChannels,omitempty"`
 }
 
 func wallDoorFrameShape(door *yaml.Node, path string, add errSink) {
@@ -47,6 +48,7 @@ func wallDoorFrameShape(door *yaml.Node, path string, add errSink) {
 		requireNumber(span, "before", path+".span", add)
 		requireNumber(span, "after", path+".span", add)
 	}
+	readMaterialChannels(frame, path, add)
 	faces := optionalNode(frame, "faceFinishes", path, add)
 	if faces == nil {
 		return
@@ -83,6 +85,7 @@ func wallDoorFrameValues(frame *RoomDoorFramePresentation, path string, add errS
 		wallNumber(frame.Span.Before, path+".span.before", true, add)
 		wallNumber(frame.Span.After, path+".span.after", true, add)
 	}
+	materialChannelValues(frame.MaterialChannels, path+".materialChannels", add)
 	seen := map[encounter.WallFaceSide]bool{}
 	for i, face := range frame.FaceFinishes {
 		at := fmt.Sprintf("%s.faceFinishes[%d]", path, i)
@@ -106,7 +109,7 @@ func canonicalDoorFrame(frame *RoomDoorFramePresentation) *encounter.DoorFramePr
 	if frame == nil {
 		return nil
 	}
-	out := &encounter.DoorFramePresentation{}
+	out := &encounter.DoorFramePresentation{MaterialChannels: materialChannelsOf(frame.MaterialChannels)}
 	if frame.Span != nil {
 		out.Span = &encounter.WallFrameSpan{Before: frame.Span.Before * feetPerSourceUnit, After: frame.Span.After * feetPerSourceUnit}
 	}

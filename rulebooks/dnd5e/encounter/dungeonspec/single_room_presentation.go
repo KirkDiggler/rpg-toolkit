@@ -16,6 +16,9 @@ import (
 // No catalog, editor hierarchy or parent transform is interpreted here.
 func readPropPresentation(item *yaml.Node, id, path string, add errSink) (encounter.PropPresentation, bool) {
 	if childNode(item, "assetRef") == nil {
+		if childNode(item, "materialChannels") != nil {
+			add(path+".materialChannels", "requires a renderable assetRef")
+		}
 		return encounter.PropPresentation{}, false
 	}
 	valid := true
@@ -53,6 +56,7 @@ func readPropPresentation(item *yaml.Node, id, path string, add errSink) (encoun
 		}
 	}
 	p.MaterialOverrides = materialOverridesOf(readMaterialOverrides(item, path, reject))
+	p.MaterialChannels = materialChannelsOf(readMaterialChannels(item, path, reject))
 	return p, valid
 }
 

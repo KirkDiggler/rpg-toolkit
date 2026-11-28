@@ -23,10 +23,12 @@ type PropObservationSuite struct {
 
 func TestPropObservationSuite(t *testing.T) { suite.Run(t, new(PropObservationSuite)) }
 
-func (s *PropObservationSuite) SetupTest() {
+func (s *PropObservationSuite) SetupTest() { s.setupMaterialChannels(nil) }
+
+func (s *PropObservationSuite) setupMaterialChannels(channels []encounter.MaterialChannelAdjustment) {
 	field := doorField(3, encounter.DoorIsOpen(), "gate", 1)
 	field.Props = []encounter.PropInput{{ID: "b", Ref: "test:props:chest", Holdable: true, At: spatial.Position{X: 4, Y: 1}, BlocksMovement: boolPtr(false), BlocksLineOfSight: boolPtr(false)}}
-	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: centreOf(cellAt(4, 1)), Elevation: 2, FacingDegrees: 17, HeightScale: 1.5}}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: centreOf(cellAt(4, 1)), Elevation: 2, FacingDegrees: 17, HeightScale: 1.5, MaterialChannels: channels}}
 	s.sight = &sightList{fallback: 20}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
@@ -232,6 +234,25 @@ func (s *PropObservationSuite) TestCreatureAndPropWithTheSameIDRemainDistinct() 
 	// Even an observer whose raw ID equals the prop's qualified ID sees it.
 	s.reload()
 	s.Contains(s.prop(propObserver).CurrentVia, perception.Sight)
+}
+
+func (s *PropObservationSuite) TestMaterialChannelsFollowMutablePropMemoryAcrossReload() {
+	channels := channelIntent()
+	s.setupMaterialChannels(channels)
+	channels[0].Normal.Multiplier = 9
+	s.Equal(channelIntent(), s.prop(propObserver).Presentation.MaterialChannels)
+	read := s.prop(propObserver)
+	read.Presentation.MaterialChannels[0].Normal.Multiplier = 8
+	s.Equal(channelIntent(), s.prop(propObserver).Presentation.MaterialChannels)
+	s.withdraw()
+	_, err := s.enc.Hold(&encounter.HoldInput{Member: "b", Target: "b"})
+	s.Require().NoError(err)
+	s.Nil(s.prop("b").Presentation)
+	_, err = s.enc.Exit(&encounter.ExitInput{Member: "b"})
+	s.Require().NoError(err)
+	s.reload()
+	s.Empty(s.prop(propObserver).CurrentVia)
+	s.Equal(channelIntent(), s.prop(propObserver).Presentation.MaterialChannels)
 }
 
 func (s *PropObservationSuite) TestPresentationMemoryNeverJoinsAnUnseenDropPose() {
