@@ -10,7 +10,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombatType "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -24,9 +23,9 @@ import (
 )
 
 // An effect that puts a named status on its user (rpg-project#1131, slice 7b).
-// Rage is the first and the measure: the same barbarian rages here from a
-// hand-built description and, in Test 2, through her feature, and the two must
-// tell the same story.
+// Rage is the first and the measure: the barbarian rages here from a hand-built
+// description, and her own sheet's description (barbarian_rage_test.go) tells
+// the same story, since her feature's own code is retired (slice 7d).
 
 // ragingBindings are the bindings Rage's own code writes (features/rage.go).
 func ragingBindings() json.RawMessage {
@@ -67,13 +66,22 @@ func (s *ActivationTestSuite) rageWorld() encounter.EncounterData { return s.wor
 func (s *ActivationTestSuite) ragesAtTheDoor(
 	bus events.EventBus, data *character.Data, definition *combatActions.Definition, turn int,
 ) (*Output, error) {
+	return s.ragesAtTheDoorIn(bus, s.rageWorld(), []Participant{{Character: data}}, definition, turn)
+}
+
+// ragesAtTheDoorIn is ragesAtTheDoor in a world the caller holds, with the
+// cast the caller names (she is the first participant).
+func (s *ActivationTestSuite) ragesAtTheDoorIn(
+	bus events.EventBus, world encounter.EncounterData, participants []Participant,
+	definition *combatActions.Definition, turn int,
+) (*Output, error) {
 	machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: heroID})
 	if err != nil {
 		return nil, err
 	}
 	cost := &Cost{PayerID: heroID, Profile: definition.Cost, Turn: &Turn{Number: turn, Speed: 30}}
 
-	return s.resolveOnBus(bus, machine, s.rageWorld(), []Participant{{Character: data}}, cost)
+	return s.resolveOnBus(bus, machine, world, participants, cost)
 }
 
 // appliedOn records every condition-applied fact a bus carries: who it landed
@@ -117,48 +125,29 @@ func (s *ActivationTestSuite) TestAnEffectThatPutsAStatusOnItsUserIsPaidAtTheDoo
 	s.Equal(refs.Conditions.Raging().String(), outcome.Effects[0].Ref)
 }
 
-// TEST 2, THE SLICE'S MEASURE. One barbarian rages at the door; an identical
-// one rages the old way, through NewActivation and her Rage feature. What each
-// caller is told (the outcome, and the condition-applied fact on the bus, with
-// its source kind) and what each sheet saves must be the same, field by field.
-// Both use the same member id, so nothing is "equal but for ids": it is equal.
-func (s *ActivationTestSuite) TestTheDoorTellsTheSameStoryAsTheOldRage() {
-	doorBus := events.NewEventBus()
-	doorSeen := s.appliedOn(doorBus)
-	door, err := s.ragesAtTheDoor(doorBus, s.barbarian(2), s.rageAtTheDoorDescription(), 1)
-	s.Require().NoError(err)
+// TEST 2. What the door tells, as literals. The comparison with the old way
+// (a barbarian raging through NewActivation and her feature's own code) retired
+// with that code (slice 7d); what only it asserted is asserted here: the
+// condition-applied fact on the bus carries the source kind `feature`, and the
+// saved condition's origin is Rage and her id.
+func (s *ActivationTestSuite) TestTheDoorTellsWhoPutTheStatusOnAndWhy() {
+	bus := events.NewEventBus()
+	seen := s.appliedOn(bus)
 
-	oldBus := events.NewEventBus()
-	oldSeen := s.appliedOn(oldBus)
-	machine, err := NewActivation(&ActivationInput{
-		MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller(),
-	})
-	s.Require().NoError(err)
-	old, err := s.resolveOnBus(oldBus, machine, s.rageWorld(), []Participant{{Character: s.barbarian(2)}}, nil)
-	s.Require().NoError(err)
+	out, err := s.ragesAtTheDoor(bus, s.barbarian(2), s.rageAtTheDoorDescription(), 1)
 
-	doorOutcome, oldOutcome := door.Outcome.(ActivationOutcome), old.Outcome.(ActivationOutcome)
-	s.Equal(oldOutcome.Ability, doorOutcome.Ability, "the ability named")
-	s.Require().Len(doorOutcome.Effects, len(oldOutcome.Effects))
-	for i := range oldOutcome.Effects {
-		o, d := oldOutcome.Effects[i], doorOutcome.Effects[i]
-		s.Equal(o.Kind, d.Kind, "effect %d kind", i)
-		s.Equal(o.TargetID, d.TargetID, "effect %d recipient", i)
-		s.Equal(o.Ref, d.Ref, "effect %d ref", i)
-		s.Equal(o.Name, d.Name, "effect %d description", i)
-		s.Equal(o.Detail, d.Detail, "effect %d detail", i)
-		s.Equal(o.Address, d.Address, "effect %d address", i)
-	}
-	s.Equal(oldOutcome, doorOutcome, "the whole outcome")
-	s.Equal(*oldSeen, *doorSeen, "the condition-applied facts on the bus, source kind included")
-	s.Require().Len(*doorSeen, 1)
-
-	doorSheet, oldSheet := dirty(door, heroID), dirty(old, heroID)
-	s.Require().Len(doorSheet.Conditions, 1)
-	s.Require().Len(oldSheet.Conditions, 1)
-	s.JSONEq(string(oldSheet.Conditions[0]), string(doorSheet.Conditions[0]), "the saved raging condition")
-	s.Equal(oldSheet.Resources, doorSheet.Resources, "the saved charges")
-	s.Equal(oldSheet.ActionEconomy, doorSheet.ActionEconomy, "the saved economy")
+	s.Require().NoError(err)
+	s.Equal([]appliedFact{{
+		Target: heroID, Source: dnd5eEvents.ConditionSourceFeature, Ref: refs.Conditions.Raging().String(),
+	}}, *seen, "the condition-applied fact on the bus, its source kind included")
+	sheet := dirty(out, heroID)
+	s.Require().NotNil(sheet)
+	s.Require().Len(sheet.Conditions, 1)
+	var saved conditions.ComposedData
+	s.Require().NoError(json.Unmarshal(sheet.Conditions[0], &saved))
+	s.Require().NotNil(saved.Origin)
+	s.Equal(*refs.Features.Rage(), saved.Origin.Ref, "the saved condition's origin is Rage")
+	s.Equal(heroID, saved.Origin.EntityID, "and her id")
 }
 
 // TEST 3. The status is live: raging gives advantage on a Strength check,

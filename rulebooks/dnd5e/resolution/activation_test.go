@@ -142,6 +142,35 @@ func (s *ActivationTestSuite) barbarian(charges int) *character.Data {
 	}
 }
 
+// monk is a level-1 monk holding Step of the Wind, in combat, with ki points.
+//
+// It is the fixture of the FEATURE PATH's own tests since Rage is described and
+// retired its own code (rpg-project#1131, slice 7d): Step of the Wind still
+// runs its own Activate. It spends one ki from a pool on the sheet, takes a
+// bonus action, and on the bus puts Disengaging on its user: the three things
+// those tests hold of an ability the feature path runs.
+func (s *ActivationTestSuite) monk(ki int) *character.Data {
+	stepOfTheWind, err := json.Marshal(features.StepOfTheWindData{
+		Ref: refs.Features.StepOfTheWind(), ID: heroID + "-step-of-the-wind", Name: "Step of the Wind",
+		CharacterID: heroID,
+	})
+	s.Require().NoError(err)
+
+	data := s.barbarian(0)
+	data.Name = "Mira"
+	data.ClassID = classes.Monk
+	data.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
+		resources.Ki: {Current: ki, Maximum: 2, ResetType: coreResources.ResetShortRest},
+	}
+	data.Features = []json.RawMessage{stepOfTheWind}
+	return data
+}
+
+// stepOfTheWind is the feature-path activation every monk test asks for.
+func stepOfTheWind() *ActivationInput {
+	return &ActivationInput{MemberID: heroID, Ability: refs.Features.StepOfTheWind(), Roller: dice.NewRoller()}
+}
+
 func (s *ActivationTestSuite) fighter(id string, hitPoints, maxHitPoints int) *character.Data {
 	secondWind, err := json.Marshal(features.SecondWindData{
 		Ref: refs.Features.SecondWind(), ID: id + "-second-wind", Name: "Second Wind",
@@ -268,62 +297,52 @@ func dirty(out *Output, id string) *character.Data {
 
 // THE TEST THIS MACHINE EXISTS FOR.
 //
-// Rage does not attach its own condition: it publishes one on
-// ConditionAppliedTopic and the owner's SheetKeeper applies it. Off the bus
-// that publish SUCCEEDS and applies nothing, so the assertion has to be about
-// the sheet that would be saved rather than about the call returning nil.
-func (s *ActivationTestSuite) TestRagingReachesTheSheetThatWouldBeSaved() {
-	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
-		s.world(),
-		[]Participant{{Character: s.barbarian(2)}},
-	)
+// An ability run through the feature path does not attach its own condition:
+// it publishes one on ConditionAppliedTopic and the owner's SheetKeeper applies
+// it. Off the bus that publish SUCCEEDS and applies nothing, so the assertion
+// has to be about the sheet that would be saved rather than about the call
+// returning nil. Step of the Wind is the example now that Rage is used from its
+// description; her own rage reaching the sheet is barbarian_rage_test.go's.
+func (s *ActivationTestSuite) TestAConditionAnAbilityPublishesReachesTheSheetThatWouldBeSaved() {
+	out, err := s.run(stepOfTheWind(), s.world(), []Participant{{Character: s.monk(2)}})
 
 	s.Require().NoError(err)
 	s.Require().NotNil(out)
 
 	sheet := dirty(out, heroID)
 	s.Require().NotNil(sheet, "the barbarian should come back dirty")
-	s.Contains(conditionRefs(sheet), "dnd5e:conditions:raging")
+	s.Contains(conditionRefs(sheet), "dnd5e:conditions:disengaging")
 
 	outcome, ok := out.Outcome.(ActivationOutcome)
 	s.Require().True(ok)
 	s.Equal([]ActivationEffect{{
 		Kind: EffectConditionApplied, TargetID: heroID,
-		Ref: refs.Conditions.Raging().String(), Name: "Raging",
-		Address: dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Raging().String()},
+		Ref: refs.Conditions.Disengaging().String(), Name: "Disengaging",
+		Address: dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Disengaging().String()},
 	}}, outcome.Effects)
 }
 
-// The charge is spent on the sheet too, and from the same run. A rage that
-// applied its condition without spending a use would be free forever.
-func (s *ActivationTestSuite) TestTheChargeIsSpentOnTheSameSheet() {
-	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
-		s.world(),
-		[]Participant{{Character: s.barbarian(2)}},
-	)
+// The pool is spent on the sheet too, and from the same run. An ability that
+// applied its condition without spending a point would be free forever.
+func (s *ActivationTestSuite) TestThePoolIsSpentOnTheSameSheet() {
+	out, err := s.run(stepOfTheWind(), s.world(), []Participant{{Character: s.monk(2)}})
 
 	s.Require().NoError(err)
 	sheet := dirty(out, heroID)
 	s.Require().NotNil(sheet)
-	s.Equal(1, sheet.Resources[resources.RageCharges].Current)
+	s.Equal(1, sheet.Resources[resources.Ki].Current)
 }
 
 // And the bonus action goes with it — the ability charging its own slot, which
 // is why Input.Cost stays nil.
 func (s *ActivationTestSuite) TestTheAbilitySpendsItsOwnSlot() {
-	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
-		s.world(),
-		[]Participant{{Character: s.barbarian(2)}},
-	)
+	out, err := s.run(stepOfTheWind(), s.world(), []Participant{{Character: s.monk(2)}})
 
 	s.Require().NoError(err)
 	sheet := dirty(out, heroID)
 	s.Require().NotNil(sheet)
 	s.Require().NotNil(sheet.ActionEconomy)
-	s.Equal(0, sheet.ActionEconomy.BonusActionsRemaining, "rage costs the bonus action")
+	s.Equal(0, sheet.ActionEconomy.BonusActionsRemaining, "step of the wind costs the bonus action")
 	s.Equal(1, sheet.ActionEconomy.ActionsRemaining, "and nothing else")
 }
 
@@ -450,27 +469,23 @@ func (s *ActivationTestSuite) TestSecondWindCapturesZeroAppliedWithoutDroppingRo
 
 // A REFUSAL IS AN ERROR, AND NOTHING COMES BACK TO SAVE.
 //
-// The sheet answers "no rage uses remaining" as (output{Success:false}, nil) —
+// The sheet answers "no ki points remaining" as (output{Success:false}, nil) —
 // a successful call carrying a false. Without the translation the interaction
 // would finish, report Done, and hand back dirty sheets for something that
 // never happened.
 func (s *ActivationTestSuite) TestAnAbilityThatRefusesIsAnErrorNotADoneInteraction() {
-	record := s.barbarian(0)
+	record := s.monk(0)
 	before, marshalErr := json.Marshal(record)
 	s.Require().NoError(marshalErr)
 
-	out, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
-		s.world(),
-		[]Participant{{Character: record}},
-	)
+	out, err := s.run(stepOfTheWind(), s.world(), []Participant{{Character: record}})
 
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, ErrActivationRefused)
 	s.Nil(out, "a refused activation returns no successful outcome or effects")
 	// The ability's own words survive the crossing, the way a shortfall's
 	// currency does.
-	s.Contains(err.Error(), "no rage uses remaining")
+	s.Contains(err.Error(), "no ki points remaining")
 
 	after, marshalErr := json.Marshal(record)
 	s.Require().NoError(marshalErr)
@@ -481,15 +496,11 @@ func (s *ActivationTestSuite) TestAnAbilityThatRefusesIsAnErrorNotADoneInteracti
 // A refusal is NOT a malformed activation, and the two sentinels must not be
 // reachable from one another — the ErrBadCost/ErrCannotPay line, applied to the
 // same problem: a developer chasing ErrBadActivation must never be handed a
-// barbarian who is simply out of rages.
+// monk who is simply out of ki.
 func (s *ActivationTestSuite) TestARefusalIsNotAMalformedActivation() {
-	_, err := s.run(
-		&ActivationInput{MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller()},
-		s.world(),
-		[]Participant{{Character: s.barbarian(0)}},
-	)
+	_, err := s.run(stepOfTheWind(), s.world(), []Participant{{Character: s.monk(0)}})
 
-	s.Require().Error(err)
+	s.Require().ErrorIs(err, ErrActivationRefused)
 	s.False(errors.Is(err, ErrBadActivation))
 }
 
@@ -612,27 +623,27 @@ func (s *ActivationTestSuite) TestTheInputIsCopied() {
 // THE TRAP, MADE EXECUTABLE.
 //
 // This is the failure NewActivation exists to prevent, run deliberately: the
-// same barbarian, the same ability, the same call — on a sheet that was LOADED
-// but never ATTACHED. Rage's Activate guards its publish with
+// same monk, the same ability, the same call — on a sheet that was LOADED
+// but never ATTACHED. Step of the Wind's Activate guards its publish with
 // `if input.Bus != nil`, so with no bus it skips the publish, spends the
-// charge, and RETURNS NIL.
+// ki, and RETURNS NIL.
 //
 // Every signal a caller has says it worked. The call succeeded. Success is
-// true. The charge came off. And the sheet that would be written carries no
+// true. The ki came off. And the sheet that would be written carries no
 // condition at all — which is the shape that bit the equip path (rpg-api#842)
 // and the reason the assertions above are about Data rather than about the
 // object in hand.
 //
 // If this test ever starts finding the condition, one of two good things
-// happened — Rage learned to attach its own, or something else did — and the
+// happened — the ability learned to attach its own, or something else did — and the
 // machine's whole justification needs re-reading. That is worth being told
 // about, which is why this is a test and not a comment.
 func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing() {
-	sheet, err := character.Load(s.ctx, s.barbarian(2))
+	sheet, err := character.Load(s.ctx, s.monk(2))
 	s.Require().NoError(err)
 
 	out, err := sheet.ActivateAbility(s.ctx, &character.ActivateAbilityInput{
-		AbilityRef: refs.Features.Rage(),
+		AbilityRef: refs.Features.StepOfTheWind(),
 	})
 
 	// Nothing complained.
@@ -641,10 +652,10 @@ func (s *ActivationTestSuite) TestOffTheBusTheSameCallSucceedsAndAppliesNothing(
 
 	data, err := sheet.ToData()
 	s.Require().NoError(err)
-	// The charge is gone, so something definitely happened...
-	s.Equal(1, data.Resources[resources.RageCharges].Current)
-	// ...and the barbarian is not raging.
-	s.NotContains(conditionRefs(data), "dnd5e:conditions:raging")
+	// The ki is gone, so something definitely happened...
+	s.Equal(1, data.Resources[resources.Ki].Current)
+	// ...and the monk is not disengaging.
+	s.NotContains(conditionRefs(data), "dnd5e:conditions:disengaging")
 }
 
 // --- The target contract, which the doc promised before the code kept it ---
@@ -1051,14 +1062,12 @@ func (s *ActivationTestSuite) TestActivationSuccessPreservesCollectorCleanupErro
 	cleanupErr := errors.New("collector cleanup failed")
 	bus := newActivationFaultBus()
 	bus.unsubscribeErrs = []error{cleanupErr}
-	machine, err := NewActivation(&ActivationInput{
-		MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller(),
-	})
+	machine, err := NewActivation(stepOfTheWind())
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        s.world(),
-		Participants: []Participant{{Character: s.barbarian(2)}},
+		Participants: []Participant{{Character: s.monk(2)}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
@@ -1082,14 +1091,12 @@ func (s *ActivationTestSuite) TestActivationErrorJoinsCollectorCleanupError() {
 	cleanupErr := errors.New("collector cleanup failed")
 	bus := newActivationFaultBus()
 	bus.unsubscribeErrs = []error{cleanupErr}
-	machine, err := NewActivation(&ActivationInput{
-		MemberID: heroID, Ability: refs.Features.Rage(), Roller: dice.NewRoller(),
-	})
+	machine, err := NewActivation(stepOfTheWind())
 	s.Require().NoError(err)
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        s.world(),
-		Participants: []Participant{{Character: s.barbarian(0)}},
+		Participants: []Participant{{Character: s.monk(0)}},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
