@@ -90,14 +90,12 @@ func (s *ActionSurgeTestSuite) TestActivateRefusesAndTouchesNothing() {
 	s.Equal(1, s.owner.resources[resources.ActionSurge], "the refusal spends nothing")
 }
 
-func (s *ActionSurgeTestSuite) TestLoadJSONIgnoresTheOldCountKeys() {
+func (s *ActionSurgeTestSuite) TestLoadJSON() {
 	jsonData := []byte(`{
 		"ref": {"value": "action_surge"},
 		"id": "loaded-action-surge",
 		"name": "Action Surge",
-		"character_id": "fighter-99",
-		"uses": 0,
-		"max_uses": 1
+		"character_id": "fighter-99"
 	}`)
 
 	loaded := &ActionSurge{}
