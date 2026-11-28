@@ -24,3 +24,4 @@ var ErrUsedFromItsDescription = errors.New(
 	"this ability is used from its description: build the action with Definition and pay its cost at the gate")
 
 var _ Described = (*SecondWind)(nil)
+var _ Described = (*ActionSurge)(nil)

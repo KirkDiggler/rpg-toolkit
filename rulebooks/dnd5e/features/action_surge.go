@@ -9,41 +9,48 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
-	dnd5eCombat "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
 // ActionSurge represents the fighter's Action Surge feature.
-// It implements core.Action[FeatureInput] for activation and events.BusEffect for resource management.
+// It implements core.Action[FeatureInput] for the sheet's list of abilities.
+// Its uses are counted in the owner's shared resources.ActionSurge pool, as
+// Second Wind's are; the feature keeps no counter of its own, and it is used
+// from its description, not from its own code.
 type ActionSurge struct {
 	id          string
 	name        string
-	characterID string                           // Character this feature belongs to
-	resource    *dnd5eCombat.RecoverableResource // Tracks action surge uses (1 per short/long rest)
+	characterID string // Character this feature belongs to
 }
 
-// ActionSurgeData is the JSON structure for persisting Action Surge state
+// ActionSurgeData is the JSON structure for persisting Action Surge state. The
+// uses live in the owner's shared pool, not here. A blob saved with the old
+// "uses" or "max_uses" keys loads and the copies are ignored.
 type ActionSurgeData struct {
 	Ref         *core.Ref `json:"ref"`
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	CharacterID string    `json:"character_id"`
-	Uses        int       `json:"uses"`
-	MaxUses     int       `json:"max_uses"`
 }
 
 // Ref returns the unique ref for the Action Surge feature.
 func (a *ActionSurge) Ref() *core.Ref { return refs.Features.ActionSurge() }
 
-// Status reports the feature's privately-owned Action Surge resource through
-// the non-mutating status surface, without serializing ToJSON. The owner is
-// not required: Action Surge owns its own [RecoverableResource].
-func (a *ActionSurge) Status(*StatusInput) (*StatusOutput, error) {
-	if a.resource == nil {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "action surge feature has no resource")
+// Status reports the fighter's character-owned ActionSurge pool through the
+// non-mutating status surface, without serializing ToJSON. Action Surge does
+// not own its resource — the Character does — so a non-nil
+// [StatusInput.Owner] that carries resources.ActionSurge is required.
+func (a *ActionSurge) Status(in *StatusInput) (*StatusOutput, error) {
+	if in == nil || in.Owner == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "action surge status requires an owner resource reader")
+	}
+	current, maximum, ok := in.Owner.ResourceStatus(resources.ActionSurge)
+	if !ok {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not carry action_surge")
 	}
 	name := a.name
 	if name == "" {
@@ -55,8 +62,8 @@ func (a *ActionSurge) Status(*StatusInput) (*StatusOutput, error) {
 		Resource: &ResourceStatus{
 			Key:     resources.ActionSurge,
 			Name:    "Action Surge",
-			Current: a.resource.Current(),
-			Maximum: a.resource.Maximum(),
+			Current: current,
+			Maximum: maximum,
 		},
 	}}, nil
 }
@@ -69,6 +76,24 @@ func (a *ActionSurge) Description() string {
 	return "Spend a use to take one additional action this turn."
 }
 
+// Definition describes Action Surge as data: no profile, only its price, one
+// point of the shared pool, which gives one more action. This is the one way
+// to use it: the gate pays the cost and [ActionSurge.Activate] refuses.
+func (a *ActionSurge) Definition(owner core.Entity) (*actions.Definition, error) {
+	definition, err := DescribeFromRef(&DescribeFromRefInput{
+		Ref: *refs.Features.ActionSurge(),
+		Giver: dnd5eEvents.RollSource{
+			Ref: refs.Classes.Fighter(), Name: "Fighter", Label: "Fighter", SourceID: owner.GetID(),
+		},
+		Pools: map[coreResources.ResourceKey]int{resources.ActionSurge: 1},
+	})
+	if err != nil {
+		return nil, err
+	}
+	definition.Description = a.Description()
+	return definition, nil
+}
+
 // GetID implements core.Entity
 func (a *ActionSurge) GetID() string {
 	return a.id
@@ -79,80 +104,37 @@ func (a *ActionSurge) GetType() core.EntityType {
 	return EntityTypeFeature
 }
 
-// CanActivate implements core.Action[FeatureInput]
-func (a *ActionSurge) CanActivate(_ context.Context, _ core.Entity, input FeatureInput) error {
-	// Check if we have uses remaining
-	if !a.resource.IsAvailable() {
+// CanActivate implements core.Action[FeatureInput]: the owner's shared pool
+// has a use remaining.
+func (a *ActionSurge) CanActivate(_ context.Context, owner core.Entity, _ FeatureInput) error {
+	accessor, ok := owner.(coreResources.ResourceAccessor)
+	if !ok {
+		return rpgerr.New(rpgerr.CodeInvalidArgument, "owner does not implement ResourceAccessor")
+	}
+	if !accessor.IsResourceAvailable(resources.ActionSurge) {
 		return rpgerr.New(rpgerr.CodeResourceExhausted, "no action surge uses remaining")
 	}
-
-	// Check if ActionEconomy is provided
-	if input.ActionEconomy == nil {
-		return rpgerr.New(rpgerr.CodeInvalidArgument, "action economy is required for action surge")
-	}
-
 	return nil
 }
 
-// Apply subscribes the recoverable resource to the event bus for automatic rest recovery.
-// This should be called when the feature is granted to a character.
-func (a *ActionSurge) Apply(ctx context.Context, bus events.EventBus) error {
-	return a.resource.Apply(ctx, bus)
+// Activate implements core.Action[FeatureInput] by refusing: Action Surge is
+// used from its description. Build the action with [ActionSurge.Definition]
+// and pay its cost at the gate; nothing here spends or grants.
+func (a *ActionSurge) Activate(_ context.Context, _ core.Entity, _ FeatureInput) error {
+	return rpgerr.Wrapf(ErrUsedFromItsDescription, "action surge")
 }
 
-// Remove unsubscribes the recoverable resource from the event bus.
-// This should be called when the feature is removed from a character.
-func (a *ActionSurge) Remove(ctx context.Context, bus events.EventBus) error {
-	return a.resource.Remove(ctx, bus)
-}
-
-// Activate implements core.Action[FeatureInput]
-func (a *ActionSurge) Activate(ctx context.Context, owner core.Entity, input FeatureInput) error {
-	// Check if we can activate
-	if err := a.CanActivate(ctx, owner, input); err != nil {
-		return err
-	}
-
-	// Consume a use
-	if err := a.resource.Use(1); err != nil {
-		return rpgerr.Wrapf(err, "failed to use action surge")
-	}
-
-	// Grant an extra action via ActionEconomy
-	input.ActionEconomy.GrantExtraAction()
-
-	return nil
-}
-
-// loadJSON loads Action Surge state from JSON, rejecting negative or
-// over-maximum persisted uses before constructing its private resource.
+// loadJSON loads Action Surge state from JSON. Old "uses" and "max_uses" keys
+// are not read: the count is the owner's pool.
 func (a *ActionSurge) loadJSON(data json.RawMessage) error {
 	var actionSurgeData ActionSurgeData
 	if err := json.Unmarshal(data, &actionSurgeData); err != nil {
 		return fmt.Errorf("failed to unmarshal action surge data: %w", err)
 	}
 
-	if err := validateResourceBounds("action surge", actionSurgeData.Uses, actionSurgeData.MaxUses); err != nil {
-		return err
-	}
-
 	a.id = actionSurgeData.ID
 	a.name = actionSurgeData.Name
 	a.characterID = actionSurgeData.CharacterID
-
-	// Set up recoverable resource with current and max uses
-	a.resource = dnd5eCombat.NewRecoverableResource(dnd5eCombat.RecoverableResourceConfig{
-		ID:          refs.Features.ActionSurge().ID,
-		Maximum:     actionSurgeData.MaxUses,
-		CharacterID: actionSurgeData.CharacterID,
-		ResetType:   coreResources.ResetShortRest,
-	})
-	// Restore to the saved state
-	if actionSurgeData.Uses < actionSurgeData.MaxUses {
-		if err := a.resource.Use(actionSurgeData.MaxUses - actionSurgeData.Uses); err != nil {
-			return fmt.Errorf("failed to set resource uses: %w", err)
-		}
-	}
 
 	return nil
 }
@@ -164,8 +146,6 @@ func (a *ActionSurge) ToJSON() (json.RawMessage, error) {
 		ID:          a.id,
 		Name:        a.name,
 		CharacterID: a.characterID,
-		Uses:        a.resource.Current(),
-		MaxUses:     a.resource.Maximum(),
 	}
 
 	bytes, err := json.Marshal(data)

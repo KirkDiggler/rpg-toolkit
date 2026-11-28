@@ -11,7 +11,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
@@ -53,20 +52,11 @@ func TestSecondWindStatusReportsOwnerPoolWithoutJSON(t *testing.T) {
 	assert.Equal(t, 1, out.Status.Resource.Maximum)
 }
 
-func TestActionSurgeStatusReportsPrivateResourceWithoutJSON(t *testing.T) {
-	as := &ActionSurge{
-		id:          refs.Features.ActionSurge().ID,
-		name:        "Action Surge",
-		characterID: "fighter-1",
-		resource: combat.NewRecoverableResource(combat.RecoverableResourceConfig{
-			ID:          refs.Features.ActionSurge().ID,
-			Maximum:     1,
-			CharacterID: "fighter-1",
-			ResetType:   coreResources.ResetShortRest,
-		}),
-	}
+func TestActionSurgeStatusReportsOwnerPoolWithoutJSON(t *testing.T) {
+	as := &ActionSurge{id: refs.Features.ActionSurge().ID, name: "Action Surge", characterID: "fighter-1"}
+	owner := stubResourceReader{values: map[coreResources.ResourceKey][2]int{resources.ActionSurge: {1, 1}}}
 
-	out, err := as.Status(&StatusInput{})
+	out, err := as.Status(&StatusInput{Owner: owner})
 	require.NoError(t, err)
 	require.NotNil(t, out)
 	require.NotNil(t, out.Status)

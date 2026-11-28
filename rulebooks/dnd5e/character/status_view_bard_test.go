@@ -148,11 +148,9 @@ func TestTheBardsEquipmentProjectsToo(t *testing.T) {
 //
 // featureResourceCatalog answers "which class does this feature's pool belong
 // to". ownerResourceAllowed answers "which pools may this class carry IN ITS
-// OWN MAP" — and that second question does not apply to a feature-private
-// pool. Action Surge owns its resource inside the feature object and reaches
-// the view through mergeResources' feature rows, bypassing the owner gate
-// entirely; Rage, Second Wind, Ki and Inspiration live on the Character and
-// go through it.
+// OWN MAP". No feature owns a resource inside the feature object any more: Rage,
+// Second Wind, Action Surge, Ki and Inspiration all live on the Character and
+// go through the owner gate.
 //
 // So the table names which half each pool is in, because that distinction was
 // invisible and is exactly what a new class gets wrong: a bard's pool is
@@ -168,9 +166,7 @@ func TestEveryFeatureWithAPoolIsInBothCatalogsItBelongsIn(t *testing.T) {
 		{refs.Features.PatientDefense(), true},
 		{refs.Features.StepOfTheWind(), true},
 		{refs.Features.BardicInspiration(), true},
-		// Feature-private: the feature holds the resource, the Character's own
-		// map never carries it, and the owner gate is not asked.
-		{refs.Features.ActionSurge(), false},
+		{refs.Features.ActionSurge(), true},
 	} {
 		class, key, known := featureResourceCatalog(*tc.feature)
 		require.True(t, known, "%s has no class/pool row", tc.feature)
