@@ -23,7 +23,11 @@ One line per entry. Every line ends with a link.
 - `resolution.chargesSomething` reads Slots, Capacity and Pools only, so a price that only gives a slot is "no payment" there; `resolution.samePrice` compares prices as JSON, so it sees the new field; `session` clones prices through `CloneSpendProfile` and reads `Slots`/`Capacity`/`Pools` in `afford.go` — none edited, listed for the lead — [comment](https://github.com/KirkDiggler/rpg-project/issues/1257#issuecomment-7230931578).
 - The one encoder this module uses for a price is `encoding/json`; the field is tagged `omitempty` and a price without it marshals to exactly `{"slots":{"bonus_action":1}}` — [grant_slots_test.go](https://github.com/KirkDiggler/rpg-project/issues/1257).
 - Tests seen failing on real assertions before the behaviour: gate order (missing grant), the gift paying for itself, validate/CanPay accepting bad keys, economy/character/monster slot counts staying 1, clone and merge returning nil, words returning empty — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
-- PROOFS_AND_SUITE_PLACEHOLDER
+- Proof (a) grant before charges: `TestThePriceGivesItsSlotAfterItsCharges` fails on the order (expected `[pool:x grant:action]`, got `[grant:action pool:x]`); Test 3's second case does NOT fail, because `check` runs in full before anything moves, so a refusal and the net count are the same in either order; the order is pinned by the spy test alone — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
+- Proof (b) drop it from `CloneSpendProfile`: `TestACopyOfAPriceCarriesItsSlotGrant` fails (expected `{"action":1}`, got nil) — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
+- Proof (c) leave it out of `movesNothing`: `TestASlotGrantIsJudgedLikeASlotCost` fails (`CanPay` true for a price that only gives, out of combat: "Should be false") — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
+- Proof (d) `(*Monster).GrantSlots` through `account()` instead of `writable()`: `TestAGivenSlotCreatesTheAccountAndEndsWithTheTurn` fails (expected 2 actions, got 1: the gift lands on a throwaway copy) — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
+- Suite: `go build`, `go vet`, `go test ./... -count=1` and `golangci-lint run ./...` all pass in `rulebooks/dnd5e`, before the change and at the final head — [rpg-project#1257](https://github.com/KirkDiggler/rpg-project/issues/1257).
 
 ## Mistaken
 
