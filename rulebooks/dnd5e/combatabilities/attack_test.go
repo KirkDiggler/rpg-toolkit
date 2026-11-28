@@ -234,7 +234,7 @@ func (s *FighterCombatFlowTestSuite) TestFighterTurn_AttackThenStrike() {
 func (s *FighterCombatFlowTestSuite) TestFighterTurn_ActionSurge() {
 	// Arrange - Fighter with Action Surge (two actions this turn)
 	attack := combatabilities.NewAttack("attack-ability")
-	s.actionEconomy.GrantExtraAction()
+	s.actionEconomy.GrantSlots(coreCombat.ActionStandard, 1)
 	s.Require().Equal(2, s.actionEconomy.ActionsRemaining)
 
 	// Act 1 - First Attack ability

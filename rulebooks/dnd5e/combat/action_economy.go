@@ -14,7 +14,7 @@ import "github.com/KirkDiggler/rpg-toolkit/rpgerr"
 // always written; every capacity is omitted when zero.
 type ActionEconomy struct {
 	// Primary resources (consumed by abilities/features)
-	ActionsRemaining      int `json:"actions_remaining"`       // Usually 1, Action Surge gives +1
+	ActionsRemaining      int `json:"actions_remaining"`       // Usually 1; a price can give more (GrantSlots)
 	BonusActionsRemaining int `json:"bonus_actions_remaining"` // Usually 1
 	ReactionsRemaining    int `json:"reactions_remaining"`     // Usually 1
 
@@ -111,18 +111,6 @@ func (ae *ActionEconomy) Reset() {
 	ae.FlurryStrikesRemaining = 0
 	ae.DeathSavesRemaining = 0
 	ae.ObjectInteractionsRemaining = 1
-}
-
-// GrantExtraAction grants an additional action
-// Purpose: Used by features like Action Surge that provide extra actions beyond the normal limit
-func (ae *ActionEconomy) GrantExtraAction() {
-	ae.ActionsRemaining++
-}
-
-// GrantExtraBonusAction grants an additional bonus action
-// Purpose: Future-proofing for potential features that grant extra bonus actions
-func (ae *ActionEconomy) GrantExtraBonusAction() {
-	ae.BonusActionsRemaining++
 }
 
 // CanUseAttack returns whether any attacks remain
