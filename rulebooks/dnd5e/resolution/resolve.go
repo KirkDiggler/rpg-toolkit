@@ -196,6 +196,9 @@ func (in *Input) Validate() error {
 	if err := in.validateDrivenDash(); err != nil {
 		return err
 	}
+	if err := in.validateOnlyItsPrice(); err != nil {
+		return err
+	}
 
 	// CAPABILITIES ARE SUPPLIED, NEVER DEFAULTED. The encounter owns the one
 	// presence check and its sentinels; the sentinel is wrapped with %w so
@@ -887,7 +890,8 @@ func (in *Input) validateDrivenDash() error {
 // chargesSomething reports whether a profile spends a slot, a capacity or a
 // pool. The rules' own test, combat.SpendProfile's movesNothing, is unexported,
 // so the three spend maps are read here; Grants and Requires are not a price,
-// so a profile that only grants is no payment. Validate has run first and
+// so a profile that only grants is no payment (and neither is one that only
+// gives a turn slot, [combat.SpendProfile.GrantSlots]). Validate has run first and
 // refused a negative or non-slot amount, so a positive amount is a charge.
 func chargesSomething(p *combat.SpendProfile) bool {
 	for _, n := range p.Slots {

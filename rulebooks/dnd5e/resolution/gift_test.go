@@ -4,6 +4,9 @@
 package resolution
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombatType "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
@@ -11,6 +14,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 )
 
@@ -55,6 +60,25 @@ func (s *ActivationTestSuite) runSurgeOn(
 
 func (s *ActivationTestSuite) surgeCost(definition *combatActions.Definition, payer string) *Cost {
 	return s.effectCost(definition, payer)
+}
+
+// captainWithUses is the captain with a kit pool of the given size.
+func (s *ActivationTestSuite) captainWithUses(hitPoints, uses int) *monster.Data {
+	built, err := monster.FromTemplate(&monster.FromTemplateInput{
+		ID:  captainID,
+		Ref: &core.Ref{Module: "dnd5e", Type: "monsters", ID: "captain"},
+		Template: monster.Template{
+			Base: refs.Monsters.Human(), Name: "Captain", HitDice: "4d8",
+			Lets: json.RawMessage(fmt.Sprintf(`[{"use":"second wind","with":{"level":1},`+
+				`"uses":{"max":%d,"refills":{"on":["short rest","long rest"]}}}]`, uses)),
+		},
+		Base: monsters.Human,
+	})
+	s.Require().NoError(err)
+	data := built.ToData()
+	data.HitPoints = hitPoints
+
+	return data
 }
 
 // TEST 1. A monster is charged and given, and nothing lands.
@@ -263,8 +287,7 @@ func (s *ActivationTestSuite) TestTheGiftIsGivenOncePerPayment() {
 	definition := surge(monster.PoolKey(secondWindKey))
 
 	s.Run("two uses", func() {
-		data, _ := s.captain(5)
-		data.Left[secondWindKey] = 2
+		data := s.captainWithUses(5, 2)
 		first, err := s.runSurgeOn(data, definition, captainID, s.surgeCost(definition, captainID))
 		s.Require().NoError(err)
 		second, err := s.runSurgeOn(s.dirtyCaptain(first), definition, captainID, s.surgeCost(definition, captainID))
