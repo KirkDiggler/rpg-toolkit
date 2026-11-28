@@ -154,26 +154,27 @@ func objectFor(t *testing.T, place magicitems.Place) map[string]any {
 			continue
 		}
 		obj[w.Word] = valueFor(t, w)
+		if place == magicitems.PlaceLetsEntry && w.Word == "use" {
+			obj[w.Word] = uncountedUse(t, w)
+		}
 	}
 	if place == magicitems.PlaceLetsEntry {
 		obj["with"] = withFor(t, obj["use"].(string))
-		if needsCount(t, obj["use"].(string)) {
-			obj["uses"] = valueFor(t, find(t, magicitems.PlaceLetsEntry, "uses"))
-		}
 	}
 	return obj
 }
 
-// needsCount is whether the table says an entry using the ability must also
-// write `uses` or a `cost`.
-func needsCount(t *testing.T, ability string) bool {
+// uncountedUse is the first value of `use` that needs no count: the smallest
+// entry an author can write uses an ability that is paid for by its own slot.
+func uncountedUse(t *testing.T, w magicitems.Word) string {
 	t.Helper()
-	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
-		if v.Word == ability {
-			return v.NeedsCount
+	for _, v := range w.Values {
+		if !v.NeedsCount {
+			return v.Word
 		}
 	}
-	return false
+	require.FailNow(t, "every ability needs a count", "the table has no value of `use` that needs none, so there is no smallest entry to build")
+	return ""
 }
 
 // withFor writes the required words of an ability's `with`, or nothing.
@@ -414,11 +415,59 @@ func TestWordsAreInTheOrderTheRefusalsOfferThem(t *testing.T) {
 		"uses.max", "uses.refills",
 	}, got)
 	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
-		require.NotEmpty(t, v.With, v.Word)
+		if len(v.With) == 0 {
+			continue // an ability may take no values: Action Surge takes none
+		}
 		assert.Equal(t, magicitems.PlaceWith, v.With[0].Place)
 		assert.Equal(t, magicitems.ShapeWholeNumber, v.With[0].Shape)
 	}
 	for _, v := range find(t, magicitems.PlaceItem, "slot").Values {
 		assert.Nil(t, v.With, v.Word)
 	}
+}
+
+// Test 8: the table's contract over every value of `use`. An entry written with
+// the table's required words, plus `uses` exactly when the table says the
+// ability needs a count, compiles. Without `uses` a counted ability is
+// refused, and with `uses` and a `cost` both it is refused by the existing rule.
+func TestEveryValueOfUseCompilesAsTheTableSaysAndACountedOneIsRefusedWithoutItsCount(t *testing.T) {
+	uses := find(t, magicitems.PlaceLetsEntry, "uses")
+	var counted, uncounted int
+	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
+		entry := func(obj map[string]any, withUses bool) {
+			obj["use"] = v.Word
+			obj["with"] = withFor(t, v.Word)
+			delete(obj, "uses")
+			if withUses {
+				obj["uses"] = valueFor(t, uses)
+			}
+		}
+		if !v.NeedsCount {
+			uncounted++
+			_ = mustCompile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) { entry(obj, false) }))
+			continue
+		}
+		counted++
+		_ = mustCompile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) { entry(obj, true) }))
+
+		_, err := compile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) { entry(obj, false) }))
+		require.Error(t, err, v.Word)
+		assert.Contains(t, err.Error(), "write `uses` or a `cost`", v.Word)
+
+		_, err = compile(t, "it", itemAt(t, magicitems.PlaceLetsEntry, func(obj map[string]any) {
+			entry(obj, true)
+			obj["cost"] = map[string]any{"charges": 1}
+		}))
+		require.Error(t, err, v.Word)
+		assert.Contains(t, err.Error(), "has both `cost` and `uses`", v.Word)
+	}
+	assert.Positive(t, counted, "the table has a counted ability")
+	assert.Positive(t, uncounted, "and one that needs no count")
+
+	byWord := map[string]bool{}
+	for _, v := range find(t, magicitems.PlaceLetsEntry, "use").Values {
+		byWord[v.Word] = v.NeedsCount
+	}
+	assert.True(t, byWord["action surge"])
+	assert.False(t, byWord["second wind"])
 }
