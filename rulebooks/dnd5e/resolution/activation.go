@@ -110,6 +110,20 @@ type preparedCast struct {
 
 	// conditions are built and bound before the door charges anybody.
 	conditions []preparedDelivery
+
+	// conditionSource is the kind the conditions are published as. The zero
+	// value is a spell's, which every cast says; an ability's status is a
+	// feature's ([dnd5eEvents.ConditionSourceFeature]), as Rage publishes it.
+	conditionSource dnd5eEvents.ConditionSource
+}
+
+// publishedAs is the source kind this delivery's conditions carry.
+func (p *preparedCast) publishedAs() dnd5eEvents.ConditionSource {
+	if p.conditionSource == "" {
+		return dnd5eEvents.ConditionSourceSpell
+	}
+
+	return p.conditionSource
 }
 
 // preparedDelivery is one built condition and the member it lands on.
@@ -957,7 +971,7 @@ func (m *activationMachine) deliverCast(cast *Participants, recipients []core.En
 
 			for index, delivery := range m.cast.conditions {
 				if _, publishErr := publishCondition(
-					ctx, bus, cast, delivery.condition, recipients[index], dnd5eEvents.ConditionSourceSpell,
+					ctx, bus, cast, delivery.condition, recipients[index], m.cast.publishedAs(),
 				); publishErr != nil {
 					return nil, fmt.Errorf("cast %s for %q: %w",
 						m.cast.source.String(), m.member, publishErr)
