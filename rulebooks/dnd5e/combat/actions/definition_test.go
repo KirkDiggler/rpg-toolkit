@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/stretchr/testify/assert"
@@ -215,4 +216,117 @@ func TestDefinitionCloneDoesNotAliasNestedData(t *testing.T) {
 	assert.Equal(t, "prone", original.Attack.OnHit[0].Ref.ID)
 	assert.JSONEq(t, `{"duration":1}`, string(original.Attack.OnHit[0].Parameters))
 	assert.Equal(t, abilities.STR, original.Attack.OnHit[0].Save.Abilities[0])
+}
+
+// onlyItsPrice is the shape Action Surge takes: no profile, a price that
+// gives a turn slot.
+func onlyItsPrice() combatActions.Definition {
+	return combatActions.Definition{
+		Ref:  core.Ref{Module: "dnd5e", Type: "features", ID: "action-surge"},
+		Name: "Action Surge",
+		Cost: &combat.SpendProfile{
+			Pools:      map[coreResources.ResourceKey]int{"action-surge": 1},
+			GrantSlots: map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1},
+		},
+	}
+}
+
+func TestADescriptionMayBeOnlyItsPrice(t *testing.T) {
+	t.Run("a price that charges and gives a slot", func(t *testing.T) {
+		def := onlyItsPrice()
+
+		require.NoError(t, def.Validate())
+		assert.True(t, def.OnlyItsPrice())
+	})
+
+	t.Run("a gift that charges nothing is still only its price", func(t *testing.T) {
+		// Whether a free gift may be RUN is the runner's rule; this type only
+		// says what the description is.
+		def := onlyItsPrice()
+		def.Cost.Pools = nil
+
+		require.NoError(t, def.Validate())
+		assert.True(t, def.OnlyItsPrice())
+	})
+}
+
+func TestADescriptionWithNothingGivenIsRefused(t *testing.T) {
+	const sentence = "action must populate exactly one profile, or give a turn slot as its price"
+	costs := map[string]*combat.SpendProfile{
+		"no cost": nil,
+		"a cost that only charges": {
+			Pools: map[coreResources.ResourceKey]int{"ki": 1},
+		},
+		"a cost that gives only capacity": {
+			Grants: map[combat.CapacityType]int{combat.CapacityMovement: 5},
+		},
+	}
+	for name, cost := range costs {
+		t.Run(name, func(t *testing.T) {
+			def := onlyItsPrice()
+			def.Cost = cost
+
+			err := def.Validate()
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), sentence)
+			assert.False(t, def.OnlyItsPrice())
+		})
+	}
+}
+
+func TestProfilesAreAsTheyWere(t *testing.T) {
+	t.Run("one profile is valid and is not only its price, even when its cost gives a slot", func(t *testing.T) {
+		def := validDefinition()
+		def.Cost.GrantSlots = map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}
+
+		require.NoError(t, def.Validate())
+		assert.False(t, def.OnlyItsPrice())
+	})
+
+	t.Run("two profiles keep the old sentence", func(t *testing.T) {
+		def := validDefinition()
+		def.Effect = &combatActions.EffectProfile{}
+
+		err := def.Validate()
+
+		require.EqualError(t, err, "action must populate exactly one profile")
+		assert.False(t, def.OnlyItsPrice())
+	})
+
+	t.Run("a profile does not make a gift only its price", func(t *testing.T) {
+		def := onlyItsPrice()
+		profile := validAttackProfile()
+		def.Attack = &profile
+
+		assert.False(t, def.OnlyItsPrice())
+	})
+}
+
+func TestACloneIsStillOnlyItsPrice(t *testing.T) {
+	original := onlyItsPrice()
+
+	clone := original.Clone()
+
+	require.NoError(t, clone.Validate())
+	assert.True(t, clone.OnlyItsPrice())
+
+	clone.Cost.GrantSlots[coreCombat.ActionStandard] = 2
+	clone.Cost.GrantSlots[coreCombat.ActionBonus] = 1
+	assert.Equal(t, map[coreCombat.ActionType]int{coreCombat.ActionStandard: 1}, original.Cost.GrantSlots)
+}
+
+func TestABadGiftIsTheCostsRefusal(t *testing.T) {
+	// The profile rule runs first and a gift counts toward it, so a malformed
+	// gift reaches the cost's own check and an author reads what is wrong with
+	// the gift, not a complaint about a missing profile.
+	def := onlyItsPrice()
+	def.Cost.GrantSlots = map[coreCombat.ActionType]int{coreCombat.ActionMovement: 1}
+
+	err := def.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "action cost is invalid")
+	assert.Contains(t, err.Error(), "slot grant keyed to")
+	assert.NotContains(t, err.Error(), "exactly one profile")
 }
