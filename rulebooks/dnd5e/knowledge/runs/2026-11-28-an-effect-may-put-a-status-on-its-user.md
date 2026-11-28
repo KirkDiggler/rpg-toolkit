@@ -17,8 +17,8 @@ Slice [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277)
 - F4 printed seven non-test lines: `definition.go:34` (field), `effect.go:19,22,33,48` (the type and its methods), `features/second_wind_named_ability.go:75` (builds a heal), `session/selector_projection.go:46` (holder, same tag); no hand-written copy of the fields — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
 - `ref` reads in JSON as a string, `"dnd5e:conditions:raging"`; this package's tests use `encoding/json` — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
 - A heal-only effect's bytes, pinned: `{"to":"self","healing":{"Dice":"1d10","Modifiers":[{"Source":{"Ref":"dnd5e:classes:fighter","Name":"Fighter","Label":"Fighter level","SourceID":"hero"},"Amount":3}]}}` — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
-- Proofs: PROOFS — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
-- Suite: BEFORE before the change and AFTER at the final head — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
+- Proofs: dropping the "both" refusal failed `TestBothAHealAndAStatusAreRefused` (an error was expected, got nil); `Clone` copying the pointer failed `TestACloneOfAStatusIsIndependent` (parameters changed, ref changed, same pointer); dropping `omitempty` failed `TestAHealOnlyEffectsJSONCarriesNoCondition` (a `condition` key appears) — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
+- Suite: `go build`, `go vet` and `go test ./... -count=1` passed before the change and at the final head (41 packages ok), `golangci-lint run ./...` 0 issues — [rpg-project#1277](https://github.com/KirkDiggler/rpg-project/issues/1277).
 
 ## Mistaken
 
