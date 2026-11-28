@@ -25,6 +25,7 @@ Slice [rpg-project#1292](https://github.com/KirkDiggler/rpg-project/issues/1292)
 - Test 5 can see the bonus: a creature's `struck` beat carries `damage_components`; the raging Lieutenant's longsword hit lists weapon d8 (8), ability strength (0) and one `condition` component sourced to `dnd5e:conditions:raging` and `lieutenant` with modifier 2, `amount` 10 — [Test 5](https://github.com/KirkDiggler/rpg-project/issues/1292).
 - A raging wearer's row: `Available` false, `Why.Text` `already raging`; `Manager.Activate` on it returns `activate: declaration is stale` — [gap](https://github.com/KirkDiggler/rpg-project/issues/1292#issuecomment-7236390693).
 - His first turn: `activated` (Rage), one `activation-result` (`condition-applied`, target `lieutenant`, `Raging`), then he walks and swings; his sheet has `Left["rage"]` 1, no bonus action, the raging status — [Test 2](https://github.com/KirkDiggler/rpg-project/issues/1292).
+- The proof (\`abilityFactsOf\` copying \`a.Payable\` alone again, restored after) fails Test 4 with the same message as before the change: \`... ability refused to activate: already raging\`; the suite passes at the pins' first run except the one test above, and at the final head (62.7s), with \`go build\`, \`go vet\` and \`golangci-lint run\` clean — [Proof](https://github.com/KirkDiggler/rpg-project/issues/1292).
 
 ## Mistaken
 
