@@ -21,7 +21,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
@@ -129,8 +128,8 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature, "Barbarian should have rage feature")
 
-	// Activate rage (publishes ConditionAppliedEvent)
-	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
+	// Rage from its description (publishes ConditionAppliedEvent)
+	err = useRageFromItsDescription(s.ctx, s.T(), char, s.bus)
 	s.Require().NoError(err)
 
 	// Verify character now has both Unarmored Defense and Raging conditions
@@ -273,7 +272,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	// Get rage feature and activate it
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
-	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
+	err = useRageFromItsDescription(s.ctx, s.T(), char, s.bus)
 	s.Require().NoError(err)
 
 	// Verify character has both Unarmored Defense (from grants) and Raging (from activation)
@@ -350,7 +349,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemoval
 	// Activate rage
 	rageFeature := char.GetFeature("rage")
 	s.Require().NotNil(rageFeature)
-	err = rageFeature.Activate(s.ctx, char, features.FeatureInput{Bus: s.bus})
+	err = useRageFromItsDescription(s.ctx, s.T(), char, s.bus)
 	s.Require().NoError(err)
 
 	// Verify character has Unarmored Defense + Raging conditions

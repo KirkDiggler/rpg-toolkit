@@ -60,18 +60,20 @@ func (s *AbilityDefinitionSuite) TestARefTheCharacterLacksIsNotAnError() {
 }
 
 func (s *AbilityDefinitionSuite) TestAFeatureWithNoDescriptionIsNotAnError() {
-	raw, err := json.Marshal(features.RageData{Ref: refs.Features.Rage(), ID: "rage-1", Name: "Rage"})
+	raw, err := json.Marshal(features.FlurryOfBlowsData{
+		Ref: refs.Features.FlurryOfBlows(), ID: "flurry-1", Name: "Flurry of Blows",
+	})
 	s.Require().NoError(err)
-	rage, err := features.LoadJSON(raw)
+	flurry, err := features.LoadJSON(raw)
 	s.Require().NoError(err)
-	barbarian := &Character{
-		id: "b1", classID: classes.Barbarian, levels: syntheticLevels(classes.Barbarian, 1),
-		features: []features.Feature{rage},
+	monk := &Character{
+		id: "m1", classID: classes.Monk, levels: syntheticLevels(classes.Monk, 2),
+		features: []features.Feature{flurry},
 	}
 
-	definition, ok, err := barbarian.AbilityDefinition(*refs.Features.Rage())
+	definition, ok, err := monk.AbilityDefinition(*refs.Features.FlurryOfBlows())
 
 	s.Require().NoError(err)
-	s.False(ok, "Rage carries no description yet")
+	s.False(ok, "Flurry of Blows carries no description yet")
 	s.Nil(definition)
 }

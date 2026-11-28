@@ -23,7 +23,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combatabilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -203,9 +202,8 @@ func (s *BarbarianEncounterSuite) TestRage_EndsAfter10Turns() {
 		s.T().Log("╚══════════════════════════════════════════════════════════════════╝")
 		s.T().Log("")
 
-		// Activate rage
-		rage := s.barbarian.GetFeature("rage")
-		err := rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
+		// Activate rage, from its description
+		err := useRageFromItsDescription(s.ctx, s.T(), s.barbarian, s.bus)
 		s.Require().NoError(err)
 		s.T().Log("→ Grog enters a rage!")
 
@@ -345,8 +343,7 @@ func (s *BarbarianEncounterSuite) TestEncounter_MultiTurnCombat() {
 		// Grog activates rage (bonus action) and attacks
 		s.T().Log("→ Grog's turn:")
 		s.T().Log("  [Bonus Action] Grog enters a RAGE!")
-		rage := s.barbarian.GetFeature("rage")
-		err = rage.Activate(s.ctx, s.barbarian, features.FeatureInput{Bus: s.bus})
+		err = useRageFromItsDescription(s.ctx, s.T(), s.barbarian, s.bus)
 		s.Require().NoError(err)
 		s.True(rageActive, "Rage should be active")
 		s.T().Logf("    Rage uses: %d/2", s.barbarian.GetResource(resources.RageCharges).Current())

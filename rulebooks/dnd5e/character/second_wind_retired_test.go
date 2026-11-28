@@ -5,18 +5,24 @@ package character
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 )
 
 // SecondWindRetiredSuite pins that Second Wind's own activate code is gone:
@@ -105,19 +111,39 @@ func (s *SecondWindRetiredSuite) TestTheDescriptionStillWorksWithoutTheFeaturesC
 }
 
 func (s *SecondWindRetiredSuite) TestAFeatureWithNoDescriptionIsUntouched() {
-	barbarian, err := newBarbarianDraft(s.T()).ToCharacter(s.ctx, "retired-barbarian", s.bus)
+	monk, err := LoadFromData(s.ctx, &Data{
+		Levels:           syntheticLevels(classes.Monk, 3),
+		ID:               "retired-monk",
+		PlayerID:         "retired-player",
+		Name:             "Li",
+		Level:            3,
+		ProficiencyBonus: 2,
+		RaceID:           races.Human,
+		ClassID:          classes.Monk,
+		AbilityScores: shared.AbilityScores{
+			abilities.STR: 12, abilities.DEX: 16, abilities.CON: 14,
+			abilities.INT: 10, abilities.WIS: 16, abilities.CHA: 8,
+		},
+		HitPoints:    18,
+		MaxHitPoints: 24,
+		Resources: map[coreResources.ResourceKey]RecoverableResourceData{
+			resources.Ki: {Current: 3, Maximum: 3, ResetType: coreResources.ResetShortRest},
+		},
+		Features: []json.RawMessage{json.RawMessage(
+			`{"ref":{"module":"dnd5e","type":"features","id":"flurry_of_blows"},"id":"flurry_of_blows","name":"Flurry of Blows"}`)},
+	}, s.bus)
 	s.Require().NoError(err)
-	_, err = barbarian.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
+	_, err = monk.StartTurn(s.ctx, &StartTurnInput{TurnNumber: 1, Speed: 30})
 	s.Require().NoError(err)
-	rageBefore, _, _ := barbarian.ResourceStatus(resources.RageCharges)
-	bonusBefore := barbarian.actionEconomy.BonusActionsRemaining
+	kiBefore, _, _ := monk.ResourceStatus(resources.Ki)
+	bonusBefore := monk.actionEconomy.BonusActionsRemaining
 	s.Require().Equal(1, bonusBefore)
 
-	out, err := barbarian.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
+	out, err := monk.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.FlurryOfBlows()})
 
 	s.Require().NoError(err)
-	s.True(out.Success, "rage activates: %s", out.Error)
-	rageAfter, _, _ := barbarian.ResourceStatus(resources.RageCharges)
-	s.Equal(rageBefore-1, rageAfter, "a charge is spent")
-	s.Equal(bonusBefore-1, barbarian.actionEconomy.BonusActionsRemaining, "the bonus action is taken")
+	s.True(out.Success, "flurry of blows activates: %s", out.Error)
+	kiAfter, _, _ := monk.ResourceStatus(resources.Ki)
+	s.Equal(kiBefore-1, kiAfter, "a charge is spent")
+	s.Equal(bonusBefore-1, monk.actionEconomy.BonusActionsRemaining, "the bonus action is taken")
 }

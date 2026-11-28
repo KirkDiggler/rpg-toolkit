@@ -19,12 +19,13 @@ import (
 )
 
 // Rage represents the barbarian rage feature.
-// It implements core.Action[FeatureInput] for activation.
-// Rage uses the owner's resources via ResourceAccessor - the character owns the
-// rage charges resource, and this feature consumes from it.
+// It implements core.Action[FeatureInput] for the sheet's list of abilities,
+// and it is used from its description ([Rage.Definition]), not from its own
+// code. The character owns the rage charges resource; the description's cost
+// names it and the gate spends it.
 //
-// It stores no barbarian level. Activation asks its owner whether rages are
-// unlimited (barbarian 20); the Raging condition it applies reads its damage
+// It stores no barbarian level. The description asks its owner whether rages
+// are unlimited (barbarian 20); the Raging condition it names reads its damage
 // bonus from each attack's frame.
 type Rage struct {
 	id   string
